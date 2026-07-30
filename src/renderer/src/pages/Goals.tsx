@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Goal as GoalIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { formatCurrency } from '../lib/format'
+import PageHeader from '../components/PageHeader'
 
 export default function Goals() {
   const goals = useAppStore((s) => s.goals)
@@ -37,46 +39,36 @@ export default function Goals() {
 
   return (
     <div className="flex flex-col gap-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Meta</label>
+      <PageHeader icon={GoalIcon} title="Metas" subtitle="Objetivos financeiros e progresso" />
+
+      <form onSubmit={handleSubmit} className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Meta</label>
           <input
             value={nome}
             onChange={(e) => setNome(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
             placeholder="Ex: Reserva de emergência"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Valor alvo</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Valor alvo</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={valorAlvo}
             onChange={(e) => setValorAlvo(e.target.value)}
-            className="w-32 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input w-full sm:w-32"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Prazo</label>
-          <input
-            type="date"
-            value={prazo}
-            onChange={(e) => setPrazo(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-          />
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Prazo</label>
+          <input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="field-input" />
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
+        <button type="submit" disabled={submitting} className="btn-primary">
           Criar meta
         </button>
       </form>
@@ -85,13 +77,10 @@ export default function Goals() {
         {goals.map((g) => {
           const pct = g.valor_alvo > 0 ? Math.min(100, (g.valor_atual / g.valor_alvo) * 100) : 0
           return (
-            <div
-              key={g.id}
-              className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-            >
+            <div key={g.id} className="card flex flex-col gap-2 p-4">
               <div className="flex items-start justify-between">
                 <h3 className="font-semibold text-slate-800 dark:text-slate-100">{g.nome}</h3>
-                <button onClick={() => removeGoal(g.id)} className="text-xs text-red-500 hover:underline">
+                <button onClick={() => removeGoal(g.id)} className="btn-danger-text">
                   Excluir
                 </button>
               </div>
@@ -99,7 +88,7 @@ export default function Goals() {
                 {formatCurrency(g.valor_atual)} de {formatCurrency(g.valor_alvo)}
               </p>
               <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-2 rounded-full bg-sky-500" style={{ width: `${pct}%` }} />
+                <div className="h-2 rounded-full bg-gradient-to-r from-sky-500 to-emerald-500" style={{ width: `${pct}%` }} />
               </div>
               {g.prazo && <p className="text-xs text-slate-400">Prazo: {g.prazo}</p>}
               <div className="mt-2 flex gap-2">
@@ -109,11 +98,11 @@ export default function Goals() {
                   placeholder="Aporte"
                   value={aportes[g.id] || ''}
                   onChange={(e) => setAportes((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                  className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  className="field-input w-24 py-1"
                 />
                 <button
                   onClick={() => handleAporte(g.id, g.valor_atual)}
-                  className="rounded-md bg-slate-800 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"
+                  className="btn-primary px-3 py-1 text-xs"
                 >
                   Adicionar
                 </button>

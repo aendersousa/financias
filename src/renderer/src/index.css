@@ -2,10 +2,52 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
 body {
   font-family:
     'Segoe UI',
     system-ui,
     -apple-system,
     sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .field-label {
+    @apply text-xs font-medium text-slate-500 dark:text-slate-400;
+  }
+
+  .field-input {
+    @apply rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
+  }
+
+  .btn-primary {
+    @apply rounded-lg bg-gradient-to-r from-sky-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-sky-500/20 transition-opacity hover:opacity-90 disabled:opacity-50;
+  }
+
+  .btn-danger-text {
+    @apply text-xs font-medium text-red-500 hover:underline;
+  }
+
+  .table-shell {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .table-head {
+    @apply bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/50 dark:text-slate-400;
+  }
+
+  .table-row-hover {
+    @apply transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40;
+  }
 }

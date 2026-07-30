@@ -13,3 +13,7 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+publish:
+  provider: github
+  owner: aendersousa
+  repo: financias

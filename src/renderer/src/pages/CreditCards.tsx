@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { CreditCard as CreditCardIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { formatCurrency } from '../lib/format'
+import PageHeader from '../components/PageHeader'
 
 export default function CreditCards() {
   const creditCards = useAppStore((s) => s.creditCards)
@@ -36,59 +38,58 @@ export default function CreditCards() {
 
   return (
     <div className="flex flex-col gap-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Nome do cartão</label>
+      <PageHeader icon={CreditCardIcon} title="Cartões" subtitle="Cartões de crédito e faturas" />
+
+      <form onSubmit={handleSubmit} className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Nome do cartão</label>
           <input
             value={nome}
             onChange={(e) => setNome(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
             placeholder="Ex: Nubank Mastercard"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Limite</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Limite</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={limite}
             onChange={(e) => setLimite(e.target.value)}
-            className="w-28 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input w-full sm:w-28"
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Dia fechamento</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Dia fechamento</label>
           <input
             type="number"
             min="1"
             max="31"
             value={diaFechamento}
             onChange={(e) => setDiaFechamento(e.target.value)}
-            className="w-24 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input w-full sm:w-24"
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Dia vencimento</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Dia vencimento</label>
           <input
             type="number"
             min="1"
             max="31"
             value={diaVencimento}
             onChange={(e) => setDiaVencimento(e.target.value)}
-            className="w-24 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input w-full sm:w-24"
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Conta de pagamento</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Conta de pagamento</label>
           <select
             value={contaPagamentoId}
             onChange={(e) => setContaPagamentoId(e.target.value ? Number(e.target.value) : '')}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
           >
             <option value="">Nenhuma</option>
             {accounts.map((a) => (
@@ -98,34 +99,30 @@ export default function CreditCards() {
             ))}
           </select>
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
+        <button type="submit" disabled={submitting} className="btn-primary">
           Adicionar cartão
         </button>
       </form>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+      <div className="table-shell">
+        <table className="w-full text-sm sm:min-w-[720px]">
+          <thead className="table-head">
             <tr>
-              <th className="px-4 py-2">Cartão</th>
-              <th className="px-4 py-2 text-right">Limite</th>
-              <th className="px-4 py-2 text-right">Fatura atual</th>
-              <th className="px-4 py-2">Fechamento</th>
-              <th className="px-4 py-2">Vencimento</th>
-              <th className="px-4 py-2">Conta de pagamento</th>
-              <th className="px-4 py-2"></th>
+              <th className="px-4 py-2.5">Cartão</th>
+              <th className="px-4 py-2.5 text-right">Limite</th>
+              <th className="px-4 py-2.5 text-right">Fatura atual</th>
+              <th className="hidden px-4 py-2.5 md:table-cell">Fechamento</th>
+              <th className="hidden px-4 py-2.5 md:table-cell">Vencimento</th>
+              <th className="hidden px-4 py-2.5 md:table-cell">Conta de pagamento</th>
+              <th className="px-4 py-2.5"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {creditCards.map((c) => (
-              <tr key={c.id}>
-                <td className="px-4 py-2">{c.nome}</td>
-                <td className="px-4 py-2 text-right font-medium">{formatCurrency(c.limite)}</td>
-                <td className="px-4 py-2 text-right">
+              <tr key={c.id} className="table-row-hover">
+                <td className="px-4 py-2.5">{c.nome}</td>
+                <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(c.limite)}</td>
+                <td className="px-4 py-2.5 text-right">
                   <span className={c.fatura_atual > c.limite ? 'font-medium text-red-500' : 'font-medium'}>
                     {formatCurrency(c.fatura_atual)}
                   </span>
@@ -133,13 +130,13 @@ export default function CreditCards() {
                     {c.fatura_inicio} a {c.fatura_fim}
                   </p>
                 </td>
-                <td className="px-4 py-2 text-slate-500">Dia {c.dia_fechamento}</td>
-                <td className="px-4 py-2 text-slate-500">Dia {c.dia_vencimento}</td>
-                <td className="px-4 py-2 text-slate-500">
+                <td className="hidden px-4 py-2.5 text-slate-500 md:table-cell">Dia {c.dia_fechamento}</td>
+                <td className="hidden px-4 py-2.5 text-slate-500 md:table-cell">Dia {c.dia_vencimento}</td>
+                <td className="hidden px-4 py-2.5 text-slate-500 md:table-cell">
                   {accounts.find((a) => a.id === c.conta_pagamento_id)?.nome ?? '-'}
                 </td>
-                <td className="px-4 py-2 text-right">
-                  <button onClick={() => removeCreditCard(c.id)} className="text-xs text-red-500 hover:underline">
+                <td className="px-4 py-2.5 text-right">
+                  <button onClick={() => removeCreditCard(c.id)} className="btn-danger-text">
                     Excluir
                   </button>
                 </td>

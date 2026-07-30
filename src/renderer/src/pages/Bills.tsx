@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Receipt } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { formatCurrency, formatDate, todayIso } from '../lib/format'
+import PageHeader from '../components/PageHeader'
 import type { BillType } from '../../../shared/types'
 
 export default function Bills() {
@@ -44,68 +46,63 @@ export default function Bills() {
 
   return (
     <div className="flex flex-col gap-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Descrição</label>
+      <PageHeader icon={Receipt} title="Contas a Pagar/Receber" subtitle="Compromissos financeiros com vencimento" />
+
+      <form onSubmit={handleSubmit} className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Descrição</label>
           <input
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
             placeholder="Ex: Aluguel"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Tipo</label>
-          <select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as BillType)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-          >
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Tipo</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value as BillType)} className="field-input">
             <option value="pagar">A pagar</option>
             <option value="receber">A receber</option>
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Valor</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Valor</label>
           <input
             type="number"
             step="0.01"
             min="0"
             value={valor}
             onChange={(e) => setValor(e.target.value)}
-            className="w-28 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input w-full sm:w-28"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Vencimento</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Vencimento</label>
           <input
             type="date"
             value={vencimento}
             onChange={(e) => setVencimento(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Recorrência</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Recorrência</label>
           <input
             value={recorrencia}
             onChange={(e) => setRecorrencia(e.target.value)}
-            className="w-32 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input w-full sm:w-32"
             placeholder="Ex: mensal"
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Conta</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Conta</label>
           <select
             value={contaId}
             onChange={(e) => setContaId(e.target.value ? Number(e.target.value) : '')}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
           >
             <option value="">Nenhuma</option>
             {accounts.map((a) => (
@@ -115,11 +112,7 @@ export default function Bills() {
             ))}
           </select>
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
+        <button type="submit" disabled={submitting} className="btn-primary">
           Cadastrar
         </button>
       </form>
@@ -151,7 +144,7 @@ function BillList({
   onRemove: (id: number) => Promise<void>
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="card p-4">
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       <ul className="divide-y divide-slate-100 dark:divide-slate-800">
         {items.map((b) => (
@@ -175,7 +168,7 @@ function BillList({
               >
                 {b.status === 'pago' ? 'Pago' : 'Pendente'}
               </button>
-              <button onClick={() => onRemove(b.id)} className="text-xs text-red-500 hover:underline">
+              <button onClick={() => onRemove(b.id)} className="btn-danger-text">
                 Excluir
               </button>
             </div>

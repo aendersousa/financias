@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { Tags } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
+import PageHeader from '../components/PageHeader'
 import type { CategoryType } from '../../../shared/types'
 
 export default function Categories() {
@@ -29,45 +31,36 @@ export default function Categories() {
 
   return (
     <div className="flex flex-col gap-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Nome</label>
+      <PageHeader icon={Tags} title="Categorias" subtitle="Organize receitas e despesas por categoria" />
+
+      <form onSubmit={handleSubmit} className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Nome</label>
           <input
             value={nome}
             onChange={(e) => setNome(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="field-input"
             placeholder="Ex: Assinaturas"
             required
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Tipo</label>
-          <select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as CategoryType)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-          >
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Tipo</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value as CategoryType)} className="field-input">
             <option value="despesa">Despesa</option>
             <option value="receita">Receita</option>
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">Cor</label>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="field-label">Cor</label>
           <input
             type="color"
             value={cor}
             onChange={(e) => setCor(e.target.value)}
-            className="h-9 w-12 rounded-md border border-slate-300 dark:border-slate-700"
+            className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700"
           />
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
+        <button type="submit" disabled={submitting} className="btn-primary">
           Adicionar categoria
         </button>
       </form>
@@ -90,7 +83,7 @@ function CategoryList({
   onRemove: (id: number) => void
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="card p-4">
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       <ul className="divide-y divide-slate-100 dark:divide-slate-800">
         {items.map((c) => (
@@ -99,7 +92,7 @@ function CategoryList({
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: c.cor }} />
               {c.nome}
             </span>
-            <button onClick={() => onRemove(c.id)} className="text-xs text-red-500 hover:underline">
+            <button onClick={() => onRemove(c.id)} className="btn-danger-text">
               Excluir
             </button>
           </li>

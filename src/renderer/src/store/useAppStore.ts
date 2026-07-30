@@ -1,9 +1,20 @@
 import { create } from 'zustand'
+import { supabase } from '../lib/supabaseClient'
+import {
+  computeAccountsWithBalance,
+  computeBudgetView,
+  computeCreditCardsWithFatura,
+  computeTransactionsView
+} from '../lib/computations'
+import { applyTheme, getInitialTheme, type Theme } from '../lib/theme'
 import type {
+  Account,
   AccountWithBalance,
   Bill,
+  Budget,
   BudgetView,
   Category,
+  CreditCard,
   CreditCardWithFatura,
   Goal,
   NewAccount,
@@ -13,6 +24,7 @@ import type {
   NewGoal,
   NewInstallmentPurchase,
   NewTransaction,
+  Transaction,
   TransactionView
 } from '../../../shared/types'
 
@@ -26,8 +38,11 @@ interface AppState {
   budgets: BudgetView[]
   budgetMonth: string
   loading: boolean
+  theme: Theme
 
   loadAll: () => Promise<void>
+  reset: () => void
+  toggleTheme: () => void
 
   addAccount: (data: NewAccount) => Promise<void>
   removeAccount: (id: number) => Promise<void>
@@ -50,8 +65,31 @@ interface AppState {
   updateGoal: (id: number, data: Partial<NewGoal>) => Promise<void>
   removeGoal: (id: number) => Promise<void>
 
-  loadBudgets: (mesAno: string) => Promise<void>
+  loadBudgets: (mesAno: string) => void
   setBudget: (categoriaId: number, mesAno: string, valorPlanejado: number) => Promise<void>
+}
+
+interface RawState {
+  rawAccounts: Account[]
+  rawCategories: Category[]
+  rawTransactions: Transaction[]
+  rawCreditCards: CreditCard[]
+  rawBudgets: Budget[]
+}
+
+const initialRaw: RawState = {
+  rawAccounts: [],
+  rawCategories: [],
+  rawTransactions: [],
+  rawCreditCards: [],
+  rawBudgets: []
+}
+
+let raw: RawState = { ...initialRaw }
+
+function throwIfError<T>({ data, error }: { data: T | null; error: { message: string } | null }): T {
+  if (error) throw new Error(error.message)
+  return data as T
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -64,92 +102,156 @@ export const useAppStore = create<AppState>((set, get) => ({
   budgets: [],
   budgetMonth: new Date().toISOString().slice(0, 7),
   loading: false,
+  theme: getInitialTheme(),
+
+  toggleTheme: () => {
+    const next: Theme = get().theme === 'dark' ? 'light' : 'dark'
+    applyTheme(next)
+    set({ theme: next })
+  },
+
+  reset: () => {
+    raw = { ...initialRaw }
+    set({
+      accounts: [],
+      categories: [],
+      transactions: [],
+      creditCards: [],
+      bills: [],
+      goals: [],
+      budgets: []
+    })
+  },
 
   loadAll: async () => {
     set({ loading: true })
-    const [accounts, categories, transactions, creditCards, bills, goals] = await Promise.all([
-      window.api.accounts.list(),
-      window.api.categories.list(),
-      window.api.transactions.list(),
-      window.api.creditCards.list(),
-      window.api.bills.list(),
-      window.api.goals.list()
-    ])
-    set({ accounts, categories, transactions, creditCards, bills, goals, loading: false })
+    const [accountsRes, categoriesRes, transactionsRes, creditCardsRes, billsRes, goalsRes, budgetsRes] =
+      await Promise.all([
+        supabase.from('accounts').select('*'),
+        supabase.from('categories').select('*'),
+        supabase.from('transactions').select('*'),
+        supabase.from('credit_cards').select('*'),
+        supabase.from('bills').select('*'),
+        supabase.from('goals').select('*'),
+        supabase.from('budgets').select('*')
+      ])
+
+    raw = {
+      rawAccounts: throwIfError<Account[]>(accountsRes),
+      rawCategories: throwIfError<Category[]>(categoriesRes),
+      rawTransactions: throwIfError<Transaction[]>(transactionsRes),
+      rawCreditCards: throwIfError<CreditCard[]>(creditCardsRes),
+      rawBudgets: throwIfError<Budget[]>(budgetsRes)
+    }
+    const bills = throwIfError<Bill[]>(billsRes)
+    const goals = throwIfError<Goal[]>(goalsRes)
+
+    set({
+      accounts: computeAccountsWithBalance(raw.rawAccounts, raw.rawTransactions),
+      categories: raw.rawCategories,
+      transactions: computeTransactionsView(raw.rawTransactions, raw.rawAccounts, raw.rawCategories, raw.rawCreditCards),
+      creditCards: computeCreditCardsWithFatura(raw.rawCreditCards, raw.rawTransactions),
+      bills,
+      goals,
+      loading: false
+    })
+    get().loadBudgets(get().budgetMonth)
   },
 
   addAccount: async (data) => {
-    await window.api.accounts.create(data)
+    throwIfError(await supabase.from('accounts').insert(data))
     await get().loadAll()
   },
   removeAccount: async (id) => {
-    await window.api.accounts.delete(id)
+    throwIfError(await supabase.from('accounts').delete().eq('id', id))
     await get().loadAll()
   },
 
   addCategory: async (data) => {
-    await window.api.categories.create(data)
+    throwIfError(await supabase.from('categories').insert(data))
     await get().loadAll()
   },
   removeCategory: async (id) => {
-    await window.api.categories.delete(id)
+    throwIfError(await supabase.from('categories').delete().eq('id', id))
     await get().loadAll()
   },
 
   addTransaction: async (data) => {
-    await window.api.transactions.create(data)
+    throwIfError(await supabase.from('transactions').insert(data))
     await get().loadAll()
   },
   removeTransaction: async (id) => {
-    await window.api.transactions.delete(id)
+    throwIfError(await supabase.from('transactions').delete().eq('id', id))
     await get().loadAll()
   },
   addInstallmentPurchase: async (data) => {
-    await window.api.transactions.createInstallments(data)
+    throwIfError(
+      await supabase.rpc('create_installment_purchase', {
+        p_account_id: data.account_id,
+        p_category_id: data.category_id,
+        p_cartao_id: data.cartao_id,
+        p_valor_total: data.valor_total,
+        p_parcelas: data.parcelas,
+        p_data: data.data,
+        p_descricao: data.descricao,
+        p_status: data.status
+      })
+    )
     await get().loadAll()
   },
 
   addCreditCard: async (data) => {
-    await window.api.creditCards.create(data)
+    throwIfError(await supabase.from('credit_cards').insert(data))
     await get().loadAll()
   },
   removeCreditCard: async (id) => {
-    await window.api.creditCards.delete(id)
+    throwIfError(await supabase.from('credit_cards').delete().eq('id', id))
     await get().loadAll()
   },
 
   addBill: async (data) => {
-    await window.api.bills.create(data)
+    throwIfError(await supabase.from('bills').insert(data))
     await get().loadAll()
   },
   updateBill: async (id, data) => {
-    await window.api.bills.update(id, data)
+    throwIfError(await supabase.from('bills').update(data).eq('id', id))
     await get().loadAll()
   },
   removeBill: async (id) => {
-    await window.api.bills.delete(id)
+    throwIfError(await supabase.from('bills').delete().eq('id', id))
     await get().loadAll()
   },
 
   addGoal: async (data) => {
-    await window.api.goals.create(data)
+    throwIfError(await supabase.from('goals').insert(data))
     await get().loadAll()
   },
   updateGoal: async (id, data) => {
-    await window.api.goals.update(id, data)
+    throwIfError(await supabase.from('goals').update(data).eq('id', id))
     await get().loadAll()
   },
   removeGoal: async (id) => {
-    await window.api.goals.delete(id)
+    throwIfError(await supabase.from('goals').delete().eq('id', id))
     await get().loadAll()
   },
 
-  loadBudgets: async (mesAno) => {
-    const budgets = await window.api.budgets.list(mesAno)
-    set({ budgets, budgetMonth: mesAno })
+  loadBudgets: (mesAno) => {
+    set({
+      budgets: computeBudgetView(raw.rawCategories, raw.rawBudgets, raw.rawTransactions, mesAno),
+      budgetMonth: mesAno
+    })
   },
   setBudget: async (categoriaId, mesAno, valorPlanejado) => {
-    await window.api.budgets.set(categoriaId, mesAno, valorPlanejado)
-    await get().loadBudgets(mesAno)
+    throwIfError(
+      await supabase
+        .from('budgets')
+        .upsert(
+          { categoria_id: categoriaId, mes_ano: mesAno, valor_planejado: valorPlanejado },
+          { onConflict: 'user_id,categoria_id,mes_ano' }
+        )
+    )
+    await get().loadAll()
   }
 }))
+
+applyTheme(useAppStore.getState().theme)

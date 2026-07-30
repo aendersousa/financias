@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { PiggyBank } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { formatCurrency } from '../lib/format'
+import PageHeader from '../components/PageHeader'
 
 export default function Budget() {
   const budgets = useAppStore((s) => s.budgets)
@@ -16,24 +18,21 @@ export default function Budget() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <label className="text-xs text-slate-500">Mês</label>
-        <input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-        />
+      <PageHeader icon={PiggyBank} title="Orçamento" subtitle="Planejado x realizado por categoria" />
+
+      <div className="card flex items-center gap-3 p-4">
+        <label className="field-label">Mês</label>
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="field-input" />
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+      <div className="table-shell">
+        <table className="w-full text-sm sm:min-w-[640px]">
+          <thead className="table-head">
             <tr>
-              <th className="px-4 py-2">Categoria</th>
-              <th className="px-4 py-2 text-right">Planejado</th>
-              <th className="px-4 py-2 text-right">Realizado</th>
-              <th className="px-4 py-2">Progresso</th>
+              <th className="px-4 py-2.5">Categoria</th>
+              <th className="px-4 py-2.5 text-right">Planejado</th>
+              <th className="px-4 py-2.5 text-right">Realizado</th>
+              <th className="hidden px-4 py-2.5 sm:table-cell">Progresso</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -41,25 +40,25 @@ export default function Budget() {
               const pct = b.valor_planejado > 0 ? Math.min(100, (b.valor_realizado / b.valor_planejado) * 100) : 0
               const over = b.valor_planejado > 0 && b.valor_realizado > b.valor_planejado
               return (
-                <tr key={b.categoria_id}>
-                  <td className="px-4 py-2">{b.categoria_nome}</td>
-                  <td className="px-4 py-2 text-right">
+                <tr key={b.categoria_id} className="table-row-hover">
+                  <td className="px-4 py-2.5">{b.categoria_nome}</td>
+                  <td className="px-4 py-2.5 text-right">
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       defaultValue={b.valor_planejado || ''}
                       onBlur={(e) => setBudget(b.categoria_id, month, Number(e.target.value) || 0)}
-                      className="w-28 rounded-md border border-slate-300 px-2 py-1 text-right text-sm dark:border-slate-700 dark:bg-slate-800"
+                      className="field-input w-24 py-1 text-right sm:w-28"
                     />
                   </td>
-                  <td className={`px-4 py-2 text-right font-medium ${over ? 'text-red-500' : ''}`}>
+                  <td className={`px-4 py-2.5 text-right font-medium ${over ? 'text-red-500' : ''}`}>
                     {formatCurrency(b.valor_realizado)}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="hidden px-4 py-2.5 sm:table-cell">
                     <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
                       <div
-                        className={`h-2 rounded-full ${over ? 'bg-red-500' : 'bg-emerald-500'}`}
+                        className={`h-2 rounded-full ${over ? 'bg-red-500' : 'bg-gradient-to-r from-sky-500 to-emerald-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>

@@ -7,9 +7,6 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()]
   },
-  preload: {
-    plugins: [externalizeDepsPlugin()]
-  },
   renderer: {
     root: 'src/renderer',
     plugins: [react(), tailwindcss()],
