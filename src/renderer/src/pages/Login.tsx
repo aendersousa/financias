@@ -1,8 +1,12 @@
 import { useState } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { getAuthRedirectUrl, signInWithGoogle } from '../lib/oauth'
+import { useAppStore } from '../store/useAppStore'
 
 export default function Login() {
+  const theme = useAppStore((s) => s.theme)
+  const toggleTheme = useAppStore((s) => s.toggleTheme)
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -71,6 +75,14 @@ export default function Login() {
   return (
     <div className="relative flex h-screen items-center justify-center overflow-hidden bg-slate-100 dark:bg-slate-950">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.15),transparent_60%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.12),transparent_60%)]" />
+
+      <button
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+        className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 hover:bg-slate-200/70 dark:text-slate-400 dark:hover:bg-slate-800"
+      >
+        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+      </button>
 
       <div className="relative w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3">
