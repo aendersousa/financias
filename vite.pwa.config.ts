@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   root: 'src/renderer',
+  envDir: __dirname,
   base: '/financias/',
   plugins: [
     react(),
