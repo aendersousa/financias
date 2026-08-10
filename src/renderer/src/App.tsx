@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Menu } from 'lucide-react'
+import { Menu, Moon, Sun } from 'lucide-react'
+import { App as CapacitorApp } from '@capacitor/app'
 import Sidebar, { type Page } from './components/Sidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -14,6 +15,7 @@ import Goals from './pages/Goals'
 import Settings from './pages/Settings'
 import { useAppStore } from './store/useAppStore'
 import { supabase } from './lib/supabaseClient'
+import { handleOAuthCallbackUrl } from './lib/oauth'
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
@@ -43,6 +45,24 @@ export default function App() {
       reset()
     }
   }, [session, loadAll, reset])
+
+  useEffect(() => {
+    const removeElectronListener = window.api?.onOAuthCallback((url) => {
+      handleOAuthCallbackUrl(url)
+    })
+
+    let capacitorHandle: { remove: () => void } | undefined
+    CapacitorApp.addListener('appUrlOpen', (event) => {
+      handleOAuthCallbackUrl(event.url)
+    }).then((handle) => {
+      capacitorHandle = handle
+    })
+
+    return () => {
+      removeElectronListener?.()
+      capacitorHandle?.remove()
+    }
+  }, [])
 
   if (authLoading) {
     return <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950" />
@@ -96,7 +116,14 @@ export default function App() {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-emerald-500 text-xs font-bold text-white">
             R$
           </div>
-          <span className="font-semibold text-slate-800 dark:text-slate-100">Finanças</span>
+          <span className="flex-1 font-semibold text-slate-800 dark:text-slate-100">Finanças</span>
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
