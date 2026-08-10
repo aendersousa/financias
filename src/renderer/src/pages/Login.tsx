@@ -98,19 +98,7 @@ export default function Login() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Senha</label>
-                {mode === 'signin' && (
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    disabled={resetLoading}
-                    className="text-xs font-medium text-sky-600 hover:underline disabled:opacity-50 dark:text-sky-400"
-                  >
-                    {resetLoading ? 'Enviando...' : 'Esqueceu a senha?'}
-                  </button>
-                )}
-              </div>
+              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Senha</label>
               <input
                 type="password"
                 value={password}
@@ -120,6 +108,16 @@ export default function Login() {
                 className="rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 required
               />
+              {mode === 'signin' && (
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading}
+                  className="self-end text-xs font-medium text-sky-600 hover:underline disabled:opacity-50 dark:text-sky-400"
+                >
+                  {resetLoading ? 'Enviando...' : 'Esqueceu a senha?'}
+                </button>
+              )}
             </div>
 
             {error && (
