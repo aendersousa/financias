@@ -15,11 +15,33 @@ export default function Settings() {
 
   const [csvMessage, setCsvMessage] = useState('')
   const [jsonMessage, setJsonMessage] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false)
 
   function handleExportCsv() {
     const csv = buildTransactionsCsv(transactions)
     downloadTextFile(`transacoes-${new Date().toISOString().slice(0, 10)}.csv`, csv, 'text/csv;charset=utf-8')
     setCsvMessage('Arquivo CSV baixado.')
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+    setPasswordError('')
+    setPasswordMessage('')
+    setPasswordSubmitting(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) {
+        setPasswordError(error.message)
+      } else {
+        setPasswordMessage('Senha atualizada com sucesso.')
+        setNewPassword('')
+      }
+    } finally {
+      setPasswordSubmitting(false)
+    }
   }
 
   function handleExportJson() {
@@ -55,6 +77,30 @@ export default function Settings() {
           Exportar todos os dados (JSON)
         </button>
         {jsonMessage && <p className="mt-2 text-xs text-emerald-600">{jsonMessage}</p>}
+      </div>
+
+      <div className="card p-4">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Trocar senha</h2>
+        <p className="mb-3 text-sm text-slate-500">Defina uma nova senha para sua conta.</p>
+        <form onSubmit={handleChangePassword} className="flex flex-wrap items-end gap-3">
+          <div className="flex w-full flex-col gap-1 sm:w-auto">
+            <label className="field-label">Nova senha</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={6}
+              placeholder="••••••••"
+              className="field-input"
+              required
+            />
+          </div>
+          <button type="submit" disabled={passwordSubmitting} className="btn-primary">
+            {passwordSubmitting ? 'Salvando...' : 'Atualizar senha'}
+          </button>
+        </form>
+        {passwordError && <p className="mt-2 text-xs text-red-500">{passwordError}</p>}
+        {passwordMessage && <p className="mt-2 text-xs text-emerald-600">{passwordMessage}</p>}
       </div>
 
       <div className="card p-4">

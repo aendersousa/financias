@@ -8,7 +8,7 @@ function isElectron(): boolean {
   return typeof window.api !== 'undefined'
 }
 
-function getRedirectUrl(): string {
+export function getAuthRedirectUrl(): string {
   if (Capacitor.isNativePlatform() || isElectron()) {
     return NATIVE_REDIRECT_URL
   }
@@ -20,7 +20,7 @@ function getRedirectUrl(): string {
 export async function signInWithGoogle(): Promise<void> {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: getRedirectUrl(), skipBrowserRedirect: true }
+    options: { redirectTo: getAuthRedirectUrl(), skipBrowserRedirect: true }
   })
   if (error) throw error
   if (!data.url) return

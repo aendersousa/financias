@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { signInWithGoogle } from '../lib/oauth'
+import { getAuthRedirectUrl, signInWithGoogle } from '../lib/oauth'
 
 export default function Login() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
@@ -10,6 +10,7 @@ export default function Login() {
   const [info, setInfo] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
 
   async function handleGoogleSignIn() {
     setError('')
@@ -20,6 +21,28 @@ export default function Login() {
       setError(err instanceof Error ? err.message : 'Não foi possível iniciar o login com Google.')
     } finally {
       setGoogleLoading(false)
+    }
+  }
+
+  async function handleForgotPassword() {
+    setError('')
+    setInfo('')
+    if (!email.trim()) {
+      setError('Digite seu e-mail no campo acima primeiro.')
+      return
+    }
+    setResetLoading(true)
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: getAuthRedirectUrl()
+      })
+      if (resetError) {
+        setError(resetError.message)
+      } else {
+        setInfo('Enviamos um link de redefinição de senha para o seu e-mail.')
+      }
+    } finally {
+      setResetLoading(false)
     }
   }
 
@@ -75,7 +98,19 @@ export default function Login() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Senha</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Senha</label>
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={resetLoading}
+                    className="text-xs font-medium text-sky-600 hover:underline disabled:opacity-50 dark:text-sky-400"
+                  >
+                    {resetLoading ? 'Enviando...' : 'Esqueceu a senha?'}
+                  </button>
+                )}
+              </div>
               <input
                 type="password"
                 value={password}
@@ -117,7 +152,7 @@ export default function Login() {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={googleLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-100 hover:shadow-md disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-700"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
               <path
