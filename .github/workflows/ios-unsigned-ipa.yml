@@ -28,15 +28,11 @@ jobs:
       - name: Sync web assets into the iOS project
         run: npx cap sync ios
 
-      - name: Install CocoaPods dependencies
-        working-directory: ios/App
-        run: pod install
-
       - name: Build unsigned .app
         working-directory: ios/App
         run: |
           xcodebuild \
-            -workspace App.xcworkspace \
+            -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
