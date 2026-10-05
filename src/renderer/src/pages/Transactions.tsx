@@ -1,12 +1,14 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useMemo, useState } from 'react'
 import { ArrowLeftRight } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency, formatDate, todayIso } from '../lib/format'
+import { formatDate, todayIso } from '../lib/format'
 import { statusCritical, statusGood } from '../lib/palette'
 import PageHeader from '../components/PageHeader'
 import type { CategoryType, TransactionStatus } from '../../../shared/types'
 
 export default function Transactions() {
+  const formatCurrency = useCurrencyFormatter()
   const accounts = useAppStore((s) => s.accounts)
   const categories = useAppStore((s) => s.categories)
   const transactions = useAppStore((s) => s.transactions)

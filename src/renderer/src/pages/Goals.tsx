@@ -1,10 +1,11 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useState } from 'react'
 import { Goal as GoalIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency } from '../lib/format'
 import PageHeader from '../components/PageHeader'
 
 export default function Goals() {
+  const formatCurrency = useCurrencyFormatter()
   const goals = useAppStore((s) => s.goals)
   const addGoal = useAppStore((s) => s.addGoal)
   const updateGoal = useAppStore((s) => s.updateGoal)

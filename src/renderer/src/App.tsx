@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Menu, Moon, Sun } from 'lucide-react'
+import { Eye, EyeOff, Menu, Moon, Sun } from 'lucide-react'
 import { App as CapacitorApp } from '@capacitor/app'
 import Sidebar, { type Page } from './components/Sidebar'
 import Login from './pages/Login'
@@ -26,6 +26,8 @@ export default function App() {
   const reset = useAppStore((s) => s.reset)
   const theme = useAppStore((s) => s.theme)
   const toggleTheme = useAppStore((s) => s.toggleTheme)
+  const privacyMode = useAppStore((s) => s.privacyMode)
+  const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -105,22 +107,31 @@ export default function App() {
       )}
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:hidden">
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:justify-end">
           <button
             onClick={() => setMobileNavOpen(true)}
             aria-label="Abrir menu"
-            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
           >
             <Menu size={22} />
           </button>
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-emerald-500 text-xs font-bold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-emerald-500 text-xs font-bold text-white md:hidden">
             R$
           </div>
-          <span className="flex-1 font-semibold text-slate-800 dark:text-slate-100">Finanças</span>
+          <span className="flex-1 font-semibold text-slate-800 dark:text-slate-100 md:hidden">Finanças</span>
+          <button
+            onClick={togglePrivacyMode}
+            aria-label={privacyMode ? 'Mostrar valores' : 'Ocultar valores'}
+            aria-pressed={privacyMode}
+            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            {privacyMode ? <EyeOff size={19} /> : <Eye size={19} />}
+            <span className="hidden sm:inline">{privacyMode ? 'Mostrar valores' : 'Ocultar valores'}</span>
+          </button>
           <button
             onClick={toggleTheme}
             aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
-            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
           >
             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
           </button>

@@ -1,10 +1,11 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useState } from 'react'
 import { CreditCard as CreditCardIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency } from '../lib/format'
 import PageHeader from '../components/PageHeader'
 
 export default function CreditCards() {
+  const formatCurrency = useCurrencyFormatter()
   const creditCards = useAppStore((s) => s.creditCards)
   const accounts = useAppStore((s) => s.accounts)
   const addCreditCard = useAppStore((s) => s.addCreditCard)

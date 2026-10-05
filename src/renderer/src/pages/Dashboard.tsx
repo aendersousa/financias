@@ -1,3 +1,4 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useMemo } from 'react'
 import {
   Area,
@@ -29,7 +30,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency, formatDate } from '../lib/format'
+import { formatDate } from '../lib/format'
 import { computeMonthlySummary } from '../lib/computations'
 import {
   categoricalPaletteDark,
@@ -69,6 +70,7 @@ function billUrgency(vencimento: string): { label: string; color: string } {
 }
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => void }) {
+  const formatCurrency = useCurrencyFormatter()
   const accounts = useAppStore((s) => s.accounts)
   const transactions = useAppStore((s) => s.transactions)
   const creditCards = useAppStore((s) => s.creditCards)

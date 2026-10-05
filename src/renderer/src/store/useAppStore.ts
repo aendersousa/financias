@@ -7,6 +7,7 @@ import {
   computeTransactionsView
 } from '../lib/computations'
 import { applyTheme, getInitialTheme, type Theme } from '../lib/theme'
+import { persistPrivacyMode, readPrivacyMode } from '../lib/privacy'
 import type {
   Account,
   AccountWithBalance,
@@ -39,10 +40,12 @@ interface AppState {
   budgetMonth: string
   loading: boolean
   theme: Theme
+  privacyMode: boolean
 
   loadAll: () => Promise<void>
   reset: () => void
   toggleTheme: () => void
+  togglePrivacyMode: () => void
 
   addAccount: (data: NewAccount) => Promise<void>
   removeAccount: (id: number) => Promise<void>
@@ -103,6 +106,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   budgetMonth: new Date().toISOString().slice(0, 7),
   loading: false,
   theme: getInitialTheme(),
+  privacyMode: readPrivacyMode(),
+  togglePrivacyMode: () => {
+    const hidden = !get().privacyMode
+    persistPrivacyMode(hidden)
+    set({ privacyMode: hidden })
+  },
 
   toggleTheme: () => {
     const next: Theme = get().theme === 'dark' ? 'light' : 'dark'

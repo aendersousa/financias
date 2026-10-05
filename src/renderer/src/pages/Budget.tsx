@@ -1,10 +1,11 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useEffect, useState } from 'react'
 import { PiggyBank } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency } from '../lib/format'
 import PageHeader from '../components/PageHeader'
 
 export default function Budget() {
+  const formatCurrency = useCurrencyFormatter()
   const budgets = useAppStore((s) => s.budgets)
   const budgetMonth = useAppStore((s) => s.budgetMonth)
   const loadBudgets = useAppStore((s) => s.loadBudgets)

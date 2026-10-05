@@ -26,6 +26,14 @@ Esta implementação está em andamento. A Fase 1 ainda não está completa e as
 - Visões de partidas lançadas e saldos derivados, com RLS do usuário invocador.
 - Calendário TypeScript de dias úteis bancários, incluindo feriados nacionais e Carnaval; aceita feriados locais.
 - Prévia de migração do legado por usuário: saldos, contagens e registros que precisam de revisão. A prévia não migra nem modifica dados.
+- Pessoas com uma única conta de saldo: positivo a receber, negativo a pagar; acertos e empréstimos entre pessoas não geram receita ou despesa.
+- Despesas divididas entre o usuário e pessoas, com divisão de centavos idêntica no PostgreSQL e no TypeScript. A parte dos terceiros não entra no consumo do usuário.
+- Transferências entre contas próprias, aplicações e resgates de principal, sem gerar receita ou despesa; reenvios são idempotentes.
+- Criação de subcategoria sob uma folha transforma o nó em pai e move o vínculo contábil para a filha “(geral)”, sem reescrever partidas históricas.
+- Integridade da árvore de categorias: classes compatíveis, proibição de ciclos e conta contábil somente nas folhas; totais agregados preservam o histórico.
+- Exigência diferida de pelo menos um proprietário ativo por espaço.
+- Edição de histórico com conta arquivada já presente na transação; permanece proibido acrescentar outra conta arquivada ou criar novos lançamentos nela.
+- Botão de privacidade no cabeçalho das telas atuais, com estado no aparelho: mascara valores monetários e rótulos de gráficos, preservando cálculos, campos digitados e exportações. A preferência de inicialização em `user_settings` continua pendente.
 
 Operações de cartão e estorno ainda não estão habilitadas nas novas RPCs. Elas dependem das entidades de fatura e de suas regras; o banco recusa esses tipos até que o módulo esteja pronto.
 

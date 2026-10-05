@@ -1,7 +1,7 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useState } from 'react'
 import { Wallet } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency } from '../lib/format'
 import PageHeader from '../components/PageHeader'
 import type { AccountType } from '../../../shared/types'
 
@@ -13,6 +13,7 @@ const tipoLabels: Record<AccountType, string> = {
 }
 
 export default function Accounts() {
+  const formatCurrency = useCurrencyFormatter()
   const accounts = useAppStore((s) => s.accounts)
   const addAccount = useAppStore((s) => s.addAccount)
   const removeAccount = useAppStore((s) => s.removeAccount)
