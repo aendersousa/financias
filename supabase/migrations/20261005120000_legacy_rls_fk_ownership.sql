@@ -11,7 +11,9 @@
 --     (o USING, que controla a leitura, não muda);
 --   - passa create_installment_purchase a SECURITY INVOKER, de modo que as
 --     políticas acima valem também dentro dela; o cálculo das parcelas não muda;
---   - tira o EXECUTE da função de anon e de PUBLIC.
+--   - fixa o search_path da função em '' (todos os nomes qualificados);
+--   - deixa o EXECUTE da função só para authenticated (sai de PUBLIC, anon e
+--     service_role).
 --
 -- O que ela não faz: não apaga nem altera nenhuma linha. Linhas antigas com
 -- referência cruzada (Apêndice 1, consulta 6) continuam como estão; só não podem
@@ -136,7 +138,9 @@ begin
 end;
 $$;
 
+-- EXECUTE só para authenticated. service_role também sai: o Supabase o concede por
+-- padrão às funções de public, e nenhum código do app usa esse papel.
 revoke execute on function public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)
-  from public, anon;
+  from public, anon, service_role;
 grant execute on function public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)
   to authenticated;

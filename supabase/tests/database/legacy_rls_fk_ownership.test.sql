@@ -2,7 +2,7 @@
 -- Usuário A tenta gravar referências a conta, categoria e cartão do usuário B.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(22);
 
 -- Preparação, como postgres (sem RLS). Ids fixos para não depender de sequência.
 insert into auth.users (id, email) values
@@ -117,10 +117,34 @@ select is(
 reset role;
 
 select is(
+  has_function_privilege('public',
+    'public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)', 'execute'),
+  false,
+  'PUBLIC não executa create_installment_purchase');
+
+select is(
   has_function_privilege('anon',
     'public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)', 'execute'),
   false,
   'anon não executa create_installment_purchase');
+
+select is(
+  has_function_privilege('service_role',
+    'public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)', 'execute'),
+  false,
+  'service_role não executa create_installment_purchase');
+
+select is(
+  has_function_privilege('authenticated',
+    'public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)', 'execute'),
+  true,
+  'authenticated executa create_installment_purchase');
+
+select is(
+  (select proconfig from pg_proc
+    where oid = 'public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)'::regprocedure),
+  array['search_path=""'],
+  'create_installment_purchase tem search_path fixado em vazio');
 
 select is(
   (select prosecdef from pg_proc
