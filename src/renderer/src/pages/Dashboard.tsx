@@ -18,7 +18,9 @@ import {
   ArrowUpRight,
   CreditCard,
   Goal as GoalIcon,
-  LayoutDashboard,
+  Plus,
+  ArrowRight,
+  CalendarDays,
   Receipt,
   Scale,
   TrendingDown,
@@ -27,7 +29,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency, formatDate, todayIso } from '../lib/format'
+import { formatCurrency, formatDate } from '../lib/format'
 import { computeMonthlySummary } from '../lib/computations'
 import {
   categoricalPaletteDark,
@@ -37,7 +39,7 @@ import {
   statusGood,
   statusWarning
 } from '../lib/palette'
-import PageHeader from '../components/PageHeader'
+import type { Page } from '../components/Sidebar'
 
 type Delta = { pct: number; isUp: boolean; isGood: boolean }
 
@@ -66,7 +68,7 @@ function billUrgency(vencimento: string): { label: string; color: string } {
   return { label: `Vence em ${formatDate(vencimento)}`, color: '#94a3b8' }
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => void }) {
   const accounts = useAppStore((s) => s.accounts)
   const transactions = useAppStore((s) => s.transactions)
   const creditCards = useAppStore((s) => s.creditCards)
@@ -149,11 +151,24 @@ export default function Dashboard() {
     return palette[0]
   }
 
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader icon={LayoutDashboard} title="Dashboard" subtitle={`Resumo de ${monthLabel}`} />
+  const hasFlow = summary.some((item) => item.receitas !== 0 || item.despesas !== 0)
+  const hasBalance = summary.some((item) => item.saldo_acumulado !== 0)
+  const monthTick = (value: string) => {
+    const [year, month] = value.split('-').map(Number)
+    return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
+  }
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  return (
+    <div className="dashboard">
+      <header className="dashboard-header">
+        <div><h1>Visão geral</h1><p>Seu dinheiro, de perto. Acompanhe o que entra e o que sai.</p></div>
+        <div className="dashboard-actions">
+          <span className="dashboard-period"><CalendarDays size={16} />{monthLabel}</span>
+          <button className="dashboard-primary" onClick={() => onNavigate('transactions')}><Plus size={17} />Registrar transação</button>
+        </div>
+      </header>
+
+      <section className="dashboard-summary" aria-label="Resumo financeiro">
         <StatTile
           icon={Wallet}
           iconBg="bg-sky-500/10"
@@ -186,23 +201,25 @@ export default function Dashboard() {
           value={formatCurrency(resultadoMes)}
           delta={resultadoDelta}
         />
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="card p-4">
+      <section className="dashboard-charts" aria-label="Histórico financeiro">
+        <div className="card dashboard-panel">
           <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Receitas x despesas (últimos 6 meses)
+            Fluxo de caixa
           </h2>
-          <ResponsiveContainer width="100%" height={260}>
+          <p className="dashboard-caption">Entradas e saídas nos últimos 6 meses</p>
+          {!hasFlow ? <EmptyState icon={TrendingUp} title="Seu histórico começa aqui" description="Registre suas receitas e despesas para comparar os meses." action="Registrar transação" onClick={() => onNavigate('transactions')} /> : <ResponsiveContainer width="100%" height={240}>
             <BarChart data={summary} barGap={4} barCategoryGap="24%">
               <CartesianGrid vertical={false} className="stroke-slate-200 dark:stroke-slate-800" />
-              <XAxis dataKey="mes" tick={{ fontSize: 12, fill: tickColor }} />
+              <XAxis dataKey="mes" tickFormatter={monthTick} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: tickColor }} />
               <YAxis
                 tick={{ fontSize: 12, fill: tickColor }}
                 width={80}
                 tickFormatter={(v) => formatCurrency(Number(v))}
               />
               <Tooltip
+                cursor={false}
                 formatter={(value) => formatCurrency(Number(value))}
                 contentStyle={tooltipContentStyle}
                 labelStyle={tooltipLabelStyle}
@@ -210,15 +227,16 @@ export default function Dashboard() {
               <Bar dataKey="receitas" name="Receitas" fill={statusGood} radius={[4, 4, 0, 0]} maxBarSize={24} />
               <Bar dataKey="despesas" name="Despesas" fill={statusCritical} radius={[4, 4, 0, 0]} maxBarSize={24} />
             </BarChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
           <Legend items={[{ label: 'Receitas', color: statusGood }, { label: 'Despesas', color: statusCritical }]} />
         </div>
 
-        <div className="card p-4">
+        <div className="card dashboard-panel">
           <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Evolução do saldo (últimos 6 meses)
+            Evolução do saldo
           </h2>
-          <ResponsiveContainer width="100%" height={260}>
+          <p className="dashboard-caption">Como seu saldo mudou nos últimos 6 meses</p>
+          {!hasBalance && !hasFlow ? <EmptyState icon={Wallet} title="Uma visão das suas contas" description="Cadastre uma conta para acompanhar a evolução do seu saldo." action="Gerenciar contas" onClick={() => onNavigate('accounts')} /> : <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={summary}>
               <defs>
                 <linearGradient id="saldoGradient" x1="0" y1="0" x2="0" y2="1">
@@ -227,13 +245,14 @@ export default function Dashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} className="stroke-slate-200 dark:stroke-slate-800" />
-              <XAxis dataKey="mes" tick={{ fontSize: 12, fill: tickColor }} />
+              <XAxis dataKey="mes" tickFormatter={monthTick} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: tickColor }} />
               <YAxis
                 tick={{ fontSize: 12, fill: tickColor }}
                 width={80}
                 tickFormatter={(v) => formatCurrency(Number(v))}
               />
               <Tooltip
+                cursor={false}
                 formatter={(value) => formatCurrency(Number(value))}
                 contentStyle={tooltipContentStyle}
                 labelStyle={tooltipLabelStyle}
@@ -261,16 +280,16 @@ export default function Dashboard() {
                 }}
               />
             </AreaChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
         </div>
-      </div>
+      </section>
 
-      <div className="card p-4">
+      <section className="card dashboard-panel dashboard-categories">
         <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Gastos por categoria ({monthLabel})
+          Onde você está gastando
         </h2>
         {gastosPorCategoria.length === 0 ? (
-          <p className="text-sm text-slate-400">Sem despesas registradas este mês.</p>
+          <EmptyState icon={Receipt} title="Nenhuma despesa neste mês" description="Suas categorias aparecem aqui ao registrar uma despesa." action="Ver transações" onClick={() => onNavigate('transactions')} />
         ) : (
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
             <div className="relative mx-auto w-full max-w-[240px] shrink-0 lg:mx-0">
@@ -291,7 +310,8 @@ export default function Dashboard() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value) => formatCurrency(Number(value))}
+                    cursor={false}
+                formatter={(value) => formatCurrency(Number(value))}
                     contentStyle={tooltipContentStyle}
                     labelStyle={tooltipLabelStyle}
                   />
@@ -324,10 +344,10 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="card p-4">
+      <section className="dashboard-planning" aria-label="Planejamento">
+        <div className="card dashboard-panel">
           <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <Receipt size={15} className="text-slate-400" />
             Próximos vencimentos
@@ -353,11 +373,12 @@ export default function Dashboard() {
                 </li>
               )
             })}
-            {proximasContas.length === 0 && <p className="text-sm text-slate-400">Nada pendente. Tudo em dia!</p>}
+            {proximasContas.length === 0 && <li className="dashboard-small-empty">Tudo em dia. Nenhuma conta pendente.</li>}
+            <li><button className="dashboard-link" onClick={() => onNavigate('bills')}>Gerenciar vencimentos <ArrowRight size={14} /></button></li>
           </ul>
         </div>
 
-        <div className="card p-4">
+        <div className="card dashboard-panel">
           <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <CreditCard size={15} className="text-slate-400" />
             Cartões de crédito
@@ -379,11 +400,12 @@ export default function Dashboard() {
                 </div>
               </li>
             ))}
-            {cardsWithUsage.length === 0 && <p className="text-sm text-slate-400">Nenhum cartão cadastrado.</p>}
+            <li><button className="dashboard-link" onClick={() => onNavigate('creditCards')}>Gerenciar cartões <ArrowRight size={14} /></button></li>
+            {cardsWithUsage.length === 0 && <li className="dashboard-small-empty">Acompanhe suas faturas e limites em um só lugar.</li>}
           </ul>
         </div>
 
-        <div className="card p-4">
+        <div className="card dashboard-panel">
           <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <GoalIcon size={15} className="text-slate-400" />
             Metas
@@ -406,13 +428,15 @@ export default function Dashboard() {
                 </li>
               )
             })}
-            {goals.length === 0 && <p className="text-sm text-slate-400">Nenhuma meta cadastrada.</p>}
+            <li><button className="dashboard-link" onClick={() => onNavigate('goals')}>Gerenciar metas <ArrowRight size={14} /></button></li>
+            {goals.length === 0 && <li className="dashboard-small-empty">Defina um objetivo e acompanhe cada conquista.</li>}
+            <li><button className="dashboard-link" onClick={() => onNavigate('goals')}>Gerenciar metas <ArrowRight size={14} /></button></li>
           </ul>
         </div>
-      </div>
+      </section>
 
-      <div className="card p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Últimos lançamentos</h2>
+      <section className="card dashboard-panel dashboard-transactions">
+        <div className="dashboard-section-heading"><div><h2>Últimos lançamentos</h2><p className="dashboard-caption">Suas movimentações mais recentes</p></div><button className="dashboard-link" onClick={() => onNavigate('transactions')}>Ver todas <ArrowRight size={15} /></button></div>
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {transactions.slice(0, 6).map((t) => (
             <li key={t.id} className="flex items-center gap-3 py-2.5 text-sm">
@@ -435,9 +459,9 @@ export default function Dashboard() {
               </span>
             </li>
           ))}
-          {transactions.length === 0 && <p className="py-2 text-sm text-slate-400">Nenhum lançamento ainda.</p>}
+          {transactions.length === 0 && <li><EmptyState icon={Receipt} title="Tudo pronto para o primeiro lançamento" description="Comece registrando uma receita ou despesa para organizar sua vida financeira." action="Registrar transação" onClick={() => onNavigate('transactions')} /></li>}
         </ul>
-      </div>
+      </section>
     </div>
   )
 }
@@ -458,14 +482,14 @@ function StatTile({
   delta: Delta | null
 }) {
   return (
-    <div className="card flex items-center gap-3 p-4">
+    <div className="dashboard-stat">
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg} ${iconColor}`}>
         <Icon size={20} />
       </div>
       <div className="min-w-0">
         <p className="truncate text-sm text-slate-500 dark:text-slate-400">{label}</p>
         <div className="flex flex-wrap items-baseline gap-x-1.5">
-          <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 sm:text-xl">{value}</p>
+          <p className="dashboard-stat-value">{value}</p>
           {delta && (
             <span
               className="flex items-center gap-0.5 text-xs font-semibold"
@@ -492,4 +516,8 @@ function Legend({ items }: { items: { label: string; color: string }[] }) {
       ))}
     </div>
   )
+}
+
+function EmptyState({ icon: Icon, title, description, action, onClick }: { icon: LucideIcon; title: string; description: string; action: string; onClick: () => void }) {
+  return <div className="dashboard-empty"><span className="dashboard-empty-icon"><Icon size={25} strokeWidth={1.5} /></span><h3>{title}</h3><p>{description}</p><button className="dashboard-link" onClick={onClick}>{action}<ArrowRight size={14} /></button></div>
 }

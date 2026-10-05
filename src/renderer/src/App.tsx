@@ -127,7 +127,7 @@ export default function App() {
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {page === 'dashboard' && <Dashboard />}
+          {page === 'dashboard' && <Dashboard onNavigate={handleNavigate} />}
           {page === 'accounts' && <Accounts />}
           {page === 'categories' && <Categories />}
           {page === 'transactions' && <Transactions />}
