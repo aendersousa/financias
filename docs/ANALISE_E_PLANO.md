@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Data | 05/10/2026 |
-| Status | Proposta. Nada foi implementado; aguarda aprovação |
+| Status | Aprovado em 05/10/2026, com as decisões da seção 10 |
 | Base | `docs/DOCUMENTO_MESTRE.md` (v2.0) e `docs/ALT-001-ARQUITETURA-SUPABASE.md` |
 | Código analisado | branch `master`, commit `c2450f5` |
 
@@ -490,6 +490,34 @@ Não mudei nenhuma regra. Proponho estas alterações; a numeração só vale se
 15. **Versão de transição com aviso de atualização** antes da troca? *Recomendo: sim.*
 16. **Podem esperar:** nome do app (A-01; hoje "Finanças"), provedor de e-mail transacional (A-05; necessário para concluir a Fase 1) e biblioteca de componentes (A-03; antes dos wireframes).
 17. **Teste de restauração do backup.** Num Supabase local temporário, apagado ao fim, ou num projeto temporário na nuvem? Restaurar dados reais no projeto de homologação vai contra 37.7.2. *Recomendo: local temporário.*
+
+---
+
+## 10. Decisões aprovadas (05/10/2026)
+
+O plano foi aprovado. Onde a decisão difere da recomendação da seção 9, vale o que está aqui.
+
+| # | Decisão |
+|---|---|
+| 1 | Instalar Docker Desktop, Supabase CLI e cliente PostgreSQL. Avisar antes de qualquer reinício |
+| 2 | Sem senha de escrita da produção. O proprietário roda o Apêndice 1. O dump do esquema usa um usuário só de leitura (`supabase/admin/01_schema_reader.sql`). A senha completa existe só como segredo do GitHub Actions, para os backups. Migrações em produção: eu preparo, o proprietário revisa e aplica |
+| 3 | Homologação num segundo projeto Supabase gratuito, só com dados fictícios |
+| 4 | Troca do app dos usuários ao fim da Fase 2 (opção b) |
+| 5 | Histórico: opção B |
+| 6 | Compras de cartão pendentes de faturas já vencidas: pagas fora do app, no relatório, cartão "a conferir" |
+| 7 | Poupança como `investment` (D-022), com aviso na nota de versão |
+| 8 | Compra no dia do fechamento vai para a fatura seguinte (padrão do documento) |
+| 9 | Classe de renda das categorias migradas como proposto |
+| 10 | Metas: tela atual sobre a tabela antiga até a Fase 4. Orçamentos: orçado antigo com realizado lido do Ledger. Entra na ALT-006 |
+| 11 | Windows (Electron): mantido. iOS: workflow do IPA aposentado; o iPhone usa a PWA. Entra na ALT-004 |
+| 12 | Repositório continua público; documento e plano podem ser publicados. Backups num repositório privado separado, criptografados, com a chave fora do GitHub. Nenhum segredo é commitado |
+| 13 | ALT-002 a ALT-007 aprovadas. Na ALT-005, a 2FA (TOTP do Supabase Auth) entra como opcional na Fase 2. ALT-008 decidida antes da Fase 2, com tendência à opção (a) |
+| 14 | A correção de segurança do esquema antigo vem primeiro, logo depois do diagnóstico, como migração pequena e isolada, sem esperar o resto da preparação |
+| 15 | Versão de transição com aviso de atualização: sim |
+| 16 | A-01 e A-03 podem esperar; o provedor de e-mail transacional (A-05) precisa estar resolvido antes do fim da Fase 1 |
+| 17 | Teste de restauração num Supabase local temporário |
+
+Ordem resultante: diagnóstico (Apêndice 1) e usuário só de leitura → migração de base + correção de segurança (revisada e aplicada pelo proprietário) → P1 a P8.
 
 ---
 
