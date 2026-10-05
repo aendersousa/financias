@@ -6,6 +6,10 @@
   "scripts": {
     "test": "vitest run",
     "test:db": "supabase test db",
+    "test:db:fresh": "powershell -NoProfile -File supabase/verify-fresh.ps1",
+    "test:api:local": "node scripts/test-ledger-api.mjs",
+    "test:browser:local": "node scripts/test-ledger-browser.mjs",
+    "dev:ledger": "node scripts/dev-ledger.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:win": "electron-vite build && electron-builder --win",
@@ -17,6 +21,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.2",
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.17",

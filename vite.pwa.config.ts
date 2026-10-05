@@ -9,6 +9,16 @@ export default defineConfig({
   envDir: __dirname,
   base: '/financias/',
   plugins: [
+    {
+      name: 'local-supabase-development-policy',
+      apply: 'serve',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html) {
+          return html.replace("connect-src 'self' https://*.supabase.co wss://*.supabase.co", "connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:54321 ws://127.0.0.1:54321")
+        }
+      }
+    },
     react(),
     tailwindcss(),
     VitePWA({

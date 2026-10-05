@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { Eye, EyeOff, Menu, Moon, Sun } from 'lucide-react'
 import { App as CapacitorApp } from '@capacitor/app'
@@ -16,6 +16,8 @@ import Settings from './pages/Settings'
 import { useAppStore } from './store/useAppStore'
 import { supabase } from './lib/supabaseClient'
 import { handleOAuthCallbackUrl } from './lib/oauth'
+
+const LedgerWorkspace = lazy(() => import('./pages/LedgerWorkspace'))
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
@@ -41,7 +43,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (session) {
+    if (session && import.meta.env.VITE_FINANCIAL_MODEL !== 'ledger') {
       loadAll()
     } else {
       reset()
@@ -72,6 +74,10 @@ export default function App() {
 
   if (!session) {
     return <Login />
+  }
+
+  if (import.meta.env.VITE_FINANCIAL_MODEL === 'ledger') {
+    return <Suspense fallback={<div className="p-6">Carregando seu espaço…</div>}><LedgerWorkspace key={session.user.id} /></Suspense>
   }
 
   function handleNavigate(next: Page) {
