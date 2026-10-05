@@ -13,7 +13,9 @@
 --     políticas acima valem também dentro dela; o cálculo das parcelas não muda;
 --   - fixa o search_path da função em '' (todos os nomes qualificados);
 --   - deixa o EXECUTE da função só para authenticated (sai de PUBLIC, anon e
---     service_role).
+--     service_role);
+--   - aborta se, no fim, houver mais de uma public.create_installment_purchase
+--     (sobrecarga com outra assinatura) ou alguma ainda SECURITY DEFINER.
 --
 -- O que ela não faz: não apaga nem altera nenhuma linha. Linhas antigas com
 -- referência cruzada (Apêndice 1, consulta 6) continuam como estão; só não podem
@@ -144,3 +146,28 @@ revoke execute on function public.create_installment_purchase(integer, integer, 
   from public, anon, service_role;
 grant execute on function public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)
   to authenticated;
+
+-- Se a assinatura em produção fosse outra, o create or replace acima teria criado
+-- uma sobrecarga, e a versão antiga (SECURITY DEFINER, EXECUTE para PUBLIC)
+-- continuaria ativa. Nesse caso a migração inteira é desfeita.
+do $$
+declare
+  v_total integer;
+  v_definer integer;
+begin
+  select count(*), count(*) filter (where p.prosecdef)
+    into v_total, v_definer
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname = 'create_installment_purchase';
+
+  if v_total <> 1 then
+    raise exception 'Esperada 1 função public.create_installment_purchase, encontradas %. Migração desfeita.', v_total;
+  end if;
+
+  if v_definer > 0 then
+    raise exception 'public.create_installment_purchase continua SECURITY DEFINER. Migração desfeita.';
+  end if;
+end
+$$;

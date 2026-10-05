@@ -2,7 +2,7 @@
 -- Usuário A tenta gravar referências a conta, categoria e cartão do usuário B.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(24);
 
 -- Preparação, como postgres (sem RLS). Ids fixos para não depender de sequência.
 insert into auth.users (id, email) values
@@ -151,6 +151,18 @@ select is(
     where oid = 'public.create_installment_purchase(integer, integer, integer, numeric, integer, date, text, text)'::regprocedure),
   false,
   'create_installment_purchase não é mais SECURITY DEFINER');
+
+select is(
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'create_installment_purchase'),
+  1::bigint,
+  'existe uma única public.create_installment_purchase (nenhuma sobrecarga antiga)');
+
+select is(
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'create_installment_purchase' and p.prosecdef),
+  0::bigint,
+  'nenhuma versão de public.create_installment_purchase é SECURITY DEFINER');
 
 select * from finish();
 rollback;

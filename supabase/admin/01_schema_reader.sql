@@ -7,13 +7,25 @@
 -- O que o usuário pode fazer:
 --   - conectar (no máximo 2 conexões, até 31/12/2026);
 --   - ler o catálogo (estrutura das tabelas, políticas, funções, gatilhos);
---   - SELECT nas tabelas de public. O pg_dump exige esse privilégio para travar
---     as tabelas, mesmo num dump só de esquema. Os dados continuam invisíveis:
---     o usuário não tem BYPASSRLS e as políticas "own rows" comparam
---     auth.uid() (vazio para ele) com user_id, então toda consulta volta vazia.
---     O bloco abaixo aborta tudo se alguma tabela de public estiver sem RLS ou
---     se alguma política de leitura não conferir auth.uid().
---   - nada mais: toda transação dele é somente leitura.
+--   - SELECT nas tabelas comuns e particionadas de public (relkind 'r' e 'p'),
+--     concedido tabela a tabela. O pg_dump exige esse privilégio para travar as
+--     tabelas, mesmo num dump só de esquema. Os dados continuam invisíveis: o
+--     usuário não tem BYPASSRLS e as políticas comparam auth.uid() (vazio para
+--     ele) com user_id, então toda consulta volta vazia.
+--
+-- A garantia de que ele não grava é não ter nenhum privilégio de escrita: só
+-- recebe USAGE no esquema e SELECT nas tabelas, e o bloco final confere que ele
+-- não tem INSERT, UPDATE, DELETE, TRUNCATE, nem CREATE no esquema ou no banco.
+-- O default_transaction_read_only abaixo é só um padrão de sessão, que o próprio
+-- usuário pode desligar; serve de proteção extra, não de garantia.
+--
+-- O script inteiro é desfeito, sem criar nada, se:
+--   - alguma tabela de public estiver sem RLS;
+--   - alguma política permissiva de leitura não conferir auth.uid();
+--   - existir visão ou visão materializada em public (relkind 'v' ou 'm'): visão
+--     sem security_invoker roda com o dono e ignora a RLS de quem consulta, e
+--     visão materializada não tem RLS;
+--   - o usuário criado acabar com algum privilégio de escrita.
 --
 -- Conferência final, feita por mim já conectado como schema_reader, antes do
 -- dump: contar as linhas de cada tabela de public. Qualquer contagem diferente
@@ -51,6 +63,18 @@ begin
     raise exception 'A política "%" de public.% (%, papéis %) libera leitura sem conferir auth.uid(): %. Nada foi criado.',
       r.policyname, r.tablename, r.cmd, r.roles, coalesce(r.qual, '(sem USING)');
   end loop;
+
+  -- 3. Nenhuma visão nem visão materializada em public.
+  for r in
+    select c.relname, c.relkind
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relkind in ('v', 'm')
+  loop
+    raise exception 'Existe % public.% (relkind %). Nada foi criado.',
+      case r.relkind when 'v' then 'a visão' else 'a visão materializada' end, r.relname, r.relkind;
+  end loop;
 end
 $$;
 
@@ -65,8 +89,54 @@ alter role schema_reader set default_transaction_read_only = on;
 alter role schema_reader set statement_timeout = '60s';
 
 grant usage on schema public to schema_reader;
-grant select on all tables in schema public to schema_reader;
+
+-- SELECT só nas tabelas comuns e particionadas (nunca em visões, visões
+-- materializadas ou tabelas estrangeiras).
+do $$
+declare
+  r record;
+begin
+  for r in
+    select c.relname
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relkind in ('r', 'p')
+  loop
+    execute format('grant select on table public.%I to schema_reader', r.relname);
+  end loop;
+end
+$$;
+
 grant select on all sequences in schema public to schema_reader;
+
+-- 4. O usuário criado não tem nenhum privilégio de escrita, nem direto nem
+--    herdado de PUBLIC.
+do $$
+declare
+  r record;
+begin
+  if has_schema_privilege('schema_reader', 'public', 'CREATE') then
+    raise exception 'schema_reader pode criar objetos em public. Nada foi criado.';
+  end if;
+
+  if has_database_privilege('schema_reader', current_database(), 'CREATE') then
+    raise exception 'schema_reader pode criar esquemas no banco. Nada foi criado.';
+  end if;
+
+  for r in
+    select c.oid, c.relname
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relkind in ('r', 'p', 'v', 'm', 'f')
+  loop
+    if has_table_privilege('schema_reader', r.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') then
+      raise exception 'schema_reader tem privilégio de escrita em public.%. Nada foi criado.', r.relname;
+    end if;
+  end loop;
+end
+$$;
 
 commit;
 
