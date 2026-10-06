@@ -3,6 +3,7 @@ import { Moon, Sun } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { getAuthRedirectUrl, signInWithGoogle } from '../lib/oauth'
 import { useAppStore } from '../store/useAppStore'
+import Brand from '../components/Brand'
 
 export default function Login() {
   const theme = useAppStore((s) => s.theme)
@@ -73,51 +74,52 @@ export default function Login() {
   }
 
   return (
-    <div className="relative flex h-screen items-center justify-center overflow-hidden bg-slate-100 dark:bg-slate-950">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.15),transparent_60%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.12),transparent_60%)]" />
+    <div className="login-screen relative flex min-h-screen items-center justify-center px-4 py-16">
+      <div className="login-glow pointer-events-none absolute inset-0" />
 
       <button
         onClick={toggleTheme}
         aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
-        className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 hover:bg-slate-200/70 dark:text-slate-400 dark:hover:bg-slate-800"
+        className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 hover:bg-slate-200/70 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:text-slate-400 dark:hover:bg-slate-800"
       >
         {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
       </button>
 
       <div className="relative w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-emerald-500 text-xl font-bold text-white shadow-lg shadow-sky-500/20">
-            R$
-          </div>
-          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Finanças</h1>
+        <div className="mb-8 flex flex-col items-center">
+          <h1><Brand size="lg" /></h1>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white/80 p-7 shadow-xl shadow-slate-900/5 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80">
+        <div className="login-card rounded-2xl border p-6 sm:p-7">
           <p className="mb-5 text-center text-sm text-slate-500 dark:text-slate-400">
             {mode === 'signin' ? 'Entre com sua conta para continuar' : 'Crie sua conta para começar'}
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">E-mail</label>
+              <label htmlFor="login-email" className="text-xs font-medium text-slate-500 dark:text-slate-400">E-mail</label>
               <input
+                id="login-email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="voce@email.com"
-                className="rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className="field-input w-full py-2.5"
                 required
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Senha</label>
+              <label htmlFor="login-password" className="text-xs font-medium text-slate-500 dark:text-slate-400">Senha</label>
               <input
+                id="login-password"
                 type="password"
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={6}
                 placeholder="••••••••"
-                className="rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className="field-input w-full py-2.5"
                 required
               />
               {mode === 'signin' && (
@@ -125,7 +127,7 @@ export default function Login() {
                   type="button"
                   onClick={handleForgotPassword}
                   disabled={resetLoading}
-                  className="self-end text-xs font-medium text-sky-600 hover:underline disabled:opacity-50 dark:text-sky-400"
+                  className="brand-link self-end text-xs font-medium hover:underline focus-visible:outline-2 focus-visible:outline-emerald-500 disabled:opacity-50"
                 >
                   {resetLoading ? 'Enviando...' : 'Esqueceu a senha?'}
                 </button>
@@ -133,12 +135,12 @@ export default function Login() {
             </div>
 
             {error && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-400">
+              <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-400">
                 {error}
               </p>
             )}
             {info && (
-              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+              <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
                 {info}
               </p>
             )}
@@ -146,7 +148,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-1 rounded-lg bg-gradient-to-r from-sky-500 to-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-sky-500/20 transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="btn-primary mt-1 w-full justify-center py-2.5 disabled:opacity-50"
             >
               {submitting ? 'Aguarde...' : mode === 'signin' ? 'Entrar' : 'Criar conta'}
             </button>
@@ -162,7 +164,7 @@ export default function Login() {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={googleLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-100 hover:shadow-md disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-700"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-500 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-700"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
               <path
@@ -188,7 +190,7 @@ export default function Login() {
               setError('')
               setInfo('')
             }}
-            className="mt-5 w-full text-center text-xs font-medium text-slate-500 hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400"
+            className="brand-link mt-5 w-full text-center text-xs font-medium hover:underline focus-visible:outline-2 focus-visible:outline-emerald-500"
           >
             {mode === 'signin' ? 'Não tem conta? Criar uma agora' : 'Já tem conta? Entrar'}
           </button>

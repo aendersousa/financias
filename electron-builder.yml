@@ -1,5 +1,5 @@
 appId: com.financias.app
-productName: Financas
+productName: WalletUp
 directories:
   output: dist
 files:
@@ -8,6 +8,7 @@ files:
 asarUnpack:
   - resources/**
 win:
+  icon: resources/walletup.ico
   target: nsis
   executableName: Financas
 nsis:

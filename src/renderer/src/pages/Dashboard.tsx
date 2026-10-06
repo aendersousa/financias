@@ -175,8 +175,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => 
       <section className="dashboard-summary" aria-label="Resumo financeiro">
         <StatTile
           icon={Wallet}
-          iconBg="bg-sky-500/10"
-          iconColor="text-sky-600 dark:text-sky-400"
+          iconBg="bg-brand-500/10"
+          iconColor="text-brand-600 dark:text-brand-400"
           label="Saldo total"
           value={formatCurrency(saldoTotal)}
           delta={saldoDelta}
@@ -425,7 +425,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => 
                   </div>
                   <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
                     <div
-                      className="h-2 rounded-full bg-gradient-to-r from-sky-500 to-emerald-500"
+                      className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500"
                       style={{ width: `${pct}%` }}
                     />
                   </div>

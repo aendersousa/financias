@@ -89,7 +89,7 @@ export default function Goals() {
                 {formatCurrency(g.valor_atual)} de {formatCurrency(g.valor_alvo)}
               </p>
               <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-2 rounded-full bg-gradient-to-r from-sky-500 to-emerald-500" style={{ width: `${pct}%` }} />
+                <div className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500" style={{ width: `${pct}%` }} />
               </div>
               {g.prazo && <p className="text-xs text-slate-400">Prazo: {g.prazo}</p>}
               <div className="mt-2 flex gap-2">

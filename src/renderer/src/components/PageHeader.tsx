@@ -9,7 +9,7 @@ interface PageHeaderProps {
 export default function PageHeader({ icon: Icon, title, subtitle }: PageHeaderProps) {
   return (
     <div className="page-header mb-6 flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 text-white shadow-md shadow-sky-500/20">
+      <div className="page-header-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
         <Icon size={20} />
       </div>
       <div>

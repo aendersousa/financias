@@ -21,6 +21,8 @@ function extractProtocolUrl(argv: string[]): string | undefined {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
+    title: 'WalletUp',
+    icon: join(__dirname, '../renderer/icon-512.png'),
     width: 1280,
     height: 800,
     minWidth: 960,

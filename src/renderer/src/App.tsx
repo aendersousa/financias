@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { Eye, EyeOff, Menu, Moon, Sun } from 'lucide-react'
 import { App as CapacitorApp } from '@capacitor/app'
 import Sidebar, { type Page } from './components/Sidebar'
+import Brand from './components/Brand'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Accounts from './pages/Accounts'
@@ -101,7 +102,7 @@ export default function App() {
   }
 
   if (import.meta.env.VITE_FINANCIAL_MODEL === 'ledger') {
-    if (localConflict) return <div className="mx-auto max-w-lg space-y-4 p-6"><p>Este aparelho guarda dados de outro usuário{localConflict.pending ? ` e ${localConflict.pending} lançamentos não enviados` : ''}. Para entrar com esta conta, apague os dados locais anteriores. Os registros do servidor serão preservados.</p><button onClick={() => { void clearLocalData(session.user.id).then(() => { setLocalConflict(null); setLocalReady(true) }).catch(failure => setLocalError(failure.message)) }} className="rounded-xl bg-teal-600 px-4 py-3 text-white">Apagar dados locais e continuar</button><button onClick={() => void supabase.auth.signOut()} className="ml-4">Voltar ao acesso</button>{localError && <p role="alert">{localError}</p>}</div>
+    if (localConflict) return <div className="mx-auto max-w-lg space-y-4 p-6"><p>Este aparelho guarda dados de outro usuário{localConflict.pending ? ` e ${localConflict.pending} lançamentos não enviados` : ''}. Para entrar com esta conta, apague os dados locais anteriores. Os registros do servidor serão preservados.</p><button onClick={() => { void clearLocalData(session.user.id).then(() => { setLocalConflict(null); setLocalReady(true) }).catch(failure => setLocalError(failure.message)) }} className="rounded-xl bg-brand-600 px-4 py-3 text-white">Apagar dados locais e continuar</button><button onClick={() => void supabase.auth.signOut()} className="ml-4">Voltar ao acesso</button>{localError && <p role="alert">{localError}</p>}</div>
     if (!localReady) return <div className="p-6">{localError ? <p role="alert">Não foi possível abrir o armazenamento deste aparelho: {localError}</p> : 'Abrindo os dados deste aparelho…'}</div>
     return <Suspense fallback={<div className="p-6">Carregando seu espaço…</div>}><LedgerWorkspace key={session.user.id} /></Suspense>
   }
@@ -112,7 +113,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="walletup-app flex h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="hidden md:flex">
         <Sidebar
           active={page}
@@ -139,7 +140,7 @@ export default function App() {
       )}
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:justify-end">
+        <div className="app-toolbar flex items-center gap-3 border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:justify-end">
           <button
             onClick={() => setMobileNavOpen(true)}
             aria-label="Abrir menu"
@@ -147,15 +148,12 @@ export default function App() {
           >
             <Menu size={22} />
           </button>
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-emerald-500 text-xs font-bold text-white md:hidden">
-            R$
-          </div>
-          <span className="flex-1 font-semibold text-slate-800 dark:text-slate-100 md:hidden">Finanças</span>
+          <div className="flex-1 md:hidden"><Brand size="sm" /></div>
           <button
             onClick={togglePrivacyMode}
             aria-label={privacyMode ? 'Mostrar valores' : 'Ocultar valores'}
             aria-pressed={privacyMode}
-            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {privacyMode ? <EyeOff size={19} /> : <Eye size={19} />}
             <span className="hidden sm:inline">{privacyMode ? 'Mostrar valores' : 'Ocultar valores'}</span>

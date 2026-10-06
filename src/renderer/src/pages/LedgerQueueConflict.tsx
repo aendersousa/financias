@@ -75,7 +75,7 @@ export default function LedgerQueueConflict({ item, money, onResolved }: { item:
   }
   const view = (title: string, value: Summary) => <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><h4 className="font-semibold">{title}</h4><p>{value.description || 'Lançamento rápido'} · {value.occurredOn}</p>{value.amountCents !== null && <strong>{money(value.amountCents)}</strong>}<ul className="space-y-1 text-xs text-slate-500">{value.entries.map((entry, index) => <li key={index}>{entry.name}: {money(entry.amountCents)}</li>)}</ul></div>;
   return <div className="space-y-3">
-    <button disabled={busy || !navigator.onLine} onClick={() => void load()} className="text-xs font-semibold text-teal-700 disabled:opacity-50 dark:text-teal-300">Comparar e recuperar</button>
+    <button disabled={busy || !navigator.onLine} onClick={() => void load()} className="text-xs font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-300">Comparar e recuperar</button>
     {open && <section role="dialog" aria-label="Recuperar lançamento não enviado" className="space-y-4 rounded-xl border border-amber-300 p-4">
       <h3 className="font-semibold">Recuperar lançamento não enviado</h3>
       {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}

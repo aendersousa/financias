@@ -47,12 +47,12 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       banner = document.createElement('div');
       banner.setAttribute('role', 'status');
       banner.setAttribute('aria-live', 'polite');
-      banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:100;background:#0f172a;color:white;padding:16px;border-radius:12px;box-shadow:0 4px 24px #0004;display:flex;gap:16px;align-items:center;justify-content:space-between;font:14px system-ui';
+      banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:100;background:#141e25;color:white;padding:16px;border-radius:12px;box-shadow:0 4px 24px #0004;display:flex;gap:16px;align-items:center;justify-content:space-between;font:14px system-ui';
       const message = document.createElement('span');
       message.textContent = 'Há uma nova versão do aplicativo. Seus lançamentos pendentes ficam salvos neste aparelho.';
       const button = document.createElement('button');
       button.textContent = 'Atualizar aplicativo';
-      button.style.cssText = 'background:#0d9488;color:white;border:0;border-radius:8px;padding:10px 14px;font:600 14px system-ui;cursor:pointer';
+      button.style.cssText = 'background:#18d47b;color:#0b2115;border:0;border-radius:8px;padding:10px 14px;font:600 14px system-ui;cursor:pointer';
       button.addEventListener('click', () => {
         button.disabled = true;
         editing = false;

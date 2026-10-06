@@ -59,7 +59,7 @@ export default function Budget() {
                   <td className="hidden px-4 py-2.5 sm:table-cell">
                     <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
                       <div
-                        className={`h-2 rounded-full ${over ? 'bg-red-500' : 'bg-gradient-to-r from-sky-500 to-emerald-500'}`}
+                        className={`h-2 rounded-full ${over ? 'bg-red-500' : 'bg-gradient-to-r from-brand-500 to-emerald-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
