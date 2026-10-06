@@ -502,7 +502,7 @@ O plano foi aprovado. Onde a decisão difere da recomendação da seção 9, val
 | 1 | Instalar Docker Desktop, Supabase CLI e cliente PostgreSQL. Avisar antes de qualquer reinício |
 | 2 | Sem senha de escrita da produção. O proprietário roda o Apêndice 1. O dump do esquema usa um usuário só de leitura (`supabase/admin/01_schema_reader.sql`). A senha completa existe só como segredo do GitHub Actions, para os backups. Migrações em produção: eu preparo, o proprietário revisa e aplica |
 | 3 | Homologação num segundo projeto Supabase gratuito, só com dados fictícios |
-| 4 | Troca do app dos usuários ao fim da Fase 2 (opção b) |
+| 4 | ~~Troca do app dos usuários ao fim da Fase 2 (opção b)~~ Substituída em 06/10/2026: a versão nova vai para o endereço principal (`aendersousa.github.io/financias/`) assim que a migração dos dados com conferência estiver pronta, sem esperar o fim da Fase 2 (seção 11) |
 | 5 | Histórico: opção B |
 | 6 | Compras de cartão pendentes de faturas já vencidas: pagas fora do app, no relatório, cartão "a conferir" |
 | 7 | Poupança como `investment` (D-022), com aviso na nota de versão |
@@ -518,6 +518,31 @@ O plano foi aprovado. Onde a decisão difere da recomendação da seção 9, val
 | 17 | Teste de restauração num Supabase local temporário |
 
 Ordem resultante: diagnóstico (Apêndice 1) e usuário só de leitura → migração de base + correção de segurança (revisada e aplicada pelo proprietário) → P1 a P8.
+
+---
+
+## 11. Troca no endereço principal (decisão de 06/10/2026)
+
+O proprietário decidiu publicar a versão nova no endereço principal, em vez do endereço de teste ou da espera até o fim da Fase 2. As regras continuam: backup antes, migrações em produção revisadas e aplicadas pelo proprietário, conferência do saldo de cada conta de cada usuário, nada apagado.
+
+Ponto de partida: o modelo novo foi implementado por outra sessão (esquema `finance`, funções em `api`; ver `docs/IMPLEMENTACAO.md`) e validado só no Supabase local. Divergências em relação a este plano, a registrar como alteração: o esquema chama `finance`, e não `core` (ALT-007), e o cálculo do Livre roda no PostgreSQL (ALT-008 tendia à opção (a)).
+
+Caminho crítico, com quem faz cada passo:
+
+| # | Passo | Quem |
+|---|---|---|
+| T1 | Commitar e publicar o trabalho da outra sessão (branch `test/legacy-fix-local`) | Proprietário, ou liberar a permissão para mim |
+| T2 | Rodar o Apêndice 1 e criar o `schema_reader` | Proprietário |
+| T3 | Dump do esquema, base real no lugar da provisória, todas as migrações reaplicadas do zero sobre ela e testes completos | Eu |
+| T4 | Remover o `schema_reader` | Proprietário (eu lembro) |
+| T5 | Migração dos dados antigos → modelo novo (seção 5), com conferência, testada com dados fictícios de cada caso | Eu |
+| T6 | Versão de transição com aviso de atualização publicada nos três canais (decisão 15) | Eu preparo; publicação com o proprietário |
+| T7 | Backup diário e teste de restauração (decisões 12 e 17) | Eu preparo; segredos e repositório privado com o proprietário |
+| T8 | Produção: expor o esquema `api` na API, tarefas agendadas, função de manutenção, provedor de e-mail (A-05) | Eu preparo; proprietário aplica e configura no painel |
+| T9 | Ensaio da migração na produção, sempre desfeito (`dry_run`), e revisão do relatório | Proprietário roda; revisamos juntos |
+| T10 | Janela de troca: backup, migrações do modelo novo, migração dos dados com conferência, tabelas antigas só leitura | Proprietário aplica |
+| T11 | Publicar o PWA com o modelo novo em `aendersousa.github.io/financias/`, o app de Windows e o APK | Eu, com a permissão de publicação |
+| T12 | Conferência final e registro da aprovação | Proprietário |
 
 ---
 
