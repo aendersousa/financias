@@ -109,7 +109,7 @@ Para uma instância local iniciada antes de atualizar `config.toml`, pode ser ne
 4. Completar o cache de todos os conjuntos previstos e sincronização em segundo plano quando suportada; contagem de uso/ordenação de favoritos conforme o modelo de dados dos documentos.
 5. Concluir anexos/garantias e Storage privado, exportação completa em ZIP por fila/link assinado, exclusão de usuário em 30 dias com pseudonimização, registros de acesso e política de privacidade com os dados reais do operador.
 6. Completar busca global/avançada, regras de categorização, insights, Open Finance, assistente e os demais itens da Fase 6 listados no checklist. Encerramento e eventual reabertura de checkpoints do compartilhamento também precisam de homologação integral.
-7. Obter o esquema e backup reais de produção, implementar/testar o mapeamento do legado e conferir saldos por usuário em uma cópia isolada. A baseline local é provisória e não prova compatibilidade com o banco de produção.
+7. Ensaiar a migração dos dados na produção (`legacy_migration.run('dry_run')`) e revisar o relatório; obter um backup real e testar a restauração. O esquema real já foi conferido em 06/10/2026: igual à baseline, salvo as permissões padrão do Supabase.
 8. Configurar 2FA, e-mail/push, tarefas agendadas, integridade, feriados, backups cifrados externos e restauração no ambiente de destino.
 9. Homologar cada linha do checklist e todos os INV/CT aplicáveis; somente então ativar o novo modelo em produção. A aprovação de publicação no repositório público permanece pendente.
 
@@ -121,4 +121,4 @@ As seções 15.11.2 e 15.11.4 entram em conflito quando a menor receita históri
 
 A publicação do código-fonte no repositório público foi rejeitada pela revisão automática de aprovação, por falta de autorização explícita para expor esse conteúdo naquele destino. Os commits podem ser salvos localmente. Não contornar essa restrição por outra API.
 
-As migrações do legado incluem uma baseline **provisória somente para teste local**. Não executar `supabase db push` indiscriminadamente em produção.
+A baseline do legado (`20260707000000`) foi conferida contra a produção em 06/10/2026 e **nunca é executada lá**: o esquema já existe e a migração é marcada como aplicada com `supabase migration repair --status applied 20260707000000`. Não executar `supabase db push` em produção sem esse passo e sem backup.

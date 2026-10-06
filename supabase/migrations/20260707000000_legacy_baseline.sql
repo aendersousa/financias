@@ -1,5 +1,10 @@
--- BASE PROVISÓRIA, SÓ PARA TESTE LOCAL: cópia de supabase/schema.sql.
--- Será substituída pela base real (dump da produção com schema_reader). Nunca aplicar em produção.
+-- BASE DO ESQUEMA ANTIGO (app até a versão 1.x): cópia de supabase/schema.sql.
+-- Conferida contra a produção em 06/10/2026 (dump só de estrutura com o usuário
+-- schema_reader, PostgreSQL 17.6): tabelas, colunas, restrições, índices, políticas,
+-- funções e o gatilho on_auth_user_created são idênticos. Diferem só as permissões
+-- padrão que o Supabase concede (GRANT a anon, authenticated e service_role).
+-- Na produção este esquema já existe: esta migração NUNCA é executada lá; é marcada
+-- como aplicada com: supabase migration repair --status applied 20260707000000
 
 -- financias: schema Postgres para Supabase
 -- Rode este script inteiro no SQL Editor do seu projeto Supabase (Supabase Dashboard > SQL Editor > New query).
