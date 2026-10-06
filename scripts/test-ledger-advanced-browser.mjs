@@ -486,8 +486,8 @@ try {
   const priorStatements = priorCard.statements.map(item => item.id).sort();
   await page.getByRole('button', { name: 'Atualizar', exact: true }).first().click();
   await navigate('3. Cartões');
+  await page.getByRole('button', { name:'Editar cartão Cartão avançado', exact:true }).click();
   const management = page.getByRole('region', { name: 'Gestão dos cartões', exact: true });
-  await management.getByRole('combobox', { name: /^Cartão/ }).selectOption(card);
   await management.getByLabel('Dia de fechamento', { exact: true }).fill('11');
   await management.getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect(management.getByRole('status')).toContainText('Regras atualizadas');

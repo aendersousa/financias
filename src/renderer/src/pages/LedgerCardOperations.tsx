@@ -38,8 +38,9 @@ export default function LedgerCardOperations({ workspace,money,onChanged }: { wo
     finally { setBusy(false); }
   }
   const field = (title: string,id: string) => <label htmlFor={id} className="text-sm font-medium">{title}</label>;
-  return <section className="space-y-4 card p-5 dark:border-slate-800 dark:bg-slate-900">
-    <h2 className="font-semibold">Encargos e parcelamentos</h2>
+  return <details className="card p-4 dark:border-slate-800 dark:bg-slate-900">
+    <summary className="cursor-pointer text-sm font-semibold">Encargos e parcelamentos</summary>
+    <div className="mt-4 space-y-4">
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
     <div className="grid gap-2">{field('O que deseja registrar?','card-operation')}<select id="card-operation" value={operation} onChange={event => { setOperation(event.target.value); setClientId(crypto.randomUUID()); setError(''); setNotice(''); }} className={input}><option value="charges">Confirmar encargos da fatura</option><option value="plan">Parcelar saldo de fatura</option><option value="prepay">Antecipar parcelas de compra</option></select></div>
@@ -51,5 +52,6 @@ export default function LedgerCardOperations({ workspace,money,onChanged }: { wo
       {operation !== 'charges' && <div className="grid gap-2">{field('Data da contratação','operation-date')}<input id="operation-date" name="date" type="date" defaultValue={workspace.space.today} required className={input}/></div>}
       <div className="sm:col-span-2"><button disabled={busy} className="btn-primary px-4 py-2.5 font-semibold text-white disabled:opacity-50">{busy ? 'Registrando…' : 'Registrar operação'}</button></div>
     </form>
-  </section>;
+    </div>
+  </details>;
 }

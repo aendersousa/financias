@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { CreditCard as CreditCardIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
+import CardTable from '../components/CardTable'
 
 export default function CreditCards() {
   const formatCurrency = useCurrencyFormatter()
@@ -43,8 +44,9 @@ export default function CreditCards() {
 
       <form onSubmit={handleSubmit} className="card flex flex-wrap items-end gap-3 p-4">
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label className="field-label">Nome do cartão</label>
+          <label htmlFor="legacy-card-name" className="field-label">Nome</label>
           <input
+            id="legacy-card-name"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
             className="field-input"
@@ -53,8 +55,9 @@ export default function CreditCards() {
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label className="field-label">Limite</label>
+          <label htmlFor="legacy-card-limit" className="field-label">Limite</label>
           <input
+            id="legacy-card-limit"
             type="number"
             step="0.01"
             min="0"
@@ -64,8 +67,9 @@ export default function CreditCards() {
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label className="field-label">Dia fechamento</label>
+          <label htmlFor="legacy-card-closing-day" className="field-label">Dia fechamento</label>
           <input
+            id="legacy-card-closing-day"
             type="number"
             min="1"
             max="31"
@@ -75,8 +79,9 @@ export default function CreditCards() {
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label className="field-label">Dia vencimento</label>
+          <label htmlFor="legacy-card-due-day" className="field-label">Dia vencimento</label>
           <input
+            id="legacy-card-due-day"
             type="number"
             min="1"
             max="31"
@@ -86,8 +91,9 @@ export default function CreditCards() {
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label className="field-label">Conta de pagamento</label>
+          <label htmlFor="legacy-card-payment-account" className="field-label">Conta de pagamento</label>
           <select
+            id="legacy-card-payment-account"
             value={contaPagamentoId}
             onChange={(e) => setContaPagamentoId(e.target.value ? Number(e.target.value) : '')}
             className="field-input"
@@ -105,54 +111,25 @@ export default function CreditCards() {
         </button>
       </form>
 
-      <div className="table-shell">
-        <table className="w-full text-sm sm:min-w-[720px]">
-          <thead className="table-head">
-            <tr>
-              <th className="px-4 py-2.5">Cartão</th>
-              <th className="px-4 py-2.5 text-right">Limite</th>
-              <th className="px-4 py-2.5 text-right">Fatura atual</th>
-              <th className="hidden px-4 py-2.5 md:table-cell">Fechamento</th>
-              <th className="hidden px-4 py-2.5 md:table-cell">Vencimento</th>
-              <th className="hidden px-4 py-2.5 md:table-cell">Conta de pagamento</th>
-              <th className="px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {creditCards.map((c) => (
-              <tr key={c.id} className="table-row-hover">
-                <td className="px-4 py-2.5">{c.nome}</td>
-                <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(c.limite)}</td>
-                <td className="px-4 py-2.5 text-right">
-                  <span className={c.fatura_atual > c.limite ? 'font-medium text-red-500' : 'font-medium'}>
-                    {formatCurrency(c.fatura_atual)}
-                  </span>
-                  <p className="text-xs text-slate-400">
-                    {c.fatura_inicio} a {c.fatura_fim}
-                  </p>
-                </td>
-                <td className="hidden px-4 py-2.5 text-slate-500 md:table-cell">Dia {c.dia_fechamento}</td>
-                <td className="hidden px-4 py-2.5 text-slate-500 md:table-cell">Dia {c.dia_vencimento}</td>
-                <td className="hidden px-4 py-2.5 text-slate-500 md:table-cell">
-                  {accounts.find((a) => a.id === c.conta_pagamento_id)?.nome ?? '-'}
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <button onClick={() => removeCreditCard(c.id)} className="btn-danger-text">
-                    Excluir
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {creditCards.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
-                  Nenhum cartão cadastrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <CardTable
+        cards={creditCards.map(card => ({
+          id: card.id,
+          name: card.nome,
+          limit: formatCurrency(card.limite),
+          used: <span className={card.fatura_atual > card.limite ? 'font-medium text-red-500' : 'font-medium'}>{formatCurrency(card.fatura_atual)}</span>,
+          available: <span className={card.fatura_atual > card.limite ? 'text-red-500' : undefined}>{formatCurrency(card.limite - card.fatura_atual)}</span>,
+          closingDay: card.dia_fechamento,
+          dueDay: card.dia_vencimento,
+          paymentAccount: accounts.find(account => account.id === card.conta_pagamento_id)?.nome,
+          period: `${card.fatura_inicio} a ${card.fatura_fim}`
+        }))}
+        renderName={card => <div>
+          <span>{card.name}</span>
+          {card.paymentAccount && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{card.paymentAccount}</p>}
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{card.period}</p>
+        </div>}
+        renderActions={card => <button type="button" onClick={() => removeCreditCard(card.id)} className="btn-danger-text">Excluir</button>}
+      />
     </div>
   )
 }

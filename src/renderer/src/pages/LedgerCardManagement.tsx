@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { shiftDays } from '../../../shared/finance/calendar';
+import CardTable from '../components/CardTable';
 
 type Holder = { id:string; name:string; kind:string; last_digits:string | null; person_id:string | null; is_active:boolean; version:number };
 type Authorization = { id:string; description:string; amount_cents:number; authorized_on:string; expires_on:string | null; release_on:string | null; kind:string; status:string; version:number };
@@ -15,7 +16,7 @@ interface Card {
 }
 const panel='card p-5 dark:border-slate-800 dark:bg-slate-900';
 const input='w-full field-input px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800';
-const button='rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
+const button='btn-primary disabled:opacity-50';
 const date=(value:string) => value.split('-').reverse().join('/');
 type Mode='settings' | 'holder' | 'authorization' | 'limit' | 'opening' | 'statement';
 
@@ -40,13 +41,34 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     void ledgerRpc<{cards:Card[]}>('card_management_summary',{p_space:workspace.space.id}).then(result => { if(!cancelled) setCards(result.cards); }).catch(() => { if(!cancelled) setError('Não foi possível carregar a gestão dos cartões.'); });
     return () => { cancelled=true; };
   },[workspace]);
-  const card=cards?.find(item => item.id===selected) ?? cards?.[0];
+  const card=cards?.find(item => item.id===selected);
   const holder=card?.holders.find(item => item.id===holderId);
   const authorization=card?.authorizations.find(item => item.id===authorizationId);
   const statement=card?.statements.find(item => item.id===statementId);
   const writer=workspace.role!=='viewer';
   const administrator=workspace.role==='owner' || workspace.role==='admin';
   useEffect(() => { if(!administrator) setMode('authorization'); },[administrator]);
+  function selectCard(id:string) {
+    if(pending.current) return;
+    setSelected(selected===id ? '' : id); setMode(administrator ? 'settings' : 'authorization');
+    setHolderId(''); setAuthorizationId(''); setStatementId(''); setClosedRows([]); setInstallmentRows([]); setBankUsed('');
+    request.current=null; setError(''); setNotice('');
+  }
+  async function createCard(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if(pending.current || !administrator) return;
+    const form=event.currentTarget,values=new FormData(form),text=(name:string) => String(values.get(name) ?? '').trim();
+    pending.current=true; setBusy(true); setError(''); setNotice('');
+    let created=false;
+    try {
+      const limit=parseBrlCents(text('limit'));
+      if(limit<=0) throw new Error('Informe um limite maior que zero.');
+      await ledgerRpc('create_credit_card',{p_space:workspace.space.id,p_name:text('name'),p_limit_cents:limit,p_closing_day:Number(text('closing')),p_due_day:Number(text('due')),p_payment_account:text('account') || null});
+      created=true; form.reset(); setSelected('');
+      await load(); await onChanged(); setNotice('Cartão adicionado.');
+    } catch(failure) {
+      setError(created ? 'O cartão foi adicionado, mas não foi possível atualizar a lista. Use Atualizar para conferir.' : failure instanceof Error ? failure.message : 'Não foi possível adicionar o cartão. Confira os dados.');
+    } finally { pending.current=false; setBusy(false); }
+  }
   const changeMode=(value:Mode) => { if(pending.current) return; setMode(value); request.current=null; setError(''); setNotice(''); };
   async function mutate(name:string,args:Record<string,unknown>,message:string) {
     if(pending.current) return;
@@ -83,12 +105,10 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     } catch(failure) { setError(failure instanceof Error ? failure.message : 'Confira os campos.'); }
   }
   const field=(label:string,name:string,defaultValue:string | number='',type='text',required=false) => <label className="grid gap-1.5 text-sm">{label}<input aria-label={label} name={name} type={type} defaultValue={defaultValue} required={required} className={input} {...(type==='number' ? {min:['closing_day','due_day'].includes(name) || name.startsWith('from-') || name.startsWith('count-') ? 1 : 0,step:1,...(['closing_day','due_day'].includes(name) ? {max:31} : {})} : {})}/></label>;
-  if(!cards && !error) return <section className={panel}><h2 className="font-semibold">Gestão dos cartões</h2><p className="mt-3 text-sm text-slate-500">Carregando…</p></section>;
-  if(!card) return <section className={panel}><h2 className="font-semibold">Gestão dos cartões</h2><p className="mt-3 text-sm text-slate-500">{error || 'Cadastre um cartão para configurar suas regras e seu saldo inicial.'}</p></section>;
-  return <section className={`${panel} space-y-5`} aria-label="Gestão dos cartões">
-    <div><h2 className="font-semibold">Gestão dos cartões</h2><p className="mt-1 text-sm text-slate-500">Configure portadores, datas, limite e compras em processamento.</p></div>
-    {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}{notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    <label className="grid gap-1.5 text-sm">Cartão<select aria-label="Cartão" value={card.id} onChange={event => {setSelected(event.target.value);setHolderId('');setAuthorizationId('');setStatementId('');setClosedRows([]);setInstallmentRows([]);setBankUsed('');request.current=null;}} className={input}>{cards?.map(item => <option key={item.id} value={item.id}>{item.name} · {item.status==='active' ? 'ativo' : item.status==='cancelled' ? 'cancelado' : 'arquivado'}</option>)}</select></label>
+  const details=card ? <section className={`${panel} space-y-5`} aria-label="Gestão dos cartões">
+    <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{card.name}</h2><p className="mt-1 text-sm text-slate-500">Configure portadores, datas, limite e compras em processamento.</p></div><button type="button" disabled={busy} onClick={() => selectCard(card.id)} className="text-sm text-slate-500">Fechar</button></div>
+    {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
+    {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
     <dl className="grid gap-3 sm:grid-cols-3">{[['Limite concedido',card.granted_cents],['Limite utilizado',card.used_cents],['Limite livre',card.free_cents]].map(([label,value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-xl font-semibold">{money(value as number)}</dd></div>)}</dl>
     {card.status==='cancelled' && (card.recurrences.length>0 || card.commitments.length>0) && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Redirecione os pagamentos deste cartão na Agenda e nas recorrências.</p>{[...card.recurrences,...card.commitments].map((item,index) => <p key={`${item.id}-${index}`} className="mt-1">{item.title}</p>)}</div>}
     {card.out_of_period_purchases.length>0 && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Confira as compras fora do novo período da fatura.</p>{card.out_of_period_purchases.map(item => <p key={item.transaction_id} className="mt-1">{date(item.on)} · {item.description}</p>)}<p className="mt-2">Ajuste a fatura do lançamento enquanto as faturas de origem e destino estiverem abertas.</p></div>}
@@ -136,5 +156,26 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     {mode==='opening' && <label className="grid gap-1.5 text-sm">Limite utilizado informado pelo banco, sem compras em processamento (para conferir)<input value={bankUsed} onChange={event => setBankUsed(event.target.value)} inputMode="decimal" className={input}/><span className="text-xs text-slate-500">No app: {money(card.used_cents)}. Compare os valores após registrar a dívida inicial.</span></label>}
     {card.opening_bank_used_cents!==null && <div className="rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800"><p>Limite utilizado informado na abertura: {money(card.opening_bank_used_cents)}.</p><p className="mt-1">Diferença em relação à posição atual: {money(card.opening_difference_cents!)}.</p><p className="mt-2 text-xs text-slate-500">Depois da abertura, compras e pagamentos alteram a posição atual.</p></div>}
     <details className="border-t border-slate-200 pt-3 dark:border-slate-800"><summary className="cursor-pointer text-sm font-semibold">Histórico de limites e autorizações</summary><div className="mt-4 space-y-3">{card.limit_history.map(item => <div key={item.id} className="flex flex-wrap justify-between gap-2 text-sm"><div>{date(item.valid_from)}{item.reason && <p className="mt-1 text-xs text-slate-500">{item.reason}</p>}</div><strong>{money(item.limit_cents)}</strong></div>)}{card.authorizations.map(item => <div key={item.id} className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-3 text-sm dark:border-slate-800"><div><p>{item.description}</p><p className="mt-1 text-xs text-slate-500">{item.kind==='payment_hold' ? 'Retenção por pagamento' : 'Compra em processamento'} · {item.status}{item.release_on ? ` · Liberação ${date(item.release_on)}` : item.expires_on ? ` · Validade ${date(item.expires_on)}` : ''}</p></div><strong>{money(item.amount_cents)}</strong></div>)}</div></details>
-  </section>;
+  </section> : null;
+  return <div className="space-y-6">
+    {administrator && <form aria-label="Adicionar cartão" onSubmit={createCard} className="card flex flex-wrap items-end gap-3 p-4">
+      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-name" className="field-label">Nome</label><input id="new-card-name" name="name" disabled={busy} required maxLength={100} placeholder="Ex: Nubank Mastercard" className="field-input" /></div>
+      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-limit" className="field-label">Limite</label><input id="new-card-limit" name="limit" disabled={busy} required inputMode="decimal" placeholder="0,00" className="field-input w-full sm:w-32" /></div>
+      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-closing" className="field-label">Dia de fechamento</label><input id="new-card-closing" name="closing" disabled={busy} required type="number" min={1} max={31} defaultValue="1" className="field-input w-full sm:w-32" /></div>
+      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-due" className="field-label">Dia de vencimento</label><input id="new-card-due" name="due" disabled={busy} required type="number" min={1} max={31} defaultValue="10" className="field-input w-full sm:w-32" /></div>
+      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-account" className="field-label">Conta de pagamento</label><select id="new-card-account" name="account" disabled={busy} className="field-input w-full sm:max-w-56"><option value="">Selecionar ao pagar</option>{workspace.accounts.filter(account => ['cash','investment'].includes(account.liquidity)).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div>
+      <button disabled={busy} className="btn-primary">Adicionar cartão</button>
+    </form>}
+    {!card && error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
+    {!card && notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
+    <CardTable cards={(cards ?? workspace.cards).map(item => {
+      const rules=cards?.find(value => value.id===item.id);
+      return {...item,limit:money(item.granted_cents),used:money(item.used_cents),available:money(item.free_cents),closingDay:rules?.closing_day,dueDay:rules?.due_day,status:rules?.status};
+    })}
+      renderName={item => writer ? <button type="button" disabled={busy || !cards} onClick={() => selectCard(item.id)} aria-label={`Editar cartão ${item.name}`} aria-expanded={selected===item.id} className="break-words text-left">{item.name}</button> : <span>{item.name}</span>}
+      renderActions={item => <button type="button" disabled={busy || !cards} onClick={() => selectCard(item.id)} aria-label={`Ver detalhes do cartão ${item.name}`} aria-expanded={selected===item.id} className="text-xs font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-400">Detalhes</button>}
+      renderEditor={item => selected===item.id && details ? <section aria-label={`Detalhes do cartão ${item.name}`}>{details}</section> : null}
+    />
+    {!cards && !error && <p className="text-sm text-slate-500">Carregando as regras dos cartões…</p>}
+  </div>;
 }
