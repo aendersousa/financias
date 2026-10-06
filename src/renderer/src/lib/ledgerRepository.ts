@@ -10,7 +10,7 @@ export interface LedgerWorkspace {
   totals: { cash_cents: number; benefit_cents: number; investment_cents: number; property_cents: number; card_used_cents: number; commitment_outflows_cents: number };
   space: { id: string; name: string; today: string; timezone?: string }; role: 'owner' | 'admin' | 'member' | 'viewer';
   accounts: LedgerAccount[]; categories: LedgerCategory[]; cards: LedgerCard[]; commitments: LedgerCommitment[];
-  people: { id: string; nickname: string; balance_cents: number }[];
+  people: { id: string; nickname: string; balance_cents: number; archived_at?: string | null; notes?: string | null }[];
   statements: { id: string; credit_card_id: string; effective_due_on: string; remaining_cents: number; status: string }[];
   transactions: LedgerTransaction[]; budgets: LedgerBudget[];
 }

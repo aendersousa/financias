@@ -1,6 +1,6 @@
 {
   "name": "financias",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "App desktop de gestao financeira pessoal",
   "main": "out/main/index.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "test:browser:categories": "node scripts/test-category-layout.mjs",
     "test:browser:accounts": "node scripts/test-account-layout.mjs",
     "test:browser:cards": "node scripts/test-card-layout.mjs",
+    "test:browser:people": "node scripts/test-people-layout.mjs",
     "test:browser:brand": "node scripts/test-walletup-brand.mjs",
     "test:browser:advanced": "node scripts/test-ledger-advanced-browser.mjs",
     "test:maintenance:local": "node --test supabase/functions/daily-maintenance/index.test.mjs",
