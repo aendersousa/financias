@@ -123,8 +123,7 @@ try {
 
   stage = 'Account/category editing'; console.log('Advanced browser: account and category management');
   await navigate('1. Contas');
-  const accountPanel = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Banco avançado', exact: true }) }).filter({ has: page.getByRole('button', { name: 'Editar conta', exact: true }) }).last();
-  await accountPanel.getByRole('button', { name: 'Editar conta', exact: true }).click();
+  await page.getByRole('button', { name: 'Editar conta Banco avançado', exact: true }).click();
   await page.getByLabel('Nome da conta', { exact: true }).fill('Banco avançado editado');
   await page.getByLabel('Instituição', { exact: true }).fill('Banco local de teste');
   await page.getByRole('button', { name: 'Salvar conta', exact: true }).click();
@@ -268,7 +267,8 @@ try {
 
   stage = 'Account balance check then explicit adjustment'; console.log('Advanced browser: comparing balances does not create an adjustment');
   await navigate('1. Contas');
-  const checkedAccount = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Banco avançado editado', exact: true }) }).filter({ has: page.getByRole('button', { name: 'Conferir saldo com o extrato', exact: true }) }).last();
+  await page.getByRole('button', { name: 'Editar conta Banco avançado editado', exact: true }).click();
+  const checkedAccount = page.getByRole('region', { name: 'Detalhes da conta Banco avançado editado', exact: true });
   const comparisonBalance = (await snapshot()).accounts.find(item => item.id === bank).balance_cents;
   const statementBalance = comparisonBalance + 500;
   const decimal = value => `${Math.floor(value / 100)},${String(value % 100).padStart(2, '0')}`;

@@ -1,9 +1,10 @@
 import { cloneElement, isValidElement, useEffect, useState, type ReactElement, type FormEvent, type ReactNode } from 'react';
-import { ledgerRpc, selectFinancialSpace, type FinancialSpace, type LedgerWorkspace } from '../lib/ledgerRepository';
+import { accountDisplayColor, saveAccountDisplayColor, ledgerRpc, selectFinancialSpace, type FinancialSpace, type LedgerWorkspace, type UserSettings } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 import CategoryPanels from '../components/CategoryPanels';
+import AccountTable, { accountKindLabels } from '../components/AccountTable';
 
-interface ManagedAccount { id: string; name: string; kind: string; institution_name: string | null; liquidity: string; is_emergency_reserve: boolean; archived_at: string | null; version: number }
+interface ManagedAccount { id: string; name: string; kind: string; color?: string | null; institution_name: string | null; liquidity: string; is_emergency_reserve: boolean; archived_at: string | null; version: number }
 interface ManagedCategory { id: string; name: string; kind: string; parent_id: string | null; icon: string | null; color: string | null; is_essential: boolean; fixity: string | null; income_class: string | null; is_tax_deductible: boolean; archived_at: string | null; system_role: string | null; version: number }
 interface Management { space: FinancialSpace; accounts: ManagedAccount[]; categories: ManagedCategory[]; holidays: { id: string; holiday_on: string; name: string }[] }
 interface BalanceCheck { id: string; checked_on: string; application_balance_cents: number; statement_balance_cents: number; difference_cents: number }
@@ -18,8 +19,16 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   const [balanceCheck,setBalanceCheck]=useState<BalanceCheck | null>(null),[adjustmentId,setAdjustmentId]=useState(() => crypto.randomUUID());
   const [categoryName, setCategoryName] = useState(''), [categoryKind, setCategoryKind] = useState('expense'), [categoryColor, setCategoryColor] = useState('#64748b');
   const [categoryParent, setCategoryParent] = useState('');
+  const [accountName, setAccountName] = useState(''), [accountKind, setAccountKind] = useState('checking'), [accountOpening, setAccountOpening] = useState('0'), [accountColor, setAccountColor] = useState('#0ea5e9');
   const canManage = ['owner', 'admin'].includes(workspace.role), canWrite = workspace.role !== 'viewer';
-  async function load() { setData(await ledgerRpc<Management>('management_data', { p_space: workspace.space.id })); }
+  async function load() {
+    const next = await ledgerRpc<Management>('management_data', { p_space: workspace.space.id });
+    if (section === 'accounts') {
+      const settings = await ledgerRpc<UserSettings>('get_user_settings', {});
+      next.accounts = next.accounts.map(account => ({ ...account, color: accountDisplayColor(account, settings.preferences) }));
+    }
+    setData(next);
+  }
   useEffect(() => { void load().catch(failure => setError(failure.message)); }, [workspace]);
   async function run(name: string, args: Record<string, unknown>, global = false) {
     setBusy(true); setError(''); setNotice('');
@@ -29,7 +38,27 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   }
   async function saveAccount(event: FormEvent<HTMLFormElement>, account: ManagedAccount) {
     event.preventDefault(); const form = new FormData(event.currentTarget);
+    if (busy) return;
+    setBusy(true); setError('');
+    try { if (String(form.get('color')) !== account.color) await saveAccountDisplayColor(account.id, String(form.get('color'))); }
+    catch (failure) { setBusy(false); setError(failure instanceof Error ? failure.message : 'Não foi possível salvar a cor.'); return; }
     await run('manage_financial_account', { p_account: account.id, p_version: account.version, p_action: 'update', p_changes: { name: String(form.get('name')).trim(), institution_name: String(form.get('institution')).trim() || null, liquidity, is_emergency_reserve: form.get('emergency') === 'on' } });
+  }
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!accountName.trim() || busy) return;
+    setBusy(true); setError(''); setNotice('');
+    let created = false;
+    try {
+      const id = await ledgerRpc<string>('create_financial_account', { p_space: workspace.space.id, p_name: accountName.trim(), p_kind: accountKind, p_opening_cents: parseBrlCents(accountOpening), p_opening_on: workspace.space.today });
+      created = true; setAccountName(''); setAccountOpening('0');
+      await saveAccountDisplayColor(id, accountColor);
+      await load(); await onChanged(); setNotice('Conta adicionada.');
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : 'Não foi possível salvar.';
+      setError(created ? `A conta foi adicionada, mas não foi possível concluir a atualização: ${message}` : message);
+      if (created) await Promise.all([load(), onChanged()]).catch(() => {});
+    } finally { setBusy(false); }
   }
   async function saveCategory(event: FormEvent<HTMLFormElement>, category: ManagedCategory) {
     event.preventDefault(); const form = new FormData(event.currentTarget);
@@ -66,14 +95,39 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   return <div className="space-y-4">
     {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-teal-700 dark:text-teal-300">{notice}</p>}
-    {section === 'accounts' && <label className="flex gap-2 text-sm"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)}/>Mostrar também os cadastros arquivados</label>}
     {!data && <p className={panel}>Carregando cadastros…</p>}
-    {section === 'accounts' && data?.accounts.filter(account => showArchived || !account.archived_at).map(account => <div key={`${account.id}-${account.version}`} className={`${panel} space-y-4`}>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{account.name}</h2><p className="text-sm text-slate-500">{account.archived_at ? 'Arquivada' : ({ cash: 'Disponível em contas', benefit: 'Benefício VR/VA', investment: 'Investimento', property: 'Bem' } as Record<string, string>)[account.liquidity]}{account.is_emergency_reserve ? ' · Reserva de emergência' : ''}</p></div><span className="font-semibold">{workspace.accounts.find(item => item.id === account.id) ? money(workspace.accounts.find(item => item.id === account.id)!.balance_cents) : 'Saldo preservado no histórico'}</span></div>
-      {canManage && <div className="flex flex-wrap gap-4 text-sm font-semibold text-teal-700 dark:text-teal-300">{!account.archived_at && <button disabled={busy} onClick={() => { setEditing(account.id); setAdjusting(null); setLiquidity(account.liquidity); }}>Editar conta</button>}<button disabled={busy} onClick={() => void run('manage_financial_account', { p_account: account.id, p_version: account.version, p_action: account.archived_at ? 'restore' : 'archive' })}>{account.archived_at ? 'Restaurar conta' : 'Arquivar conta'}</button></div>}
-      {canWrite && !account.archived_at && account.liquidity === 'cash' && <button disabled={busy} onClick={() => { setAdjusting(account.id); setEditing(null); setBalanceCheck(null); setRetry(crypto.randomUUID()); }} className="text-sm font-semibold text-teal-700 dark:text-teal-300">Conferir saldo com o extrato</button>}
-      {canManage && editing === account.id && <form onSubmit={event => void saveAccount(event, account)} className="grid gap-4 sm:grid-cols-2">
-        {field('Nome da conta', <input name="name" defaultValue={account.name} required maxLength={100} className={input}/>)}{field('Instituição', <input name="institution" defaultValue={account.institution_name ?? ''} maxLength={100} className={input}/>)}
+    {section === 'accounts' && <>
+      {canManage && <form aria-label="Adicionar conta" onSubmit={createAccount} className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label htmlFor="new-account-name" className="field-label">Nome</label>
+          <input id="new-account-name" disabled={busy} value={accountName} onChange={event => setAccountName(event.target.value)} maxLength={100} required placeholder="Ex: Nubank" className="field-input" />
+        </div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label htmlFor="new-account-kind" className="field-label">Tipo</label>
+          <select id="new-account-kind" disabled={busy} value={accountKind} onChange={event => setAccountKind(event.target.value)} className="field-input">{Object.entries(accountKindLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select>
+        </div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label htmlFor="new-account-opening" className="field-label">Saldo inicial</label>
+          <input id="new-account-opening" disabled={busy} value={accountOpening} onChange={event => setAccountOpening(event.target.value)} inputMode="decimal" placeholder="0" required className="field-input w-full sm:w-32" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="new-account-color" className="field-label">Cor</label>
+          <input id="new-account-color" disabled={busy} type="color" value={accountColor} onChange={event => setAccountColor(event.target.value)} className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700" />
+        </div>
+        <button disabled={busy} className="btn-primary">Adicionar conta</button>
+      </form>}
+      {data && <AccountTable
+        accounts={data.accounts.filter(account => showArchived || !account.archived_at).map(account => ({ ...account, type: accountKindLabels[account.kind] ?? account.kind, balance: workspace.accounts.find(item => item.id === account.id) ? money(workspace.accounts.find(item => item.id === account.id)!.balance_cents) : 'Saldo preservado no histórico' }))}
+        renderName={account => canWrite && !account.archived_at ? <button type="button" disabled={busy} onClick={() => { setEditing(account.id); setAdjusting(null); setLiquidity(account.liquidity); }} aria-label={`${canManage ? 'Editar' : 'Conferir'} conta ${account.name}`} title="Detalhes da conta" className="min-w-0 break-words text-left">{account.name}</button> : <span className="break-words">{account.name}{account.archived_at && <span className="ml-2 text-xs text-slate-400">Arquivada</span>}</span>}
+        renderActions={account => canManage ? <button type="button" disabled={busy} onClick={() => void run('manage_financial_account', { p_account: account.id, p_version: account.version, p_action: account.archived_at ? 'restore' : 'archive' })} title={account.archived_at ? undefined : 'Retirar das contas ativas e preservar o histórico'} className={account.archived_at ? 'text-xs text-sky-600 dark:text-sky-400' : 'btn-danger-text'}>{account.archived_at ? 'Restaurar' : 'Excluir'}</button> : null}
+        renderEditor={account => editing === account.id || adjusting === account.id ? <section aria-label={`Detalhes da conta ${account.name}`} className="space-y-4">
+          <div className="flex flex-wrap gap-4 text-sm text-teal-700 dark:text-teal-300">
+            {canManage && adjusting === account.id && <button disabled={busy} onClick={() => { setEditing(account.id); setAdjusting(null); setLiquidity(account.liquidity); }}>Editar conta</button>}
+            {canWrite && !account.archived_at && account.liquidity === 'cash' && <button disabled={busy} onClick={() => { setAdjusting(account.id); setEditing(null); setBalanceCheck(null); setRetry(crypto.randomUUID()); }}>Conferir saldo com o extrato</button>}
+            <button type="button" onClick={() => { setEditing(null); setAdjusting(null); }}>Fechar detalhes</button>
+          </div>
+          {canManage && editing === account.id && <form onSubmit={event => void saveAccount(event, account)} className="grid gap-4 sm:grid-cols-2">
+        {field('Nome da conta', <input name="name" defaultValue={account.name} required maxLength={100} className={input}/>)}{field('Instituição', <input name="institution" defaultValue={account.institution_name ?? ''} maxLength={100} className={input}/>)}{field('Cor da conta', <input name="color" type="color" defaultValue={account.color ?? '#0ea5e9'} className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700"/>)}
         {field('Disponibilidade do dinheiro', <select value={liquidity} onChange={event => setLiquidity(event.target.value)} disabled={['wallet', 'benefit', 'property'].includes(account.kind)} className={input}>{['benefit', 'property'].includes(account.kind) ? <option value={account.kind}>{account.kind === 'benefit' ? 'Benefício VR/VA' : 'Bem'}</option> : <><option value="cash">Disponível para gastar em contas</option><option value="investment">Investimento, fora do Livre para gastar</option></>}</select>)}
         <label className="flex gap-2 text-sm"><input name="emergency" type="checkbox" defaultChecked={account.is_emergency_reserve} disabled={liquidity !== 'investment'}/>Usar como reserva de emergência</label>
         <p className="text-xs text-slate-500 sm:col-span-2">A disponibilidade altera os números atuais. Os retratos de meses fechados preservam a classificação da época.</p><div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Salvar conta</button><button type="button" onClick={() => setEditing(null)}>Cancelar</button></div>
@@ -82,7 +136,10 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
         <p className="text-sm text-slate-500 sm:col-span-2">Informe o saldo do extrato para comparar com o saldo registrado na mesma data.</p>
         {field('Data do extrato', <input name="date" type="date" defaultValue={workspace.space.today} max={workspace.space.today} required className={input}/>)}{field('Saldo do extrato (R$)', <input name="balance" inputMode="decimal" required className={input}/>)}<div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Comparar saldos</button><button type="button" onClick={() => setAdjusting(null)}>Cancelar</button></div>
       </form>{balanceCheck && <div className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-sm">Saldo no aplicativo: {money(balanceCheck.application_balance_cents)} · Extrato: {money(balanceCheck.statement_balance_cents)}</p>{balanceCheck.difference_cents===0 ? <p role="status" className="text-sm font-semibold text-teal-700 dark:text-teal-300">Os saldos conferem.</p> : <><p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Diferença: {money(balanceCheck.difference_cents)}</p><p className="text-xs text-slate-500">Confira se falta algum lançamento ou importe o extrato. Se a diferença permanecer sem explicação, você pode registrá-la como ajuste de patrimônio.</p><form onSubmit={event => {event.preventDefault(); void run('account_adjustment',{p_account:account.id,p_on:balanceCheck.checked_on,p_statement_balance_cents:balanceCheck.statement_balance_cents,p_reason:String(new FormData(event.currentTarget).get('reason')),p_client_uuid:adjustmentId});}} className="grid gap-3">{field('Motivo para registrar o ajuste',<input name="reason" minLength={5} maxLength={1000} required className={input}/>)}<div><button disabled={busy} className={primary}>Registrar diferença não identificada</button></div></form></>}</div>}</>}
-    </div>)}
+        </section> : null}
+      />}
+      {data?.accounts.some(account => account.archived_at) && <details className="text-sm text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Contas excluídas</summary><label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />Mostrar contas excluídas para restaurar</label></details>}
+    </>}
     {section === 'categories' && <>
       {canManage && <form aria-label="Adicionar categoria" onSubmit={createCategory} className="card flex flex-wrap items-end gap-3 p-4">
         <div className="flex w-full flex-col gap-1 sm:w-auto">

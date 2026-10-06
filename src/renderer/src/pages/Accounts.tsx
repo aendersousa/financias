@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Wallet } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
+import AccountTable from '../components/AccountTable'
 import type { AccountType } from '../../../shared/types'
 
 const tipoLabels: Record<AccountType, string> = {
@@ -86,42 +87,10 @@ export default function Accounts() {
         </button>
       </form>
 
-      <div className="table-shell">
-        <table className="w-full text-sm sm:min-w-[640px]">
-          <thead className="table-head">
-            <tr>
-              <th className="px-4 py-2.5">Conta</th>
-              <th className="hidden px-4 py-2.5 sm:table-cell">Tipo</th>
-              <th className="px-4 py-2.5 text-right">Saldo atual</th>
-              <th className="px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {accounts.map((a) => (
-              <tr key={a.id} className="table-row-hover">
-                <td className="flex items-center gap-2 px-4 py-2.5">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: a.cor }} />
-                  {a.nome}
-                </td>
-                <td className="hidden px-4 py-2.5 text-slate-500 sm:table-cell">{tipoLabels[a.tipo]}</td>
-                <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(a.saldo_atual)}</td>
-                <td className="px-4 py-2.5 text-right">
-                  <button onClick={() => removeAccount(a.id)} className="btn-danger-text">
-                    Excluir
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {accounts.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                  Nenhuma conta cadastrada.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <AccountTable
+        accounts={accounts.map(account => ({ id: account.id, name: account.nome, type: tipoLabels[account.tipo], color: account.cor, balance: formatCurrency(account.saldo_atual) }))}
+        renderActions={account => <button onClick={() => removeAccount(account.id)} className="btn-danger-text">Excluir</button>}
+      />
     </div>
   )
 }
