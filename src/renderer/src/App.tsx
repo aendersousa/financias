@@ -18,6 +18,9 @@ import { supabase } from './lib/supabaseClient'
 import { handleOAuthCallbackUrl } from './lib/oauth'
 import { clearLocalData,localIdentityCheck } from './lib/offlineStorage'
 
+import { useVersionGate } from './lib/versionGate'
+import UpdateRequired from './components/UpdateRequired'
+
 const LedgerWorkspace = lazy(() => import('./pages/LedgerWorkspace'))
 
 export default function App() {
@@ -34,6 +37,7 @@ export default function App() {
   const toggleTheme = useAppStore((s) => s.toggleTheme)
   const privacyMode = useAppStore((s) => s.privacyMode)
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
+  const blockingVersion = useVersionGate()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -83,6 +87,10 @@ export default function App() {
       capacitorHandle?.remove()
     }
   }, [])
+
+  if (blockingVersion) {
+    return <UpdateRequired policy={blockingVersion} />
+  }
 
   if (authLoading) {
     return <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950" />
