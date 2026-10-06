@@ -540,7 +540,7 @@ Caminho crítico, com quem faz cada passo:
 | T7 | Backup diário e teste de restauração (decisões 12 e 17) | Eu preparo; segredos e repositório privado com o proprietário |
 | T8 | Produção: expor o esquema `api` na API, tarefas agendadas, função de manutenção, provedor de e-mail (A-05) | Eu preparo; proprietário aplica e configura no painel |
 | T9 | Ensaio da migração na produção, sempre desfeito (`dry_run`), e revisão do relatório | Proprietário roda; revisamos juntos |
-| T10 | Janela de troca: backup, migrações do modelo novo, migração dos dados com conferência, tabelas antigas só leitura | Proprietário aplica |
+| T10 | Janela de troca: backup, **marcar no histórico as migrações já aplicadas à mão** (`supabase migration repair --status applied 20260707000000 20261005120000 20261005130000`), migrações do modelo novo, migração dos dados com conferência, tabelas antigas só leitura | Proprietário aplica |
 | T11 | Publicar o PWA com o modelo novo em `aendersousa.github.io/financias/`, o app de Windows e o APK | Eu, com a permissão de publicação |
 | T12 | Conferência final e registro da aprovação | Proprietário |
 
@@ -644,3 +644,10 @@ select count(distinct recorrencia_id) as grupos,
        count(*) filter (where recorrencia_id is not null and status = 'pendente') as parcelas_pendentes
   from public.transactions;
 ```
+
+### Registro de execução na produção
+
+| Data | O quê | Como | Observação |
+|---|---|---|---|
+| 06/10/2026 | Usuário `schema_reader` criado, dump só de estrutura e usuário removido | SQL Editor, pelo proprietário | Estrutura igual à base `20260707000000` (só os GRANTs padrão do Supabase diferem). PostgreSQL 17.6, região us-east-1 |
+| 06/10/2026 | Migrações `20261005120000_legacy_rls_fk_ownership` e `20261005130000_app_version_gate` | SQL Editor, pelo proprietário | **Sem backup prévio, por decisão do proprietário** (exceção à regra de backup antes de migração; as duas não apagam nem alteram dados). Não ficam no histórico do Supabase: marcar com `migration repair` no passo T10 |
