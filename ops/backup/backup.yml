@@ -1,0 +1,76 @@
+# Backup diário do Supabase de produção (ANALISE_E_PLANO.md, decisões 2, 12 e 17).
+#
+# Este arquivo vai para .github/workflows/backup.yml do repositório PRIVADO de
+# backups, e não para este repositório (que é público). Instruções em README.md.
+#
+# Segredo do repositório privado:  SUPABASE_DB_URL  (Session pooler, com a senha completa)
+# Variável do repositório privado: AGE_RECIPIENT    (chave pública age1...; a chave de
+#                                                    abrir fica fora do GitHub)
+
+name: Backup diário do Supabase
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # 03:00 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.119.0
+
+      - name: Instalar age
+        run: sudo apt-get update -q && sudo apt-get install -y -q age
+
+      - name: Dump de papéis, esquema e dados
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_DB_URL"
+          mkdir -p work
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f work/roles.sql --role-only
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f work/schema.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f work/data.sql --use-copy --data-only
+          test -s work/schema.sql
+          test -s work/data.sql
+          # Contagem de linhas por tabela, para o teste de restauração conferir.
+          awk '/^COPY /{t=$2; n=0; inside=1; next} inside && /^\\\.$/{print t "\t" n; inside=0; next} inside{n++}' \
+            work/data.sql > work/manifest.tsv
+          test -s work/manifest.tsv
+
+      - name: Criptografar
+        env:
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          test -n "$AGE_RECIPIENT"
+          stamp=$(date -u +%Y-%m-%dT%H%M%SZ)
+          mkdir -p backups
+          tar -C work -czf - roles.sql schema.sql data.sql manifest.tsv \
+            | age -r "$AGE_RECIPIENT" -o "backups/$stamp.tar.gz.age"
+          (cd backups && sha256sum "$stamp.tar.gz.age" >> SHA256SUMS)
+          rm -rf work
+          ls -la backups | tail -3
+
+      - name: Gravar no repositório
+        run: |
+          set -euo pipefail
+          git config user.name 'backup-bot'
+          git config user.email 'backup-bot@users.noreply.github.com'
+          git add backups
+          git commit -m "backup $(date -u +%F)"
+          git push
