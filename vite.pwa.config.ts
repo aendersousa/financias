@@ -23,9 +23,19 @@ export default defineConfig({
     },
     react(),
     tailwindcss(),
+    {
+      name: 'app-version-meta',
+      transformIndexHtml(html) {
+        return html.replace('</head>', `<meta name="app-version" content="${pkg.version}"></head>`)
+      }
+    },
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: '.',
+      filename: 'sw.js',
       registerType: 'prompt',
       injectRegister: false,
+      injectManifest: { rollupFormat: 'iife' },
       includeAssets: ['favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Finanças',

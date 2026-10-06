@@ -44,10 +44,30 @@ const server=createServer(async (request,response) => {
   } catch { response.writeHead(404).end(); }
 });
 await new Promise((resolve,reject) => { server.once('error',reject); server.listen(4181,'127.0.0.2',resolve); });
-let browser;
+let browser,page;
+const diagnostics={ browserErrors:[],consoleErrors:[],rpc:[],failedRequests:[] };
+const rpcStarts=new Map();
+function rpcPath(request) {
+  const url=new URL(request.url());
+  return url.origin===status.API_URL.replace(/\/$/,'') && url.pathname.startsWith('/rest/v1/') ? url.pathname : null;
+}
 try {
   browser=await chromium.launch({ executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true });
-  const context=await browser.newContext(),page=await context.newPage();
+  const context=await browser.newContext();
+  page=await context.newPage();
+  page.on('pageerror',error=>diagnostics.browserErrors.push(error.message));
+  page.on('console',message=>{ if (message.type()==='error') diagnostics.consoleErrors.push(message.text()); });
+  page.on('request',request=>{ if (rpcPath(request)) rpcStarts.set(request,performance.now()); });
+  page.on('response',response=>{
+    const request=response.request(),path=rpcPath(request);
+    if (path) diagnostics.rpc.push({ path,status:response.status(),elapsedMs:Math.round(performance.now()-(rpcStarts.get(request) ?? performance.now())) });
+  });
+  page.on('requestfailed',request=>{
+    const path=rpcPath(request);
+    if (path) diagnostics.failedRequests.push({ path,error:request.failure()?.errorText });
+    rpcStarts.delete(request);
+  });
+  page.on('requestfinished',request=>rpcStarts.delete(request));
   await page.addInitScript(session => localStorage.setItem('sb-127-auth-token',JSON.stringify(session)),data.session);
   await page.goto('http://127.0.0.2:4181/financias/');
   await expect(page.getByRole('heading',{ name:'Visão geral',exact:true })).toBeVisible();
@@ -85,6 +105,17 @@ try {
   await expect.poll(async () => (await rpc('workspace_snapshot',{ p_space:space })).totals.cash_cents,{ timeout:15000 }).toBe(5500);
   await expect(page.getByText(/1 lançamentos pendentes de envio/)).toHaveCount(0);
   console.log('Built PWA passed: service-worker registration, full reload without internet, canonical cached values, queue preserved through an app update and reconnect sync.');
+} catch (error) {
+  const pageState=page && !page.isClosed() ? await page.evaluate(()=>({
+    online:navigator.onLine,
+    alerts:[...document.querySelectorAll('[role="alert"]')].map(node=>node.textContent),
+    statuses:[...document.querySelectorAll('[role="status"]')].map(node=>node.textContent),
+    projection:document.querySelector('[aria-label="Livre para gastar"]')?.textContent,
+    worker:navigator.serviceWorker.controller?.scriptURL
+  })).catch(()=>null) : null;
+  const pendingRpc=[...rpcStarts].map(([request,start])=>({ path:rpcPath(request),elapsedMs:Math.round(performance.now()-start) }));
+  console.error('Offline PWA diagnostic:',JSON.stringify({ ...diagnostics,pendingRpc,pageState },null,2));
+  throw error;
 } finally {
   await browser?.close();
   await new Promise(resolve => server.close(resolve));

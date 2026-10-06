@@ -1,4 +1,10 @@
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  // A worker can update in another tab. Keep an unfinished form on screen
+  // until this user chooses to reload, even after that worker becomes active.
+  let editing = false;
+  for (const event of ['input', 'change', 'submit']) {
+    document.addEventListener(event, () => { editing = true; }, true);
+  }
   window.addEventListener('load', async () => {
     const base = new URL('.', document.querySelector('script[src$="app-update.js"]').src);
     // Local XAMPP should always read the latest build from disk.
@@ -17,22 +23,27 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     if (!registration) {
       const response = await fetch(new URL('sw.js', base), { cache: 'no-store' }).catch(() => null);
       if (!response?.ok || !response.headers.get('content-type')?.includes('javascript')) return;
-      registration = await navigator.serviceWorker.register(new URL('sw.js', base), {
-        scope: base.pathname,
-        updateViaCache: 'none'
-      });
     }
     let refreshing = false;
     const alreadyControlled = Boolean(navigator.serviceWorker.controller);
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (alreadyControlled && !refreshing) {
+    let activeUpdate = false;
+    function reloadAfterUpdate() {
+      if (!alreadyControlled || refreshing) return;
+      activeUpdate = true;
+      if (editing) {
+        offerUpdate();
+      } else {
         refreshing = true;
         location.reload();
       }
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', reloadAfterUpdate);
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'APP_UPDATED') reloadAfterUpdate();
     });
     let banner;
     function offerUpdate() {
-      if (!registration.waiting || !alreadyControlled || banner) return;
+      if ((!registration?.waiting && !activeUpdate) || !alreadyControlled || banner) return;
       banner = document.createElement('div');
       banner.setAttribute('role', 'status');
       banner.setAttribute('aria-live', 'polite');
@@ -44,18 +55,33 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       button.style.cssText = 'background:#0d9488;color:white;border:0;border-radius:8px;padding:10px 14px;font:600 14px system-ui;cursor:pointer';
       button.addEventListener('click', () => {
         button.disabled = true;
-        registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        editing = false;
+        if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        else { refreshing = true; location.reload(); }
       });
       banner.append(message, button);
       document.body.append(banner);
     }
-    offerUpdate();
-    registration.addEventListener('updatefound', () => {
+    // Re-register existing workers too, so older registrations inherit the
+    // no-HTTP-cache policy when checking sw.js and its imports.
+    try {
+      registration = await navigator.serviceWorker.register(new URL('sw.js', base), {
+        scope: base.pathname,
+        updateViaCache: 'none'
+      });
+    } catch {
+      // An installed registration remains useful when the network check fails.
+      if (!registration) return;
+    }
+    function watchInstallingWorker() {
       const worker = registration.installing;
       worker?.addEventListener('statechange', () => {
         if (worker.state === 'installed') offerUpdate();
       });
-    });
+    }
+    offerUpdate();
+    watchInstallingWorker();
+    registration.addEventListener('updatefound', watchInstallingWorker);
     registration.update().catch(() => {});
     window.addEventListener('online', () => registration.update().catch(() => {}));
     document.addEventListener('visibilitychange', () => {

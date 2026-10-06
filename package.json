@@ -1,6 +1,6 @@
 {
   "name": "financias",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "App desktop de gestao financeira pessoal",
   "main": "out/main/index.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "test:browser:advanced": "node scripts/test-ledger-advanced-browser.mjs",
     "test:maintenance:local": "node --test supabase/functions/daily-maintenance/index.test.mjs",
     "test:offline:local": "node scripts/test-ledger-offline-pwa.mjs",
+    "test:pwa:updates": "node scripts/test-pwa-updates.mjs",
     "dev:ledger": "node scripts/dev-ledger.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -39,7 +40,9 @@
     "typescript": "^6.0.3",
     "vite": "^7.3.6",
     "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "workbox-precaching": "^7.4.1",
+    "workbox-routing": "^7.4.1"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
