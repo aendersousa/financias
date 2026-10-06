@@ -672,10 +672,10 @@ try {
   stage = 'Sharing and space transfer'; console.log('Advanced browser: invite acceptance and paired space transfer');
   await page.getByLabel('Espaço financeiro ativo', { exact: true }).selectOption(shared);
   await navigate('Compartilhamento');
-  await page.getByRole('button', { name: 'Convidar por e-mail', exact: true }).click();
-  await page.getByLabel('E-mail convidado', { exact: true }).fill(invited.email);
-  await page.getByLabel('Apelido (opcional)', { exact: true }).fill('Membro avançado');
-  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
+  const invitationForm = page.getByRole('form', { name: 'Convidar membro', exact: true });
+  await invitationForm.getByLabel(/^E-?mail convidado$/i).fill(invited.email);
+  await invitationForm.getByLabel('Apelido (opcional)', { exact: true }).fill('Membro avançado');
+  await invitationForm.getByRole('button', { name: 'Gerar convite', exact: true }).click();
   const invitationLink = await page.getByLabel('Link para aceitar o convite', { exact: true }).inputValue();
   secondPage = await openPage(invited);
   await secondPage.getByRole('button', { name: 'Compartilhamento', exact: true }).click();
@@ -700,7 +700,9 @@ try {
   await expect(page.getByRole('status')).toContainText('Alteração registrada');
   assert.equal((await snapshot()).accounts.find(item => item.id === bank).balance_cents, beforeTransfer - 10000);
   assert.equal((await rpc('workspace_snapshot', { p_space: shared })).accounts.find(item => item.id === sharedBank).balance_cents, 10000);
-  await page.getByRole('button', { name: 'Cancelar as duas pontas', exact: true }).click();
+  const pairedTransfer = (await rpc('sharing_summary', { p_space: space })).transfers.find(item => item.origin_space_id === space && item.destination_space_id === shared && !item.cancelled_at);
+  await page.getByRole('button', { name: `Ver detalhes da transferência ${pairedTransfer.id}`, exact: true }).click();
+  await page.getByRole('region', { name: 'Detalhes da transferência', exact: true }).getByRole('button', { name: 'Cancelar as duas pontas', exact: true }).click();
   await page.getByLabel('Motivo da correção / cancelamento', { exact: true }).fill('Validar cancelamento atômico das duas pontas');
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Alteração registrada');

@@ -1,6 +1,6 @@
 {
   "name": "financias",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "App desktop de gestao financeira pessoal",
   "main": "out/main/index.js",
   "scripts": {
@@ -24,7 +24,8 @@
     "build:win": "electron-vite build && electron-builder --win",
     "release": "electron-vite build && electron-builder --win --publish always",
     "build:pwa": "vite build --config vite.pwa.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test:browser:sharing": "node scripts/test-sharing-layout.mjs"
   },
   "keywords": [],
   "author": "",

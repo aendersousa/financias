@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { SharingInvitationTable, SharingMemberTable, SharingSettlementTable, SharingTransferTable } from '../components/SharingTables';
 import { ledgerRpc, selectFinancialSpace, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 
@@ -7,9 +8,9 @@ interface Share { member_id: string; nickname: string | null; contribution_cents
 interface Transfer { id: string; origin_space_id: string; destination_space_id: string; amount_cents: number; occurred_on: string; kind: string; version: number; cancelled_at: string | null }
 interface Space { id: string; name: string; role: string; accounts: { id: string; name: string }[] }
 interface Sharing { space_id: string; space_kind: string; person_balances: { person_id: string; nickname: string; kind: string; balance_cents: number }[]; current_user_id: string; split_version: number; members: Member[]; invitations: { id: string; email: string; role: string; version: number; expires_at: string }[]; rule_versions: { id: string; version_number: number; effective_on: string; mode: string; weights: { member_id: string; weight: number }[] }[]; settlement: { from: string; to: string; closed_through: string | null; checkpoint_id: string | null; cost_cents: number; contributions_cents: number; surplus_cents: number; members: Share[] }; transfers: Transfer[]; spaces: Space[] }
-const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
-const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
-const button = 'btn-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
+const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
+const input = 'w-full min-w-0 field-input';
+const button = 'btn-primary disabled:opacity-50';
 const roles: Record<string,string> = { owner:'Proprietário',admin:'Administrador',member:'Membro',viewer:'Somente leitura' };
 const centsText = (amount: number) => (amount/100).toFixed(2).replace('.',',');
 function percentWeight(text: string): number {
@@ -24,7 +25,7 @@ export default function LedgerSharing({ workspace,money,onChanged }: { workspace
   const [inviteLink,setInviteLink] = useState(''),[action,setAction] = useState(window.location.hash.startsWith('#invite=') ? 'accept' : ''),[selectedMember,setSelectedMember] = useState<Member | null>(null),[selectedTransfer,setSelectedTransfer] = useState<Transfer | null>(null);
   const [origin,setOrigin] = useState(workspace.space.id),[destination,setDestination] = useState(''),[splitMode,setSplitMode] = useState('equal');
   const [destinationCategories,setDestinationCategories] = useState<{ id: string; name: string; kind: string; ledger_account_id: string | null }[]>([]);
-  const requestId = useRef(crypto.randomUUID()),pending = useRef<{ name: string; args: Record<string,unknown> } | null>(null);
+  const requestId = useRef(crypto.randomUUID()),pending = useRef<{ action: string; name: string; args: Record<string,unknown> } | null>(null),saving = useRef(false);
   const canWrite = workspace.role !== 'viewer',canAdmin = ['owner','admin'].includes(workspace.role),canOwn = workspace.role === 'owner';
   async function load() { setSummary(await ledgerRpc<Sharing>('sharing_summary',{ p_space:workspace.space.id,p_from:from,p_to:to })); }
   useEffect(() => { setSummary(null); setAction(window.location.hash.startsWith('#invite=') ? 'accept' : ''); setOrigin(workspace.space.id); void load().catch(failure => setError(failure.message)); },[workspace.space.id]);
@@ -33,17 +34,19 @@ export default function LedgerSharing({ workspace,money,onChanged }: { workspace
     if (action === 'personal_expense' && destination) void ledgerRpc<{ categories: typeof destinationCategories }>('management_data',{ p_space:destination }).then(data => setDestinationCategories(data.categories)).catch(failure => setError(failure.message));
   },[destination,action]);
   function edited() { requestId.current = crypto.randomUUID(); pending.current = null; }
+  function invitationEdited() { if(pending.current?.action==='invite')pending.current=null; }
   function open(nextAction: string,member: Member | null = null,transfer: Transfer | null = null) {
     setAction(nextAction); setSelectedMember(member); setSelectedTransfer(transfer); setError(''); setNotice(''); setOrigin(workspace.space.id); setDestination(summary?.spaces.find(space => space.id !== workspace.space.id && space.role !== 'viewer')?.id ?? ''); edited();
   }
-  async function refreshPeriod(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { await load(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível consultar.'); } finally { setBusy(false); } }
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (busy || !summary) return;
+  async function refreshPeriod(event: FormEvent) { event.preventDefault(); if(saving.current)return; saving.current=true; setBusy(true); setError(''); try { await load(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível consultar.'); } finally { saving.current=false; setBusy(false); } }
+  async function submit(event: FormEvent<HTMLFormElement>,requestedAction=action) {
+    event.preventDefault(); if (saving.current || !summary) return false;
+    const action=requestedAction;
     const data = new FormData(event.currentTarget),text = (key: string) => String(data.get(key) ?? '').trim(),amount = (key = 'amount') => parseBrlCents(text(key));
-    setBusy(true); setError(''); setNotice('');
+    saving.current=true; setBusy(true); setError(''); setNotice('');
     try {
       let name: string,args: Record<string,unknown>;
-      if (pending.current) ({ name,args } = pending.current);
+      if (pending.current?.action===action) ({ name,args } = pending.current);
       else {
         if (action === 'invite') { name = 'invite_space_member'; args = { p_space:workspace.space.id,p_email:text('email'),p_role:text('role'),p_nickname:text('nickname') || null }; }
         else if (action === 'accept') { name = 'accept_space_invitation'; args = { p_token:token.includes('#invite=') ? token.split('#invite=')[1] : token }; }
@@ -61,7 +64,7 @@ export default function LedgerSharing({ workspace,money,onChanged }: { workspace
         } else if (action === 'personal_expense') {
           name = 'create_space_personal_expense'; args = { p_origin_space:workspace.space.id,p_destination_space:destination,p_category:text('category'),p_on:text('date'),p_amount_cents:amount(),p_description:text('description'),p_account:text('payment').startsWith('account:') ? text('payment').slice(8) : null,p_card:text('payment').startsWith('card:') ? text('payment').slice(5) : null,p_client_uuid:requestId.current };
         } else { name = 'create_space_transfer'; args = { p_origin_space:origin,p_destination_space:destination,p_origin_account:text('originAccount'),p_destination_account:text('destinationAccount'),p_on:text('date'),p_amount_cents:amount(),p_mode:text('mode'),p_client_uuid:requestId.current }; }
-        pending.current = { name,args };
+        pending.current = { action,name,args };
       }
       const result = await ledgerRpc<unknown>(name,args);
       if (action === 'invite') {
@@ -71,26 +74,20 @@ export default function LedgerSharing({ workspace,money,onChanged }: { workspace
       if (action === 'accept') { await selectFinancialSpace(result as string); window.history.replaceState(null,'',window.location.pathname); await onChanged(); }
       else if (action === 'leave') { await onChanged(); }
       else { await load(); await onChanged(); }
-      setAction(''); pending.current = null; requestId.current = crypto.randomUUID(); setNotice(action === 'invite' ? 'Convite criado. Copie o link e compartilhe com a pessoa.' : 'Alteração registrada.');
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível concluir.'); }
-    finally { setBusy(false); }
+      setAction(''); setSelectedMember(null); setSelectedTransfer(null); pending.current = null; requestId.current = crypto.randomUUID(); setNotice(action === 'invite' ? 'Convite criado. Copie o link e compartilhe com a pessoa.' : 'Alteração registrada.');
+      return true;
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível concluir.'); return false; }
+    finally { saving.current=false; setBusy(false); }
   }
-  const label = (text: string,id: string) => <label className="text-sm font-medium" htmlFor={id}>{text}</label>;
+  const label = (text: string,id: string) => <label className="field-label" htmlFor={id}>{text}</label>;
   const activeMembers = summary?.members.filter(member => member.status === 'active') ?? [];
   const ownMember = activeMembers.find(member => member.user_id === summary?.current_user_id);
   const originSpace = summary?.spaces.find(space => space.id === origin),destinationSpace = summary?.spaces.find(space => space.id === destination);
   const latestRule = summary?.rule_versions.at(-1);
-  return <div className="space-y-5">
-    {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}{notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    <section className={`${panel} space-y-3`}><h2 className="font-semibold">Compartilhamento do espaço</h2><p className="text-sm text-slate-500">Todos os membros veem as contas, os lançamentos e o histórico deste espaço. Use seu espaço pessoal para informações privadas.</p><div className="flex flex-wrap gap-4 text-sm font-semibold text-brand-700 dark:text-brand-300">{canAdmin && summary?.space_kind === 'shared' && <button type="button" disabled={busy} onClick={() => open('invite')}>Convidar por e-mail</button>}<button type="button" disabled={busy} onClick={() => open('accept')}>Aceitar convite</button>{canWrite && (summary?.spaces.filter(space => space.role !== 'viewer').length ?? 0) > 1 && <><button type="button" disabled={busy} onClick={() => open('transfer')}>Transferir entre espaços</button><button type="button" disabled={busy} onClick={() => open('personal_expense')}>Paguei uma despesa de outro espaço</button></>}{ownMember && <button type="button" disabled={busy} onClick={() => open('leave',ownMember)}>Sair deste espaço</button>}</div></section>
-    {inviteLink && <section className={`${panel} space-y-3`}><h3 className="font-semibold">Link do convite · válido por 7 dias</h3><p className="text-sm text-slate-500">O convite exige login com o e-mail convidado e permite um único aceite. Compartilhe este link com a pessoa.</p>{label('Link para aceitar o convite','share-invite-link')}<input id="share-invite-link" value={inviteLink} readOnly className={input}/><button type="button" onClick={() => void navigator.clipboard.writeText(inviteLink).then(() => setNotice('Link copiado.')).catch(() => setError('Selecione e copie o link acima.'))} className={button}>Copiar link</button></section>}
-    {summary && <><section className={`${panel} space-y-3`}><h2 className="font-semibold">Membros e permissões</h2>{summary.members.map(member => <div key={member.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 dark:border-slate-800"><div><strong>{member.nickname || 'Membro'}</strong><p className="text-sm text-slate-500">{roles[member.role]} · {member.status === 'active' ? 'Ativo' : 'Saiu do espaço'}</p></div>{member.status === 'active' && <div className="flex flex-wrap gap-3 text-sm font-semibold text-brand-700 dark:text-brand-300">{canOwn && <button type="button" disabled={busy} onClick={() => open('role',member)}>Alterar papel</button>}{canOwn && member.user_id !== summary.current_user_id && <button type="button" disabled={busy} onClick={() => open('transfer_ownership',member)}>Transferir propriedade</button>}{canAdmin && member.user_id !== summary.current_user_id && (canOwn || ['member','viewer'].includes(member.role)) && <button type="button" disabled={busy} onClick={() => open('remove',member)}>Remover</button>}</div>}</div>)}{summary.invitations.length > 0 && <div className="space-y-2 pt-3"><h3 className="text-sm font-semibold">Convites pendentes</h3>{summary.invitations.map(invitation => <form key={invitation.id} onSubmit={event => { setAction('revoke'); void submitRevoke(event,invitation); }} className="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{invitation.email} · {roles[invitation.role]} · expira em {new Date(invitation.expires_at).toLocaleDateString('pt-BR')}</span><button disabled={busy} className="font-semibold text-red-700 dark:text-red-300">Revogar convite</button></form>)}</div>}</section>
-      <section className={`${panel} space-y-4`}><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">Divisão e acerto entre membros</h2><div className="flex gap-4 text-sm font-semibold text-brand-700 dark:text-brand-300">{canAdmin && summary.space_kind === 'shared' && <button type="button" disabled={busy} onClick={() => open('split')}>Configurar divisão</button>}{canWrite && activeMembers.length > 1 && <button type="button" disabled={busy} onClick={() => open('settle')}>Registrar acerto feito fora do app</button>}</div></div><form onSubmit={refreshPeriod} className="flex flex-wrap items-end gap-3"><div className="grid gap-2">{label('Início do período','share-from')}<input id="share-from" type="date" required value={from} onChange={event => setFrom(event.target.value)} className={input}/></div><div className="grid gap-2">{label('Fim do período','share-to')}<input id="share-to" type="date" required value={to} onChange={event => setTo(event.target.value)} className={input}/></div><button disabled={busy} className={button}>Consultar acerto</button></form><p className="text-sm text-slate-500">Despesas líquidas: {money(summary.settlement.cost_cents)} · Aportes líquidos: {money(summary.settlement.contributions_cents)} · Sobra: {money(summary.settlement.surplus_cents)}</p>{summary.settlement.checkpoint_id && <p className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">Divisão anterior encerrada até {summary.settlement.closed_through}. Este segmento começa em {summary.settlement.from}; os saldos pendentes dos membros restantes foram trazidos e aparecem abaixo.</p>}<div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Acerto do período</caption><thead className="text-xs text-slate-500"><tr><th className="py-2">Membro</th><th className="px-2">Contribuiu</th><th className="px-2">Parte nas despesas</th><th className="px-2">Saldo anterior restante</th><th className="px-2">Acerto</th></tr></thead><tbody>{summary.settlement.members.map(share => <tr key={share.member_id} className="border-t border-slate-100 dark:border-slate-800"><td className="py-3">{share.nickname || 'Membro'}</td><td className="px-2">{money(share.contribution_cents)}</td><td className="px-2">{money(share.share_cents)}</td><td className="px-2">{money(share.carry_remaining_cents)}</td><td className="px-2 font-semibold">{money(Math.abs(share.settlement_cents))} {share.settlement_cents > 0 ? 'a receber' : share.settlement_cents < 0 ? 'a pagar' : 'acertado'}</td></tr>)}</tbody></table></div><p className="text-sm text-slate-500">O acerto considera os pesos vigentes em cada lançamento e divide a sobra pelos pesos no fim do período. Dívidas do espaço com pessoas ficam separadas.</p><div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800"><h3 className="text-sm font-semibold">Valores pagos pessoalmente / dívida com o espaço</h3>{summary.person_balances.filter(share => share.balance_cents !== 0).map(share => <p key={share.person_id} className="text-sm">{share.balance_cents < 0 ? `O espaço deve a ${share.nickname}` : `${share.nickname} deve ao espaço`}: {money(Math.abs(share.balance_cents))}</p>)}{!summary.person_balances.some(share => share.balance_cents !== 0) && <p className="text-sm text-slate-500">Nenhuma dívida pessoal em aberto.</p>}</div><details className="text-sm"><summary className="cursor-pointer text-slate-500">Histórico de regras ({summary.rule_versions.length})</summary><ul className="mt-2 space-y-1">{summary.rule_versions.map(rule => <li key={rule.id}>Versão {rule.version_number} · desde {rule.effective_on} · {rule.mode === 'equal' ? 'Igual' : 'Percentuais'}</li>)}</ul></details></section>
-      <section className={`${panel} space-y-3`}><h2 className="font-semibold">Transferências e despesas entre espaços</h2>{summary.transfers.map(transfer => <div key={transfer.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 dark:border-slate-800"><div><strong>{money(transfer.amount_cents)}</strong><p className="text-sm text-slate-500">{transfer.occurred_on} · {summary.spaces.find(space => space.id === transfer.origin_space_id)?.name} ↔ {summary.spaces.find(space => space.id === transfer.destination_space_id)?.name} · {transfer.cancelled_at ? 'Cancelada' : transfer.kind === 'personal_expense' ? 'Despesa paga pessoalmente' : transfer.kind === 'withdrawal' ? 'Retirada' : transfer.kind === 'debt_settlement' ? 'Reembolso de dívida' : 'Aporte'}</p></div>{canWrite && !transfer.cancelled_at && summary.spaces.filter(space => [transfer.origin_space_id,transfer.destination_space_id].includes(space.id)).every(space => space.role !== 'viewer') && <div className="flex gap-3 text-sm font-semibold text-brand-700 dark:text-brand-300">{transfer.kind !== 'personal_expense' && <button type="button" disabled={busy} onClick={() => open('edit_transfer',null,transfer)}>Corrigir valor / data</button>}<button type="button" disabled={busy} onClick={() => open('cancel_transfer',null,transfer)}>Cancelar as duas pontas</button></div>}</div>)}{summary.transfers.length === 0 && <p className="text-sm text-slate-500">Nenhuma transferência registrada entre seus espaços.</p>}</section>
-    </>}
-    {summary && action && <form onSubmit={submit} onChange={edited} key={action+(selectedMember?.id ?? '')+(selectedTransfer?.id ?? '')} className={`${panel} space-y-4`}><h2 className="font-semibold">{action === 'invite' ? 'Convidar membro' : action === 'accept' ? 'Aceitar convite' : action === 'split' ? 'Regra de divisão' : action === 'settle' ? 'Acerto externo entre membros' : action === 'personal_expense' ? 'Despesa paga com dinheiro pessoal' : action === 'transfer' ? 'Transferir entre espaços' : action === 'edit_transfer' ? 'Corrigir transferência pareada' : action === 'cancel_transfer' ? 'Cancelar transferência pareada' : action === 'role' ? `Permissões de ${selectedMember?.nickname}` : action === 'transfer_ownership' ? 'Transferir propriedade' : action === 'remove' ? 'Remover membro' : 'Sair do espaço'}</h2>
-      {action === 'invite' && <div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2">{label('E-mail convidado','invite-email')}<input id="invite-email" name="email" type="email" required className={input}/></div><div className="grid gap-2">{label('Apelido (opcional)','invite-nickname')}<input id="invite-nickname" name="nickname" maxLength={100} className={input}/></div></div>}
-      {['invite','role'].includes(action) && <div className="grid max-w-xl gap-2">{label('Papel no espaço','share-role')}<select id="share-role" name="role" defaultValue={selectedMember?.role ?? 'member'} className={input}>{Object.entries(roles).filter(([role]) => canOwn || role !== 'owner').map(([role,title]) => <option key={role} value={role}>{title}</option>)}</select></div>}
+  const nestedAction=['role','transfer_ownership','remove','leave','edit_transfer','cancel_transfer'].includes(action);
+  const actionTitle=({accept:'Aceitar convite',split:'Regra de divisão',settle:'Acerto externo entre membros',personal_expense:'Despesa paga com dinheiro pessoal',transfer:'Transferir entre espaços',edit_transfer:'Corrigir transferência pareada',cancel_transfer:'Cancelar transferência pareada',role:'Permissões do membro',transfer_ownership:'Transferir propriedade',remove:'Remover membro',leave:'Sair do espaço'} as Record<string,string>)[action]??'Compartilhamento';
+  const actionForm=summary&&action?<form aria-label={actionTitle} onSubmit={submit} onChange={edited} key={action+(selectedMember?.id ?? '')+(selectedTransfer?.id ?? '')} className={`${nestedAction?'':panel} min-w-0 space-y-4`}><fieldset disabled={busy} className="min-w-0 space-y-4"><h2 className="font-semibold">{action === 'invite' ? 'Convidar membro' : action === 'accept' ? 'Aceitar convite' : action === 'split' ? 'Regra de divisão' : action === 'settle' ? 'Acerto externo entre membros' : action === 'personal_expense' ? 'Despesa paga com dinheiro pessoal' : action === 'transfer' ? 'Transferir entre espaços' : action === 'edit_transfer' ? 'Corrigir transferência pareada' : action === 'cancel_transfer' ? 'Cancelar transferência pareada' : action === 'role' ? `Permissões de ${selectedMember?.nickname}` : action === 'transfer_ownership' ? 'Transferir propriedade' : action === 'remove' ? 'Remover membro' : 'Sair do espaço'}</h2>
+            {action === 'role' && <div className="grid max-w-xl gap-2">{label('Papel no espaço','share-role')}<select id="share-role" name="role" defaultValue={selectedMember?.role ?? 'member'} className={input}>{Object.entries(roles).filter(([role]) => canOwn || role !== 'owner').map(([role,title]) => <option key={role} value={role}>{title}</option>)}</select></div>}
       {action === 'accept' && <div className="grid gap-2">{label('Link ou token do convite','accept-token')}<input id="accept-token" required value={token} onChange={event => setToken(event.target.value.trim())} className={input}/><p className="text-sm text-slate-500">Entre com a conta do e-mail que recebeu o convite. Após aceitar, você será levado ao espaço.</p></div>}
       {['remove','leave'].includes(action) && <p className="text-sm text-slate-500">O acerto até hoje será convertido em dívida com a pessoa {selectedMember?.nickname || 'do membro'}. Os lançamentos e a autoria serão preservados. O acesso será revogado assim que confirmar. O último proprietário precisa transferir a propriedade antes de sair.</p>}
       {action === 'transfer_ownership' && <p className="text-sm text-slate-500">{selectedMember?.nickname} se tornará proprietário. Seu papel será alterado para administrador.</p>}
@@ -100,12 +97,123 @@ export default function LedgerSharing({ workspace,money,onChanged }: { workspace
       {['split','settle','transfer','personal_expense','edit_transfer'].includes(action) && <div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2">{label(action === 'split' ? 'Válida a partir de' : 'Data','share-action-date')}<input id="share-action-date" name="date" type="date" required defaultValue={selectedTransfer?.occurred_on ?? workspace.space.today} className={input}/></div>{action !== 'split' && <div className="grid gap-2">{label('Valor (R$)','share-action-amount')}<input id="share-action-amount" name="amount" inputMode="decimal" required defaultValue={selectedTransfer ? centsText(selectedTransfer.amount_cents) : ''} className={input}/></div>}</div>}
       {['edit_transfer','cancel_transfer'].includes(action) && <><p className="text-sm text-slate-500">A operação altera as duas pontas juntas e exige acesso de escrita nos dois espaços. Meses fechados precisam ser reabertos.</p><div className="grid gap-2">{label('Motivo da correção / cancelamento','share-reason')}<textarea id="share-reason" name="reason" required maxLength={1000} className={input}/></div></>}
       <div className="flex gap-4"><button disabled={busy} className={button}>{busy ? 'Registrando…' : 'Confirmar'}</button><button type="button" disabled={busy} onClick={() => { setAction(''); edited(); }} className="text-sm">Voltar</button></div>
+    </fieldset></form>:null;
+  function toggleMember(member:Member) {
+    if(busy)return;
+    setSelectedMember(selectedMember?.id===member.id?null:member);
+    setSelectedTransfer(null); setAction(''); setError(''); edited();
+  }
+  function toggleTransfer(transfer:Transfer) {
+    if(busy)return;
+    setSelectedTransfer(selectedTransfer?.id===transfer.id?null:transfer);
+    setSelectedMember(null); setAction(''); setError(''); edited();
+  }
+  const memberAction=['role','transfer_ownership','remove','leave'].includes(action);
+  const transferAction=['edit_transfer','cancel_transfer'].includes(action);
+  const debtBalances=summary?.person_balances.filter(person=>person.balance_cents!==0)??[];
+  return <div className="space-y-6">
+    {error&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
+    {notice&&<p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
+    {!summary&&!error&&<p role="status" className="text-sm text-slate-500 dark:text-slate-400">Carregando compartilhamento…</p>}
+    {canAdmin&&summary?.space_kind==='shared'&&<form aria-label="Convidar membro" onChange={invitationEdited} onSubmit={async event=>{const form=event.currentTarget;if(await submit(event,'invite'))form.reset();}} className="card flex flex-wrap items-end gap-3 p-4">
+      <fieldset disabled={busy} className="contents">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">{label('E-mail convidado','invite-email')}<input id="invite-email" name="email" type="email" required placeholder="pessoa@email.com" className="field-input w-full sm:w-64"/></div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">{label('Apelido (opcional)','invite-nickname')}<input id="invite-nickname" name="nickname" maxLength={100} placeholder="Ex: Ana" className="field-input"/></div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">{label('Papel no espaço','invite-role')}<select id="invite-role" name="role" defaultValue="member" className="field-input">{Object.entries(roles).filter(([role])=>canOwn||role!=='owner').map(([role,title])=><option key={role} value={role}>{title}</option>)}</select></div>
+        <button disabled={busy} className={button}>Gerar convite</button>
+      </fieldset>
     </form>}
+    <div className="space-y-3">
+      <p className="max-w-2xl text-sm text-slate-500 dark:text-slate-400">Os participantes veem as contas, os lançamentos e o histórico deste espaço. Use seu espaço pessoal para informações privadas.</p>
+      {summary?.space_kind==='personal'&&<p className="text-sm text-slate-500 dark:text-slate-400">Os convites ficam disponíveis nos espaços compartilhados.</p>}
+      <button type="button" disabled={busy||!summary} onClick={()=>open('accept')} aria-expanded={action==='accept'} className="text-sm font-semibold text-brand-700 dark:text-brand-400">Aceitar convite</button>
+      {action==='accept'&&actionForm}
+    </div>
+    {inviteLink&&<section aria-label="Link do convite" className={panel+' space-y-3'}>
+      <h2 className="text-sm font-semibold">Link do convite · válido por 7 dias</h2>
+      <p className="max-w-2xl text-sm text-slate-500 dark:text-slate-400">Copie e envie à pessoa. O aceite exige login com o e-mail convidado e pode ser feito uma vez.</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 flex-1 space-y-1">{label('Link para aceitar o convite','share-invite-link')}<input id="share-invite-link" value={inviteLink} readOnly className={input}/></div>
+        <button type="button" onClick={()=>void navigator.clipboard.writeText(inviteLink).then(()=>setNotice('Link copiado.')).catch(()=>setError('Selecione e copie o link acima.'))} className={button}>Copiar link</button>
+      </div>
+    </section>}
+    {summary&&<>
+      <section aria-label="Participantes do espaço" className="space-y-3">
+        <h2 className="text-sm font-semibold">Membros e permissões</h2>
+        <SharingMemberTable members={summary.members}
+          renderActions={member=><button type="button" disabled={busy} onClick={()=>toggleMember(member)} aria-label={'Ver detalhes de '+(member.nickname||'Membro')} aria-expanded={selectedMember?.id===member.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>}
+          renderEditor={member=>selectedMember?.id===member.id?<section aria-label={'Detalhes do membro '+(member.nickname||'Membro')} className={panel+' min-w-0 space-y-4'}>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0 [overflow-wrap:anywhere]"><h3 className="font-semibold">{member.nickname||'Membro'}</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{roles[member.role]} · {member.status==='active'?'Ativo':'Saiu do espaço'}</p></div><button type="button" disabled={busy} onClick={()=>{setSelectedMember(null);setAction('');edited();}} className="text-sm text-slate-500 dark:text-slate-400">Fechar</button></div>
+            {member.status==='active'?<div className="flex flex-wrap gap-x-4 gap-y-3 text-sm font-semibold text-brand-700 dark:text-brand-400">
+              {canOwn&&<button type="button" disabled={busy} onClick={()=>open('role',member)}>Alterar papel</button>}
+              {canOwn&&member.user_id!==summary.current_user_id&&<button type="button" disabled={busy} onClick={()=>open('transfer_ownership',member)}>Transferir propriedade</button>}
+              {canAdmin&&member.user_id!==summary.current_user_id&&(canOwn||['member','viewer'].includes(member.role))&&<button type="button" disabled={busy} onClick={()=>open('remove',member)} className="text-red-700 dark:text-red-300">Remover</button>}
+              {ownMember?.id===member.id&&<button type="button" disabled={busy} onClick={()=>open('leave',member)}>Sair deste espaço</button>}
+            </div>:<p className="text-sm text-slate-500 dark:text-slate-400">O histórico e a autoria dos lançamentos foram preservados.</p>}
+            {memberAction&&actionForm}
+          </section>:null}/>
+      </section>
+      {summary.invitations.length>0&&<section className="space-y-3">
+        <h2 className="text-sm font-semibold">Convites pendentes</h2>
+        <SharingInvitationTable invitations={summary.invitations} renderActions={invitation=>canAdmin?<button type="button" disabled={busy} onClick={()=>void submitRevoke(invitation)} aria-label={'Revogar convite de '+invitation.email} className="text-xs font-semibold text-red-700 dark:text-red-300">Revogar</button>:null}/>
+      </section>}
+      <section aria-label="Divisão e acerto entre membros" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">Divisão e acerto entre membros</h2><div className="flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-brand-700 dark:text-brand-400">
+          {canAdmin&&summary.space_kind==='shared'&&<button type="button" disabled={busy} onClick={()=>open('split')} aria-expanded={action==='split'}>Configurar divisão</button>}
+          {canWrite&&activeMembers.length>1&&<button type="button" disabled={busy} onClick={()=>open('settle')} aria-expanded={action==='settle'}>Registrar acerto feito fora do app</button>}
+        </div></div>
+        <form aria-label="Consultar acerto" onSubmit={refreshPeriod} className="card flex flex-wrap items-end gap-3 p-4">
+          <div className="flex w-full flex-col gap-1 sm:w-auto">{label('Início do período','share-from')}<input id="share-from" type="date" required disabled={busy} value={from} onChange={event=>setFrom(event.target.value)} className="field-input"/></div>
+          <div className="flex w-full flex-col gap-1 sm:w-auto">{label('Fim do período','share-to')}<input id="share-to" type="date" required disabled={busy} value={to} onChange={event=>setTo(event.target.value)} className="field-input"/></div>
+          <button disabled={busy} className={button}>Consultar acerto</button>
+        </form>
+        {['split','settle'].includes(action)&&actionForm}
+        <dl className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+          <div><dt className="text-xs text-slate-500 dark:text-slate-400">Despesas líquidas</dt><dd className="mt-1 font-medium">{money(summary.settlement.cost_cents)}</dd></div>
+          <div><dt className="text-xs text-slate-500 dark:text-slate-400">Aportes líquidos</dt><dd className="mt-1 font-medium">{money(summary.settlement.contributions_cents)}</dd></div>
+          <div><dt className="text-xs text-slate-500 dark:text-slate-400">Sobra</dt><dd className="mt-1 font-medium">{money(summary.settlement.surplus_cents)}</dd></div>
+        </dl>
+        {summary.settlement.checkpoint_id&&<p className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">Divisão anterior encerrada até {summary.settlement.closed_through}. Este segmento começa em {summary.settlement.from}; os saldos pendentes dos membros restantes foram trazidos e aparecem abaixo.</p>}
+        <SharingSettlementTable members={summary.settlement.members} money={money}/>
+        <p className="max-w-2xl text-xs text-slate-500 dark:text-slate-400">O acerto considera as regras vigentes em cada lançamento e divide a sobra pela regra no fim do período. Dívidas do espaço com pessoas ficam separadas.</p>
+        <details className="text-sm text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Histórico de regras ({summary.rule_versions.length})</summary><ul className="mt-3 space-y-2">{summary.rule_versions.map(rule=><li key={rule.id}>Versão {rule.version_number} · desde {rule.effective_on} · {rule.mode==='equal'?'Igual':'Percentuais'}</li>)}</ul></details>
+      </section>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Valores pagos pessoalmente / dívida com o espaço</h2>
+        <div className="table-shell">
+          <table aria-label="Dívidas pessoais com o espaço" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
+            <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50"><tr><th scope="col" className="w-[65%] px-3 py-2.5 sm:px-4">Pessoa e situação</th><th scope="col" className="px-3 py-2.5 text-right sm:px-4">Saldo</th></tr></thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {debtBalances.map(person=><tr key={person.person_id} className="table-row-hover transition-[background-color]"><td className="px-3 py-2.5 [overflow-wrap:anywhere] sm:px-4"><p>{person.nickname}</p><p className={'mt-1 text-xs '+(person.balance_cents<0?'text-rose-600 dark:text-rose-400':'text-brand-600 dark:text-brand-400')}>{person.balance_cents<0?'O espaço deve à pessoa':'A pessoa deve ao espaço'}</p></td><td className="px-3 py-2.5 text-right font-medium [overflow-wrap:anywhere] sm:px-4">{money(Math.abs(person.balance_cents))}</td></tr>)}
+              {debtBalances.length===0&&<tr><td colSpan={2} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">Nenhuma dívida pessoal em aberto.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section aria-label="Transferências e despesas entre espaços" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">Transferências e despesas entre espaços</h2>
+          {canWrite&&summary.spaces.filter(space=>space.role!=='viewer').length>1&&<div className="flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-brand-700 dark:text-brand-400"><button type="button" disabled={busy} onClick={()=>open('transfer')} aria-expanded={action==='transfer'}>Transferir entre espaços</button><button type="button" disabled={busy} onClick={()=>open('personal_expense')} aria-expanded={action==='personal_expense'}>Paguei uma despesa de outro espaço</button></div>}
+        </div>
+        {['transfer','personal_expense'].includes(action)&&actionForm}
+        <SharingTransferTable transfers={summary.transfers} money={money}
+          renderRoute={transfer=><>{summary.spaces.find(space=>space.id===transfer.origin_space_id)?.name} ↔ {summary.spaces.find(space=>space.id===transfer.destination_space_id)?.name}</>}
+          renderActions={transfer=><button type="button" disabled={busy} onClick={()=>toggleTransfer(transfer)} aria-label={'Ver detalhes da transferência '+transfer.id} aria-expanded={selectedTransfer?.id===transfer.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>}
+          renderEditor={transfer=>selectedTransfer?.id===transfer.id?<section aria-label="Detalhes da transferência" className={panel+' min-w-0 space-y-4'}>
+            <div className="flex items-start justify-between gap-3"><h3 className="font-semibold">Transferência entre espaços</h3><button type="button" disabled={busy} onClick={()=>{setSelectedTransfer(null);setAction('');edited();}} className="text-sm text-slate-500 dark:text-slate-400">Fechar</button></div>
+            <p className="text-sm [overflow-wrap:anywhere]">{summary.spaces.find(space=>space.id===transfer.origin_space_id)?.name} ↔ {summary.spaces.find(space=>space.id===transfer.destination_space_id)?.name}: {money(transfer.amount_cents)}</p>
+            {canWrite&&!transfer.cancelled_at&&summary.spaces.filter(space=>[transfer.origin_space_id,transfer.destination_space_id].includes(space.id)).every(space=>space.role!=='viewer')&&<div className="flex flex-wrap gap-4 text-sm font-semibold text-brand-700 dark:text-brand-400">
+              {transfer.kind!=='personal_expense'&&<button type="button" disabled={busy} onClick={()=>open('edit_transfer',null,transfer)}>Corrigir valor / data</button>}
+              <button type="button" disabled={busy} onClick={()=>open('cancel_transfer',null,transfer)} className="text-red-700 dark:text-red-300">Cancelar as duas pontas</button>
+            </div>}
+            {transferAction&&actionForm}
+          </section>:null}/>
+      </section>
+    </>}
   </div>;
-  async function submitRevoke(event: FormEvent,invitation: Sharing['invitations'][number]) {
-    event.preventDefault(); if (busy) return; setBusy(true); setError('');
+  async function submitRevoke(invitation: Sharing['invitations'][number]) {
+    if(saving.current)return; saving.current=true; setBusy(true); setError('');
     try { await ledgerRpc('revoke_space_invitation',{ p_space:workspace.space.id,p_invitation:invitation.id,p_version:invitation.version }); await load(); setNotice('Convite revogado.'); setAction(''); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível revogar.'); }
-    finally { setBusy(false); }
+    finally { saving.current=false; setBusy(false); }
   }
 }
