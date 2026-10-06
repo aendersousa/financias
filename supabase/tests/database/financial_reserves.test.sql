@@ -47,14 +47,16 @@ select is((select status from finance.reserves where id=:'provision'),'active','
 select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.reserve_summary(:'space','2000-01-15')->'reserves') x where x->>'id'=:'provision'),180000::bigint,'Cancelling transaction restores derived consumption');
 set constraints all deferred;
 select api.create_reserve(:'space',jsonb_build_object('name','Viagem cartão','financial_account_id',:'bank','target_amount_cents',200000)) as card_goal \gset
-select api.reserve_contribution(:'space',:'card_goal','contribution',200000,:'today');
+-- These consumption fixtures intentionally over-reserve cash; consent is
+-- explicit so the 14.5.6 guard stays active while testing reserve chronology.
+select api.reserve_contribution(:'space',:'card_goal','contribution',200000,:'today',null,null,api.preview_reserve_contribution(:'space',:'card_goal','contribution',200000,:'today')->>'approvalToken');
 select api.create_credit_card(:'space','Cartão viagem',500000,1,10,:'bank') as card \gset
 select api.record_card_purchase(:'space',:'card',:'category',120000,1,:'today','Passagem',null,null,null,null,:'card_goal') as card_purchase \gset
 select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.reserve_summary(:'space',:'today')->'reserves') x where x->>'id'=:'card_goal'),80000::bigint,'CT-GOAL-001 card purchase swaps reserve for card commitment');
 select api.pay_card(:'space',:'card',:'bank_ledger',120000,:'today');
 select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.reserve_summary(:'space',:'today')->'reserves') x where x->>'id'=:'card_goal'),80000::bigint,'Card payment does not consume reserve twice');
 select api.create_reserve(:'space',jsonb_build_object('name','Parcelas','financial_account_id',:'bank','target_amount_cents',200000)) as installment_goal \gset
-select api.reserve_contribution(:'space',:'installment_goal','contribution',200000,:'today');
+select api.reserve_contribution(:'space',:'installment_goal','contribution',200000,:'today',null,null,api.preview_reserve_contribution(:'space',:'installment_goal','contribution',200000,:'today')->>'approvalToken');
 select api.record_card_purchase(:'space',:'card',:'category',120000,2,:'today','Passagem parcelada',null,null,null,null,:'installment_goal') as installment_purchase \gset
 select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.reserve_summary(:'space',:'today')->'reserves') x where x->>'id'=:'installment_goal'),140000::bigint,'Only first card installment consumes reserve immediately');
 select api.refund_transaction(:'space',:'installment_purchase',120000,:'today',null,'cancel_remaining');
@@ -62,7 +64,7 @@ select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.re
 select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.reserve_summary(:'space',(:'today'::date+interval '3 months')::date)->'reserves') x where x->>'id'=:'installment_goal'),200000::bigint,'Cancelled future installment never consumes reserve later');
 select is((api.reserve_summary(:'space',:'today')->>'reserved_cents')::bigint,460000::bigint,'Account goals excluded from virtual reserved total');
 select api.create_reserve(:'space',jsonb_build_object('name','Centavos','financial_account_id',:'bank','target_amount_cents',100)) as cents_goal \gset
-select api.reserve_contribution(:'space',:'cents_goal','contribution',100,:'today');
+select api.reserve_contribution(:'space',:'cents_goal','contribution',100,:'today',null,null,api.preview_reserve_contribution(:'space',:'cents_goal','contribution',100,:'today')->>'approvalToken');
 select api.record_card_purchase(:'space',:'card',:'category',6,3,:'today','Prepara três faturas') as dummy \gset
 select jsonb_agg(jsonb_build_object('ledger_account_id',ledger_account_id,'amount_cents',amount_cents,'card_statement_id',card_statement_id,'installment_number',installment_number,'installment_count',installment_count) order by line_number) as card_entries from finance.ledger_entries where ledger_transaction_id=:'dummy' and card_statement_id is not null \gset
 select api.cancel_transaction(:'space',:'dummy',1,'Substituir divisão entre categorias');
@@ -70,7 +72,7 @@ select api.post_transaction(:'space',jsonb_build_object('kind','card_purchase','
 select api.refund_transaction(:'space',:'cents_purchase',3,:'today',null,'cancel_remaining');
 select is((select (x->>'balance_cents')::bigint from jsonb_array_elements(api.reserve_summary(:'space',(:'today'::date+interval '4 months')::date)->'reserves') x where x->>'id'=:'cents_goal'),99::bigint,'Refund largest remainder cancels both linked future cents consistently');
 select api.create_reserve(:'space',jsonb_build_object('name','Um centavo','financial_account_id',:'bank','target_amount_cents',100)) as single_cent_goal \gset
-select api.reserve_contribution(:'space',:'single_cent_goal','contribution',100,:'today');
+select api.reserve_contribution(:'space',:'single_cent_goal','contribution',100,:'today',null,null,api.preview_reserve_contribution(:'space',:'single_cent_goal','contribution',100,:'today')->>'approvalToken');
 select api.record_card_purchase(:'space',:'card',:'category',3,3,:'today','Prepara parcelas um centavo') as dummy_single \gset
 select jsonb_agg(jsonb_build_object('ledger_account_id',ledger_account_id,'amount_cents',amount_cents,'card_statement_id',card_statement_id,'installment_number',installment_number,'installment_count',installment_count) order by line_number) as single_entries from finance.ledger_entries where ledger_transaction_id=:'dummy_single' and card_statement_id is not null \gset
 select api.cancel_transaction(:'space',:'dummy_single',1,'Substituir divisão entre categorias');

@@ -9,7 +9,7 @@ set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"aaaaaaaa-0000-4000-8000-000000000011","role":"authenticated"}',true);
 select api.create_personal_space('Espaço A') as space_a \gset
 select is(api.create_personal_space('Espaço A'), :'space_a'::uuid,'Personal space creation is idempotent');
-select is((select count(*) from finance.ledger_accounts),3::bigint,'Exactly three system accounts');
+select is((select count(*) from finance.ledger_accounts where owner_type='system'),3::bigint,'Exactly three system accounts');
 select ok(not has_table_privilege('authenticated','finance.ledger_entries','INSERT'),'No direct entry inserts');
 select ok(not has_table_privilege('authenticated','finance.ledger_transactions','DELETE'),'No direct transaction deletion');
 reset role;

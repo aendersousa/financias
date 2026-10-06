@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import type { FreeToSpendInput, FreeToSpendScenario } from '../../../shared/finance/freeToSpend';
 import { shiftDays } from '../../../shared/finance/calendar';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
-import { cachedWorkspace,cacheProjection } from '../lib/offlineStorage';
+import { activeUserId,cachedWorkspace,cacheProjection } from '../lib/offlineStorage';
+import LedgerFreeWarnings, { type FreeToSpendDiagnostics } from './LedgerFreeWarnings';
 
 interface EssentialDetails {
   essentialNeedCents: number; grossNeedCents: number;
@@ -17,7 +18,7 @@ interface SpendReadModel extends FreeToSpendInput {
   reserves: readonly (FreeToSpendInput['reserves'][number] & { label?: string })[];
   scheduled: readonly (FreeToSpendInput['scheduled'][number] & { label?: string })[];
 }
-type Projection = { input: SpendReadModel; calculation: { horizonEnd: string; conservative: FreeToSpendScenario; expected: FreeToSpendScenario } };
+type Projection = { input: SpendReadModel; calculation: { horizonEnd: string; conservative: FreeToSpendScenario; expected: FreeToSpendScenario }; diagnostics?: FreeToSpendDiagnostics };
 const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
 const dateLabel = (value: string) => value.split('-').reverse().join('/');
 const itemGroups: Record<string,string> = { income:'Entrada prevista',agenda:'Conta a pagar',card:'Fatura',card_reserve:'Fatura vinculada à reserva',person:'Valor com pessoa',scheduled:'Movimentação agendada',scheduled_reserve:'Gasto agendado com reserva' };
@@ -36,8 +37,10 @@ export default function LedgerFreeToSpend({ workspace,money,offline=false }: { w
         if (cache?.workspace.space.id!==workspace.space.id || !cache.projection) throw new Error('Nenhum cálculo salvo.');
         return cache.projection as Projection;
       }
+      const userId=await activeUserId();
       const response=await ledgerRpc<Projection>('free_to_spend_summary',{ p_space:workspace.space.id });
-      await cacheProjection(workspace.space.id,response).catch(() => undefined);
+      if (await activeUserId() !== userId) throw new Error('O usuário mudou enquanto o cálculo era carregado.');
+      await cacheProjection(workspace.space.id,response,userId).catch(() => undefined);
       return response;
     };
     void load().then(response => {
@@ -61,7 +64,7 @@ export default function LedgerFreeToSpend({ workspace,money,offline=false }: { w
   ];
   return <section className={`${panel} space-y-5`} aria-label="Livre para gastar">
     <div className="grid gap-5 sm:grid-cols-2"><div className="border-l-4 border-teal-600 pl-4"><h2 className="font-semibold">Livre para gastar</h2><p className="mt-1 text-xs text-slate-500">Cenário conservador</p><p aria-label="Livre para gastar conservador" className="mt-2 text-3xl font-semibold">{money(result.conservative.valueCents)}</p><p className="mt-2 text-sm text-slate-500">Até {dateLabel(shiftDays(result.horizonEnd,-1))}, incluindo as obrigações deste período.</p></div><div><h3 className="text-sm font-medium">Se as receitas previstas entrarem</h3><p aria-label="Livre para gastar esperado" className="mt-2 text-2xl font-semibold">{money(result.expected.valueCents)}</p><p className="mt-2 max-w-prose text-sm text-slate-500">Considera também os valores estimados, condicionais e atrasados que você espera receber.</p></div></div>
-    {result.conservative.valueCents<0 && <p className="text-sm text-amber-800 dark:text-amber-300">Os compromissos e reservas superam o dinheiro previsto para este período. Revise as contas a pagar e seus planos antes de assumir novos gastos.</p>}
+    {result.conservative.valueCents<0 && <LedgerFreeWarnings diagnostics={projection.diagnostics} money={money} />}
     <details className="border-t border-slate-200 pt-4 dark:border-slate-800"><summary className="cursor-pointer text-sm font-semibold">Como esse valor foi calculado</summary><div className="mt-4 space-y-5">
       <div className="grid gap-1.5"><label htmlFor="spend-scenario" className="text-sm font-medium">Detalhar cenário</label><select id="spend-scenario" value={scenario} onChange={event => setScenario(event.target.value as 'conservative' | 'expected')} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="conservative">Conservador</option><option value="expected">Se as receitas previstas entrarem</option></select></div>
       <dl className="space-y-3">{rows.map(row => <div key={row.label} className="flex flex-wrap items-center justify-between gap-2 text-sm"><dt className="max-w-prose text-slate-500">{row.label}</dt><dd className="font-semibold">{money(row.amount)}</dd></div>)}<div className="flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-3 text-sm dark:border-slate-800"><dt className="font-semibold">Livre para gastar</dt><dd className="font-semibold">{money(detail.valueCents)}</dd></div></dl>

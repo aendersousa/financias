@@ -94,13 +94,14 @@ select set_config('request.jwt.claims','{"sub":"aaaaaaaa-0000-4000-8000-00000000
 select api.settle_commitment(:'space',:'overdue',1000,:'today') as payment \gset
 select api.daily_alerts(:'space') is not null as refreshed \gset
 select ok((select resolved_at is not null from finance.notifications where source_id=:'overdue' and type='agenda_overdue'),'Paying an overdue commitment resolves its state alert');
-select api.reserve_contribution(:'space',:'goal','contribution',100000,:'today',null,gen_random_uuid()) as excessive_contribution \gset
+-- Deliberately over-reserve after acknowledging the pre-contribution warning.
+select api.reserve_contribution(:'space',:'goal','contribution',100000,:'today',null,gen_random_uuid(),api.preview_reserve_contribution(:'space',:'goal','contribution',100000,:'today')->>'approvalToken') as excessive_contribution \gset
 select api.daily_alerts(:'space') is not null as refreshed \gset
 select is((select count(*) from finance.notifications where type='reserve_uncovered' and resolved_at is null),2::bigint,'Uncovered reserves warn for the holding account and the total cash balance');
 select api.reserve_contribution(:'space',:'goal','release',100000,:'today',null,gen_random_uuid()) as release \gset
 select api.daily_alerts(:'space') is not null as refreshed \gset
 select is((select count(*) from finance.notifications where type='reserve_uncovered' and resolved_at is null),0::bigint,'Covering the reserves resolves their alerts without deleting history');
-select api.reserve_contribution(:'space',:'goal','contribution',100000,:'today',null,gen_random_uuid()) as new_excessive_contribution \gset
+select api.reserve_contribution(:'space',:'goal','contribution',100000,:'today',null,gen_random_uuid(),api.preview_reserve_contribution(:'space',:'goal','contribution',100000,:'today')->>'approvalToken') as new_excessive_contribution \gset
 select api.daily_alerts(:'space') is not null as refreshed \gset
 select is((select count(*) from finance.notifications where type='reserve_uncovered'),4::bigint,'A later uncovered episode has new receipts while retaining resolved history');
 select is((select count(*) from finance.notifications where type='goal_threshold'),3::bigint,'Falling and recovering the goal never reissues crossed thresholds');

@@ -41,8 +41,8 @@ select api.create_reserve(:'space',jsonb_build_object('name','Gasto reservado','
 select api.reserve_contribution(:'space',:'reserve','contribution',10000,'2026-10-01');
 select api.post_transaction(:'space',jsonb_build_object('kind','expense','occurred_on','2026-10-02','competence_month','2026-10-01','description','Gasto com reserva','entries',jsonb_build_array(jsonb_build_object('ledger_account_id',:'leaf_ledger','reserve_id',:'reserve','amount_cents',10000),jsonb_build_object('ledger_account_id',:'bank_ledger','amount_cents',-10000))));
 select api.post_transaction(:'space',jsonb_build_object('kind','expense','occurred_on','2026-10-02','competence_month','2026-10-01','description','De competência anterior','entries',jsonb_build_array(jsonb_build_object('ledger_account_id',:'leaf_ledger','original_competence_month','2026-09-01','amount_cents',10000),jsonb_build_object('ledger_account_id',:'bank_ledger','amount_cents',-10000))));
-select api.create_category(:'space','Encargos','expense',:'parent') as charges \gset
-update finance.categories set system_role='financial_charges' where id=:'charges';
+select id as charges,version as charges_version from finance.categories where financial_space_id=:'space' and system_role='financial_charges' \gset
+select api.manage_category(:'space',:'charges',:'charges_version','move',jsonb_build_object('parent_id',:'parent'));
 select ledger_account_id as charges_ledger from finance.categories where id=:'charges' \gset
 select api.post_transaction(:'space',jsonb_build_object('kind','expense','occurred_on','2026-10-02','competence_month','2026-10-01','description','Encargos de teste','entries',jsonb_build_array(jsonb_build_object('ledger_account_id',:'charges_ledger','amount_cents',5000),jsonb_build_object('ledger_account_id',:'bank_ledger','amount_cents',-5000))));
 select is((private.essential_need(:'space','2026-10-02','2026-10-20')->>'essentialNeedCents')::bigint,26000::bigint,'Reserved, original-competence and financial-charge entries are excluded');

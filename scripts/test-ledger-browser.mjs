@@ -35,7 +35,7 @@ try {
   await page.addInitScript(session => { localStorage.setItem('sb-127-auth-token',JSON.stringify(session)); },data.session);
   await page.goto('http://127.0.0.1:4180/financias/');
   await expect(page.getByRole('heading',{ name:'Visão geral',exact:true })).toBeVisible();
-  await expect(page.getByText('Minhas finanças',{ exact:true })).toBeVisible();
+  await expect(page.getByText('Pessoal',{ exact:true })).toBeVisible();
   async function navigate(label) { await page.getByRole('button',{ name:label,exact:true }).click(); }
   async function open() {
     await expect(page.getByRole('alert')).toHaveCount(0);
@@ -95,7 +95,9 @@ try {
   await page.getByLabel('Categoria',{ exact:true }).selectOption({ label:'Mercado navegador' });
   await page.getByLabel('Valor (R$)').fill('150,00'); await save();
   await page.getByRole('button',{ name:'Registrar pagamento integral' }).click();
-  await expect(page.getByText('Pago',{ exact:true })).toBeVisible();
+  await page.getByLabel('Situação',{ exact:true }).selectOption('settled');
+  await expect(page.getByText('Conta navegador',{ exact:true })).toBeVisible();
+  assert.equal((await snapshot()).commitments.find(item => item.title === 'Conta navegador').settlement_status,'settled');
   await navigate('Orçamentos'); await open();
   await page.getByLabel('Categoria',{ exact:true }).selectOption({ label:'Mercado navegador' });
   await page.getByLabel('Valor (R$)').fill('500,00'); await save();
@@ -121,7 +123,8 @@ try {
   await page.getByRole('button',{ name:'Salvar recorrência',exact:true }).click();
   await expect(page.getByRole('button',{ name:'Editar série',exact:true })).toBeVisible();
   await navigate('Agenda');
-  await expect(page.getByText('Internet mensal',{ exact:true })).toHaveCount(13);
+  await expect(page.getByText('Internet mensal',{ exact:true })).toHaveCount(1);
+  assert.equal((await snapshot()).commitments.filter(item => item.title === 'Internet mensal' && item.settlement_status !== 'cancelled').length,13,'Recurrence exists for thirteen months while calendar displays the selected month');
   await navigate('Recorrências');
   await page.getByRole('button',{ name:'Encerrar hoje',exact:true }).click();
   await expect(page.getByRole('status')).toContainText('Alterações salvas');
@@ -268,7 +271,7 @@ try {
   assert.equal((await reserves()).reserved_cents,10000,'Active provision is the only virtual reserved balance');
   await navigate('Agenda');
   await page.getByText('Provisão navegador',{ exact:true }).locator('xpath=../../..').getByRole('button',{ name:'Registrar pagamento integral',exact:true }).click();
-  await expect(page.getByRole('status')).toContainText('Salvo');
+  await expect(page.getByRole('status')).toContainText('Agenda atualizada');
   const settledReserves = await reserves(),settledProvision = settledReserves.reserves.find(reserve => reserve.id === provision.id);
   assert.equal(settledProvision.status,'settled','Paying the provision commitment settles the reserve');
   assert.equal(settledProvision.balance_cents,0,'Settled provision releases its surplus automatically');
@@ -306,6 +309,7 @@ try {
   await expect(page.getByRole('button',{ name:'Atualizar notificações',exact:true })).toBeEnabled();
   if (await markAll.isEnabled()) {
     await markAll.click();
+    await expect(page.getByText('0 notificações não lidas',{ exact:true })).toBeVisible();
     await expect(markAll).toBeDisabled();
     assert.equal((await rpc('daily_alerts',{ p_space:spaceId })).unread_count,0);
   }

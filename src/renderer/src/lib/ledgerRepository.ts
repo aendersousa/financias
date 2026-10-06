@@ -15,7 +15,8 @@ export interface LedgerWorkspace {
   transactions: LedgerTransaction[]; budgets: LedgerBudget[];
 }
 
-export interface UserSettings { theme: 'system' | 'light' | 'dark'; privacy_mode: boolean; active_financial_space_id: string | null; notification_preferences: Record<string, boolean>; preferences: Record<string, unknown>; version: number }
+export interface UserSettings { user_id: string; theme: 'system' | 'light' | 'dark'; privacy_mode: boolean; active_financial_space_id: string | null; notification_preferences: Record<string, boolean>; preferences: Record<string, unknown>; version: number }
+export interface FinancialSpace { id: string; name: string; timezone: string; kind: 'personal' | 'shared'; version: number; role: LedgerWorkspace['role'] }
 export interface WorkspaceMetadata {
   tags: { id: string; name: string; version: number; archived_at: string | null }[];
   transaction_tags: { ledger_transaction_id: string; tag_id: string }[];
@@ -29,7 +30,17 @@ export async function ledgerRpc<T>(name: string, args: Record<string, unknown>):
   if (error) throw new Error(error.message);
   return data as T;
 }
-export async function loadLedgerWorkspace(): Promise<LedgerWorkspace> {
-  const space = await ledgerRpc<string>('create_personal_space', {});
-  return ledgerRpc<LedgerWorkspace>('workspace_snapshot', { p_space: space });
+export async function loadLedgerWorkspace(): Promise<LedgerWorkspace & { loadedForUserId: string }> {
+  const settings = await ledgerRpc<UserSettings>('get_user_settings', {});
+  const spaces = await ledgerRpc<FinancialSpace[]>('my_spaces', {});
+  const selected = spaces.find(item => item.id === settings.active_financial_space_id) ?? spaces.find(item => item.kind === 'personal');
+  const space = selected?.id ?? await ledgerRpc<string>('create_personal_space', {});
+  if (selected && ['owner','admin'].includes(selected.role)) await ledgerRpc('initialize_space_defaults', {p_space:space});
+  const workspace = await ledgerRpc<LedgerWorkspace>('workspace_snapshot', { p_space: space });
+  return { ...workspace, loadedForUserId: settings.user_id };
+}
+
+export async function selectFinancialSpace(spaceId: string): Promise<void> {
+  const settings = await ledgerRpc<UserSettings>('get_user_settings', {});
+  await ledgerRpc('update_user_settings', { p_version: settings.version, p_changes: { active_financial_space_id: spaceId } });
 }
