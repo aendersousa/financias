@@ -16,6 +16,8 @@ import Settings from './pages/Settings'
 import { useAppStore } from './store/useAppStore'
 import { supabase } from './lib/supabaseClient'
 import { handleOAuthCallbackUrl } from './lib/oauth'
+import { useVersionGate } from './lib/versionGate'
+import UpdateRequired from './components/UpdateRequired'
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
@@ -26,6 +28,7 @@ export default function App() {
   const reset = useAppStore((s) => s.reset)
   const theme = useAppStore((s) => s.theme)
   const toggleTheme = useAppStore((s) => s.toggleTheme)
+  const blockingVersion = useVersionGate()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -63,6 +66,10 @@ export default function App() {
       capacitorHandle?.remove()
     }
   }, [])
+
+  if (blockingVersion) {
+    return <UpdateRequired policy={blockingVersion} />
+  }
 
   if (authLoading) {
     return <div className="flex h-screen items-center justify-center bg-slate-100 dark:bg-slate-950" />
