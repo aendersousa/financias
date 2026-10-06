@@ -74,8 +74,11 @@ try {
   await page.getByLabel('Nome ou descrição').fill('Banco navegador');
   await page.getByLabel('Saldo inicial (R$)').fill('1.000,00'); await save();
   await expect(page.getByText('R$ 1.000,00',{ exact:true })).toBeVisible();
-  await navigate('2. Categorias'); await open();
-  await page.getByLabel('Nome ou descrição').fill('Mercado navegador'); await save();
+  await navigate('2. Categorias');
+  await page.getByLabel('Nome',{ exact:true }).fill('Mercado navegador');
+  await page.getByRole('button',{ name:'Adicionar categoria',exact:true }).click();
+  await expect(page.getByRole('status')).toContainText('Categoria adicionada');
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await navigate('3. Cartões'); await open();
   await page.getByLabel('Nome ou descrição').fill('Cartão navegador');
   await page.getByLabel('Conta',{ exact:true }).selectOption({ label:'Banco navegador' });

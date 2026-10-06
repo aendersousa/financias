@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Tags } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
+import CategoryPanels from '../components/CategoryPanels'
 import type { CategoryType } from '../../../shared/types'
 
 export default function Categories() {
@@ -26,8 +27,6 @@ export default function Categories() {
     }
   }
 
-  const receitas = categories.filter((c) => c.tipo === 'receita')
-  const despesas = categories.filter((c) => c.tipo === 'despesa')
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,40 +64,10 @@ export default function Categories() {
         </button>
       </form>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <CategoryList title="Receitas" items={receitas} onRemove={removeCategory} />
-        <CategoryList title="Despesas" items={despesas} onRemove={removeCategory} />
-      </div>
-    </div>
-  )
-}
-
-function CategoryList({
-  title,
-  items,
-  onRemove
-}: {
-  title: string
-  items: { id: number; nome: string; cor: string }[]
-  onRemove: (id: number) => void
-}) {
-  return (
-    <div className="card p-4">
-      <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
-      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-        {items.map((c) => (
-          <li key={c.id} className="flex items-center justify-between py-2 text-sm">
-            <span className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: c.cor }} />
-              {c.nome}
-            </span>
-            <button onClick={() => onRemove(c.id)} className="btn-danger-text">
-              Excluir
-            </button>
-          </li>
-        ))}
-        {items.length === 0 && <p className="py-2 text-sm text-slate-400">Nenhuma categoria.</p>}
-      </ul>
+      <CategoryPanels
+        categories={categories.map(category => ({ id: category.id, name: category.nome, kind: category.tipo === 'receita' ? 'income' : 'expense', color: category.cor }))}
+        renderActions={category => <button onClick={() => removeCategory(category.id)} className="btn-danger-text">Excluir</button>}
+      />
     </div>
   )
 }

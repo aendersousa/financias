@@ -1,6 +1,7 @@
 import { cloneElement, isValidElement, useEffect, useState, type ReactElement, type FormEvent, type ReactNode } from 'react';
 import { ledgerRpc, selectFinancialSpace, type FinancialSpace, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
+import CategoryPanels from '../components/CategoryPanels';
 
 interface ManagedAccount { id: string; name: string; kind: string; institution_name: string | null; liquidity: string; is_emergency_reserve: boolean; archived_at: string | null; version: number }
 interface ManagedCategory { id: string; name: string; kind: string; parent_id: string | null; icon: string | null; color: string | null; is_essential: boolean; fixity: string | null; income_class: string | null; is_tax_deductible: boolean; archived_at: string | null; system_role: string | null; version: number }
@@ -15,6 +16,8 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   const [data, setData] = useState<Management | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null), [adjusting, setAdjusting] = useState<string | null>(null), [retry, setRetry] = useState(() => crypto.randomUUID()), [showArchived, setShowArchived] = useState(false), [liquidity, setLiquidity] = useState('cash');
   const [balanceCheck,setBalanceCheck]=useState<BalanceCheck | null>(null),[adjustmentId,setAdjustmentId]=useState(() => crypto.randomUUID());
+  const [categoryName, setCategoryName] = useState(''), [categoryKind, setCategoryKind] = useState('expense'), [categoryColor, setCategoryColor] = useState('#64748b');
+  const [categoryParent, setCategoryParent] = useState('');
   const canManage = ['owner', 'admin'].includes(workspace.role), canWrite = workspace.role !== 'viewer';
   async function load() { setData(await ledgerRpc<Management>('management_data', { p_space: workspace.space.id })); }
   useEffect(() => { void load().catch(failure => setError(failure.message)); }, [workspace]);
@@ -32,10 +35,38 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
     event.preventDefault(); const form = new FormData(event.currentTarget);
     await run('manage_category', { p_category: category.id, p_version: category.version, p_action: 'update', p_changes: { name: String(form.get('name')).trim(), icon: String(form.get('icon')).trim() || null, color: String(form.get('color')), ...(category.kind === 'expense' ? { is_essential: form.get('essential') === 'on', fixity: String(form.get('fixity')), is_tax_deductible: form.get('tax') === 'on' } : { income_class: String(form.get('income_class')) }) } });
   }
+  async function createCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!categoryName.trim() || busy) return;
+    setBusy(true); setError(''); setNotice('');
+    let created = false;
+    try {
+      const id = await ledgerRpc<string>('create_category', {
+        p_space: workspace.space.id, p_name: categoryName.trim(), p_kind: categoryKind,
+        p_parent: categoryParent || null,
+        p_income_class: categoryKind === 'income' ? 'recurring' : null,
+        p_fixity: categoryKind === 'expense' ? 'variable' : null
+      });
+      created = true;
+      setCategoryName('');
+      const next = await ledgerRpc<Management>('management_data', { p_space: workspace.space.id });
+      const category = next.categories.find(item => item.id === id);
+      if (!category) throw new Error('Atualize a tela para conferir a categoria adicionada.');
+      await ledgerRpc('manage_category', {
+        p_space: workspace.space.id, p_category: id, p_version: category.version,
+        p_action: 'update', p_changes: { color: categoryColor }
+      });
+      await load(); await onChanged(); setNotice('Categoria adicionada.');
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : 'Não foi possível salvar.';
+      setError(created ? `A categoria foi adicionada, mas não foi possível concluir a atualização: ${message}` : message);
+      if (created) await Promise.all([load(), onChanged()]).catch(() => {});
+    } finally { setBusy(false); }
+  }
   return <div className="space-y-4">
     {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-teal-700 dark:text-teal-300">{notice}</p>}
-    {section !== 'settings' && <label className="flex gap-2 text-sm"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)}/>Mostrar também os cadastros arquivados</label>}
+    {section === 'accounts' && <label className="flex gap-2 text-sm"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)}/>Mostrar também os cadastros arquivados</label>}
     {!data && <p className={panel}>Carregando cadastros…</p>}
     {section === 'accounts' && data?.accounts.filter(account => showArchived || !account.archived_at).map(account => <div key={`${account.id}-${account.version}`} className={`${panel} space-y-4`}>
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{account.name}</h2><p className="text-sm text-slate-500">{account.archived_at ? 'Arquivada' : ({ cash: 'Disponível em contas', benefit: 'Benefício VR/VA', investment: 'Investimento', property: 'Bem' } as Record<string, string>)[account.liquidity]}{account.is_emergency_reserve ? ' · Reserva de emergência' : ''}</p></div><span className="font-semibold">{workspace.accounts.find(item => item.id === account.id) ? money(workspace.accounts.find(item => item.id === account.id)!.balance_cents) : 'Saldo preservado no histórico'}</span></div>
@@ -52,15 +83,35 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
         {field('Data do extrato', <input name="date" type="date" defaultValue={workspace.space.today} max={workspace.space.today} required className={input}/>)}{field('Saldo do extrato (R$)', <input name="balance" inputMode="decimal" required className={input}/>)}<div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Comparar saldos</button><button type="button" onClick={() => setAdjusting(null)}>Cancelar</button></div>
       </form>{balanceCheck && <div className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-sm">Saldo no aplicativo: {money(balanceCheck.application_balance_cents)} · Extrato: {money(balanceCheck.statement_balance_cents)}</p>{balanceCheck.difference_cents===0 ? <p role="status" className="text-sm font-semibold text-teal-700 dark:text-teal-300">Os saldos conferem.</p> : <><p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Diferença: {money(balanceCheck.difference_cents)}</p><p className="text-xs text-slate-500">Confira se falta algum lançamento ou importe o extrato. Se a diferença permanecer sem explicação, você pode registrá-la como ajuste de patrimônio.</p><form onSubmit={event => {event.preventDefault(); void run('account_adjustment',{p_account:account.id,p_on:balanceCheck.checked_on,p_statement_balance_cents:balanceCheck.statement_balance_cents,p_reason:String(new FormData(event.currentTarget).get('reason')),p_client_uuid:adjustmentId});}} className="grid gap-3">{field('Motivo para registrar o ajuste',<input name="reason" minLength={5} maxLength={1000} required className={input}/>)}<div><button disabled={busy} className={primary}>Registrar diferença não identificada</button></div></form></>}</div>}</>}
     </div>)}
-    {section === 'categories' && data?.categories.filter(category => showArchived || !category.archived_at).map(category => <div key={`${category.id}-${category.version}`} className={`${panel} space-y-4`}>
-      <div><h2 className="font-semibold">{category.name}</h2><p className="text-sm text-slate-500">{category.parent_id ? `${data.categories.find(parent => parent.id === category.parent_id)?.name ?? 'Grupo'} › ` : ''}{category.kind === 'expense' ? 'Despesa' : 'Receita'}{category.archived_at ? ' · Arquivada' : ''}{category.system_role ? ' · Categoria do sistema' : ''}</p></div>
-      {canManage && <div className="flex flex-wrap gap-4 text-sm font-semibold text-teal-700 dark:text-teal-300">{!category.archived_at && <button disabled={busy} onClick={() => setEditing(category.id)}>Editar categoria</button>}{!category.system_role && !data.categories.some(child => child.parent_id === category.id) && <button disabled={busy} onClick={() => void run('manage_category', { p_category: category.id, p_version: category.version, p_action: category.archived_at ? 'restore' : 'archive' })}>{category.archived_at ? 'Restaurar categoria' : 'Arquivar categoria'}</button>}</div>}
-      {canManage && editing === category.id && <><form onSubmit={event => void saveCategory(event, category)} className="grid gap-4 sm:grid-cols-2">
+    {section === 'categories' && <>
+      {canManage && <form aria-label="Adicionar categoria" onSubmit={createCategory} className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label htmlFor="new-category-name" className="field-label">Nome</label>
+          <input id="new-category-name" disabled={busy} value={categoryName} onChange={event => setCategoryName(event.target.value)} maxLength={100} required placeholder="Ex: Assinaturas" className="field-input" />
+        </div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label htmlFor="new-category-kind" className="field-label">Tipo</label>
+          <select id="new-category-kind" disabled={busy} value={categoryKind} onChange={event => { setCategoryKind(event.target.value); setCategoryParent(''); }} className="field-input"><option value="expense">Despesa</option><option value="income">Receita</option></select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="new-category-color" className="field-label">Cor</label>
+          <input id="new-category-color" disabled={busy} type="color" value={categoryColor} onChange={event => setCategoryColor(event.target.value)} className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700" />
+        </div>
+        <button disabled={busy} className="btn-primary">Adicionar categoria</button>
+      </form>}
+      {data && <CategoryPanels
+        categories={data.categories.filter(category => showArchived || !category.archived_at)}
+        renderName={category => canManage && !category.archived_at ? <button type="button" disabled={busy} onClick={() => setEditing(category.id)} aria-label={`Editar categoria ${category.name}`} title="Editar categoria" className="min-w-0 break-words text-left">{category.name}</button> : <span className="break-words">{category.name}{category.archived_at && <span className="ml-2 text-xs text-slate-400">Arquivada</span>}</span>}
+        renderActions={category => canManage && !category.system_role && !data.categories.some(child => child.parent_id === category.id) ? <button type="button" disabled={busy} onClick={() => void run('manage_category', { p_category: category.id, p_version: category.version, p_action: category.archived_at ? 'restore' : 'archive' })} title={category.archived_at ? undefined : 'Retirar das categorias ativas e preservar o histórico'} className={category.archived_at ? 'shrink-0 text-xs text-sky-600 dark:text-sky-400' : 'btn-danger-text shrink-0'}>{category.archived_at ? 'Restaurar' : 'Excluir'}</button> : null}
+        renderEditor={category => canManage && editing === category.id ? <div className="mt-4 space-y-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700"><form onSubmit={event => void saveCategory(event, category)} className="grid gap-4 sm:grid-cols-2">
         {field('Nome da categoria', <input name="name" defaultValue={category.name} required maxLength={100} className={input}/>)}{field('Ícone (texto curto)', <input name="icon" defaultValue={category.icon ?? ''} maxLength={40} className={input}/>)}{field('Cor', <input name="color" type="color" defaultValue={category.color ?? '#0d9488'} className={input}/>)}
         {category.kind === 'expense' ? <>{field('Comportamento', <select name="fixity" defaultValue={category.fixity ?? 'variable'} className={input}><option value="variable">Variável</option><option value="fixed">Fixa</option></select>)}<label className="flex gap-2 text-sm"><input name="essential" type="checkbox" defaultChecked={category.is_essential}/>Despesa essencial</label><label className="flex gap-2 text-sm"><input name="tax" type="checkbox" defaultChecked={category.is_tax_deductible}/>Dedutível no imposto de renda</label></> : field('Classe da renda', <select name="income_class" defaultValue={category.income_class ?? 'recurring'} className={input}><option value="recurring">Recorrente</option><option value="extraordinary">Extraordinária</option><option value="benefit">Benefício</option><option value="cashback">Cashback</option><option value="financial">Financeira</option></select>)}
         <div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Salvar categoria</button><button type="button" onClick={() => setEditing(null)}>Cancelar</button></div>
-      </form><form onSubmit={event => { event.preventDefault(); void run('manage_category', { p_category: category.id, p_version: category.version, p_action: 'move', p_changes: { parent_id: String(new FormData(event.currentTarget).get('parent')) || null } }); }} className="flex flex-wrap items-end gap-3">{field('Mover para outro grupo', <select name="parent" defaultValue={category.parent_id ?? ''} className={input}><option value="">Categoria principal</option>{data.categories.filter(parent => parent.id !== category.id && parent.kind === category.kind && !parent.archived_at && data.categories.some(child => child.parent_id === parent.id)).map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}</select>)}<button disabled={busy} className={primary}>Mover categoria</button></form></>}
-    </div>)}
+      </form><form onSubmit={event => { event.preventDefault(); void run('manage_category', { p_category: category.id, p_version: category.version, p_action: 'move', p_changes: { parent_id: String(new FormData(event.currentTarget).get('parent')) || null } }); }} className="flex flex-wrap items-end gap-3">{field('Mover para outro grupo', <select name="parent" defaultValue={category.parent_id ?? ''} className={input}><option value="">Categoria principal</option>{data.categories.filter(parent => parent.id !== category.id && parent.kind === category.kind && !parent.archived_at && data.categories.some(child => child.parent_id === parent.id)).map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}</select>)}<button disabled={busy} className={primary}>Mover categoria</button></form></div> : null}
+      />}
+      {data?.categories.some(category => category.archived_at) && <details className="text-sm text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Categorias excluídas</summary><label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />Mostrar categorias excluídas para restaurar</label></details>}
+      {canManage && data && <details className="text-sm text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Organizar em grupos</summary><div className="mt-3 max-w-sm">{field('Grupo da nova categoria', <select value={categoryParent} onChange={event => setCategoryParent(event.target.value)} className="field-input w-full"><option value="">Categoria principal</option>{data.categories.filter(category => category.kind === categoryKind && !category.archived_at).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>)}</div></details>}
+    </>}
     {section === 'settings' && data && <>
       {canManage && <form key={data.space.version} onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('update_space', { p_version: data.space.version, p_name: String(form.get('name')), p_timezone: String(form.get('timezone')) }); }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Seu espaço financeiro</h2>{field('Nome do espaço', <input name="name" defaultValue={data.space.name} required maxLength={100} className={input}/>)}{field('Fuso horário', <input name="timezone" defaultValue={data.space.timezone} placeholder="America/Sao_Paulo" required className={input}/>)}<div><button disabled={busy} className={primary}>Salvar espaço</button></div></form>}
       <form onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError(''); try { const id = await ledgerRpc<string>('create_space', { p_name: String(form.get('name')), p_kind: String(form.get('kind')), p_timezone: String(form.get('timezone')) }); await selectFinancialSpace(id); await onChanged(); } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); } }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Criar outro espaço</h2><p className="text-sm text-slate-500 sm:col-span-2">Cada espaço tem suas próprias contas, categorias, saldos e histórico.</p>{field('Nome do novo espaço', <input name="name" required maxLength={100} className={input}/>)}{field('Tipo do espaço', <select name="kind" className={input}><option value="personal">Pessoal</option><option value="shared">Compartilhado</option></select>)}{field('Fuso horário do novo espaço', <input name="timezone" defaultValue={data.space.timezone} required className={input}/>)}<div className="sm:col-span-2"><button disabled={busy} className={primary}>Criar e abrir espaço</button></div></form>

@@ -131,8 +131,8 @@ try {
   await expect(page.getByRole('status')).toContainText('Alterações salvas');
   assert.equal((await snapshot()).accounts.find(item => item.id === bank).name, 'Banco avançado editado');
   await navigate('2. Categorias');
-  const categoryPanel = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Mercado avançado', exact: true }) }).filter({ has: page.getByRole('button', { name: 'Editar categoria', exact: true }) }).last();
-  await categoryPanel.getByRole('button', { name: 'Editar categoria', exact: true }).click();
+  const categoryPanel = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Editar categoria Mercado avançado', exact: true }) });
+  await categoryPanel.getByRole('button', { name: 'Editar categoria Mercado avançado', exact: true }).click();
   await page.getByLabel('Nome da categoria', { exact: true }).fill('Mercado avançado editado');
   await page.getByRole('button', { name: 'Salvar categoria', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Alterações salvas');
