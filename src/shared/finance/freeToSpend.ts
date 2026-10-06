@@ -21,6 +21,9 @@ export interface ForecastStatement {
   firstInstallmentCents?: number;
   essentialFractionCents?: number;
   estimatedChargesCents?: number;
+  /** Only linked shares included in this statement's counted debt whose reserve
+   * consumption date has not arrived. They receive reserve coverage once. */
+  reservedUnconsumed?: readonly { reserveId: string; amountCents: number; occurredOn?: string }[];
 }
 export interface ForecastPerson {
   id: string;
@@ -60,7 +63,7 @@ export interface FreeToSpendScenario {
   uncoveredReserveCents: number;
   safetyCents: number;
   essentialCents: number;
-  items: { id: string; group: string; amountCents: number }[];
+  items: { id: string; group: string; amountCents: number; reserveId?: string; consideredCents?: number; coveredCents?: number }[];
 }
 
 function nextCycle(today: string, day: number): string {
@@ -85,7 +88,11 @@ function consideredAmount(item: ForecastCommitment, expected: boolean): number {
   const history = (item.actualHistoryCents ?? []).slice(0, 3).map(assertCents);
   let due = assertCents(item.dueCents);
   if (!expected && item.certainty === 'estimated' && history.length > 0) {
-    if (item.direction === 'inflow') due = Math.min(...history);
+    // Assumed rule for the specification conflict: 15.11.2 uses the historical
+    // minimum without comparing the estimate, while 15.11.4 requires expected
+    // >= conservative. Cap uncertain income at the current estimate as well,
+    // so historical receipts cannot make the conservative scenario less prudent.
+    if (item.direction === 'inflow') due = Math.min(due, ...history);
     else {
       const total = history.reduce((sum, value) => sum + BigInt(value), 0n);
       const count = BigInt(history.length);
@@ -96,9 +103,8 @@ function consideredAmount(item: ForecastCommitment, expected: boolean): number {
   return Math.max(0, sumCents([due, -assertCents(item.paidCents)]));
 }
 
-/** Section 15: one deterministic computation shared by the UI and alerts.
- * Inputs are read-model projections from Ledger, Agenda and Planning, never
- * totals independently assembled by screen components.
+/** Section 15: deterministic test oracle for the canonical server calculation.
+ * Screens read free_to_spend_summary; they never assemble or calculate totals.
  */
 export function calculateFreeToSpend(input: FreeToSpendInput): { horizonEnd: string; conservative: FreeToSpendScenario; expected: FreeToSpendScenario } {
   const horizonEnd = freeToSpendHorizon(input);
@@ -110,14 +116,13 @@ export function calculateFreeToSpend(input: FreeToSpendInput): { horizonEnd: str
   const reserved = sumCents([...reserves.values()]);
   const scenario = (expected: boolean): FreeToSpendScenario => {
     const inflows: number[] = [], obligations: number[] = [];
-    const reserveObligations = new Map<string, number[]>();
+    const reserveObligations = new Map<string, { id: string; group: string; value: number; on: string }[]>();
     const items: FreeToSpendScenario['items'] = [];
-    const addObligation = (id: string, group: string, value: number, reserveId?: string) => {
+    const addObligation = (id: string, group: string, value: number, reserveId?: string, on = input.today) => {
       assertCents(value);
       if (value < 0) throw new RangeError('Obrigação negativa.');
-      items.push({ id, group, amountCents: -value });
-      if (reserveId && reserves.has(reserveId)) reserveObligations.set(reserveId, [...(reserveObligations.get(reserveId) ?? []), value]);
-      else obligations.push(value);
+      if (reserveId && reserves.has(reserveId)) reserveObligations.set(reserveId, [...(reserveObligations.get(reserveId) ?? []), { id, group, value, on }]);
+      else { obligations.push(value); items.push({ id, group, amountCents: value===0 ? 0 : -value }); }
     };
     for (const item of input.commitments) {
       if (item.cancelled || item.paidCents >= item.dueCents || item.effectiveDueOn >= horizonEnd) continue;
@@ -126,14 +131,22 @@ export function calculateFreeToSpend(input: FreeToSpendInput): { horizonEnd: str
         const value = consideredAmount(item, expected);
         inflows.push(value); items.push({ id: item.id, group: 'income', amountCents: value });
       } else if (item.paymentLiquidity === 'cash' || item.paymentLiquidity === 'card') {
-        addObligation(item.id, 'agenda', consideredAmount(item, expected), item.reserveId);
+        addObligation(item.id, 'agenda', consideredAmount(item, expected), item.reserveId, item.effectiveDueOn);
       }
     }
     for (const statement of input.statements) {
       const remaining = Math.max(0, assertCents(statement.remainingIncludingScheduledCents));
       const whole = statement.status !== 'future' || statement.effectiveDueOn < horizonEnd;
       const counted = whole ? remaining : Math.min(remaining, sumCents([statement.firstInstallmentCents ?? 0, statement.essentialFractionCents ?? 0]));
-      addObligation(statement.id, 'card', sumCents([counted, whole ? statement.estimatedChargesCents ?? 0 : 0]));
+      const linkedParts = statement.reservedUnconsumed ?? [];
+      const linked = sumCents(linkedParts.map((part) => {
+        const value = assertCents(part.amountCents);
+        if (value < 0) throw new RangeError('Parcela vinculada negativa.');
+        return value;
+      }));
+      if (linked > counted) throw new RangeError('Vínculo de reserva excede a fatura considerada.');
+      addObligation(statement.id, 'card', sumCents([counted - linked, whole ? statement.estimatedChargesCents ?? 0 : 0]));
+      for (const part of linkedParts) addObligation(`${statement.id}:${part.reserveId}`, 'card_reserve', part.amountCents, part.reserveId, part.occurredOn ?? statement.effectiveDueOn);
     }
     for (const person of input.people) {
       if (person.openReminderDates.length > 0 && !person.openReminderDates.some((date) => date < horizonEnd)) continue;
@@ -150,10 +163,21 @@ export function calculateFreeToSpend(input: FreeToSpendInput): { horizonEnd: str
         const linked = sumCents(reservedParts.map((part) => part.amountCents));
         if (linked > -value) throw new RangeError('Vínculo de reserva excede a saída agendada.');
         addObligation(movement.id, 'scheduled', -value - linked);
-        for (const part of reservedParts) addObligation(`${movement.id}:${part.reserveId}`, 'scheduled_reserve', part.amountCents, part.reserveId);
+        for (const part of reservedParts) addObligation(`${movement.id}:${part.reserveId}`, 'scheduled_reserve', part.amountCents, part.reserveId, movement.occurredOn);
       }
     }
-    const uncovered = sumCents([...reserveObligations.entries()].map(([id, values]) => Math.max(0, sumCents(values) - reserves.get(id)!)));
+    const uncoveredParts: number[] = [];
+    for (const [reserveId, rows] of reserveObligations) {
+      let available = reserves.get(reserveId)!;
+      for (const row of rows.sort((a, b) => a.on.localeCompare(b.on) || a.id.localeCompare(b.id))) {
+        const covered = Math.min(available, row.value);
+        available -= covered;
+        const uncovered = row.value - covered;
+        uncoveredParts.push(uncovered);
+        items.push({ id: row.id, group: row.group, amountCents: uncovered === 0 ? 0 : -uncovered, reserveId, consideredCents: row.value, coveredCents: covered });
+      }
+    }
+    const uncovered = sumCents(uncoveredParts);
     const expectedInflows = sumCents(inflows);
     const committed = sumCents([...obligations, uncovered]);
     return { valueCents: sumCents([cash, expectedInflows, -committed, -reserved, -safety, -essential]), cashCents: cash, expectedInflowsCents: expectedInflows,

@@ -1,11 +1,21 @@
-import { cloneElement, useEffect, useState, type FormEvent, type ReactElement } from 'react';
-import { ArrowLeftRight, CalendarDays, CreditCard, LayoutDashboard, LogOut, Plus, RefreshCw, Tags, Users, Wallet } from 'lucide-react';
-import { formatBrlCents, parseBrlCents, sumCents } from '../../../shared/finance/money';
-import { ledgerRpc, loadLedgerWorkspace, type LedgerWorkspace as Workspace } from '../lib/ledgerRepository';
+import { cloneElement, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { ArrowLeftRight, Bell, CalendarDays, CreditCard, History, LayoutDashboard, LogOut, Plus, RefreshCw, Repeat, Settings, Tags, Users, Wallet } from 'lucide-react';
+import { formatBrlCents, parseBrlCents } from '../../../shared/finance/money';
+import { ledgerRpc, loadLedgerWorkspace, type LedgerWorkspace as Workspace, type UserSettings } from '../lib/ledgerRepository';
+import LedgerExtras, { type ExtraSection } from './LedgerExtras';
+import LedgerCardOperations from './LedgerCardOperations';
+import LedgerPortfolio from './LedgerPortfolio';
+import LedgerClosing from './LedgerClosing';
+import LedgerTransactionActions from './LedgerTransactionActions';
+import LedgerReserves, { type ReserveSummary } from './LedgerReserves';
+import LedgerNotifications from './LedgerNotifications';
+import LedgerFreeToSpend from './LedgerFreeToSpend';
+import LedgerQuickEntry from './LedgerQuickEntry';
+import { activeUserId,cacheWorkspace,cachedWorkspace,clearLocalData,offlineQueue,sendLocalQueue } from '../lib/offlineStorage';
 import { supabase } from '../lib/supabaseClient';
 import { useAppStore } from '../store/useAppStore';
 
-type Section = 'dashboard' | 'accounts' | 'categories' | 'cards' | 'people' | 'transactions' | 'agenda' | 'budgets';
+type Section = 'dashboard' | 'accounts' | 'categories' | 'cards' | 'people' | 'transactions' | 'agenda' | 'budgets' | 'reserves' | 'notifications' | 'portfolio' | 'closing' | ExtraSection;
 const navigation = [
   { id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
   { id: 'accounts', label: '1. Contas', icon: Wallet },
@@ -14,13 +24,22 @@ const navigation = [
   { id: 'people', label: 'Pessoas', icon: Users },
   { id: 'transactions', label: 'Lançamentos', icon: ArrowLeftRight },
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-  { id: 'budgets', label: 'Orçamentos', icon: Wallet }
+  { id: 'budgets', label: 'Orçamentos', icon: Wallet },
+  { id: 'reserves', label: 'Metas e provisões', icon: Wallet },
+  { id: 'recurrences', label: 'Recorrências', icon: Repeat },
+  { id: 'portfolio', label: 'Patrimônio', icon: Wallet },
+  { id: 'closing', label: 'Relatório mensal e fechamento', icon: History },
+  { id: 'tags', label: 'Tags', icon: Tags },
+  { id: 'audit', label: 'Histórico de alterações', icon: History },
+  { id: 'notifications', label: 'Notificações', icon: Bell },
+  { id: 'settings', label: 'Configurações', icon: Settings }
 ] as const;
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
 const panelClass = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
 
 export default function LedgerWorkspace() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [reserveSummary,setReserveSummary] = useState<ReserveSummary | null>(null);
   const [section, setSection] = useState<Section>('dashboard');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -28,18 +47,56 @@ export default function LedgerWorkspace() {
   const [formOpen, setFormOpen] = useState(false);
   const [kind, setKind] = useState('expense');
   const [retryId, setRetryId] = useState(() => crypto.randomUUID());
+  const [selectedTransaction,setSelectedTransaction] = useState<string | null>(null);
+  const [online,setOnline]=useState(navigator.onLine),[cacheTime,setCacheTime]=useState<string | null>(null),[usingCache,setUsingCache]=useState(false);
+  const [logoutCount,setLogoutCount]=useState<number | null>(null);
+  const preferencesInitialized = useRef(false);
   const privacy = useAppStore(s => s.privacyMode);
   const togglePrivacy = useAppStore(s => s.togglePrivacyMode);
   const money = (value: number) => privacy ? 'R$ ••••' : formatBrlCents(value);
 
+  async function reloadData() {
+    const next = await loadLedgerWorkspace();
+    const reserves = await ledgerRpc<ReserveSummary>('reserve_summary',{ p_space:next.space.id });
+    setWorkspace(next); setReserveSummary(reserves);
+    setUsingCache(false); setCacheTime(new Date().toISOString());
+    await cacheWorkspace(next).catch(() => setError('Os dados foram carregados, mas não foi possível salvar uma cópia neste aparelho.'));
+  }
+
   async function refresh() {
     setBusy(true); setError('');
-    try { setWorkspace(await loadLedgerWorkspace()); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível carregar seus dados.'); }
+    try {
+      if (!preferencesInitialized.current) {
+        const settings = await ledgerRpc<UserSettings>('get_user_settings',{});
+        useAppStore.getState().setPrivacyMode(settings.privacy_mode);
+        useAppStore.getState().setTheme(settings.theme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' : settings.theme);
+        preferencesInitialized.current = true;
+      }
+      await reloadData();
+    }
+    catch (failure) {
+      if (!navigator.onLine || failure instanceof Error && /fetch|network|conexão/i.test(failure.message)) {
+        const cache=await cachedWorkspace().catch(() => undefined);
+        if (cache) { setWorkspace(cache.workspace); setCacheTime(cache.updatedAt); setUsingCache(true); setError(''); }
+        else setError('Sem conexão e sem dados salvos neste aparelho. Conecte-se para abrir seu espaço.');
+      } else setError(failure instanceof Error ? failure.message : 'Não foi possível carregar seus dados.');
+    }
     finally { setBusy(false); }
   }
   useEffect(() => { void refresh(); }, []);
-  function navigate(next: Section) { setSection(next); setFormOpen(false); setNotice(''); setKind('expense'); }
+  useEffect(() => {
+    const change=() => { setOnline(navigator.onLine); setFormOpen(false); setSelectedTransaction(null); if (navigator.onLine) void refresh(); };
+    window.addEventListener('online',change); window.addEventListener('offline',change);
+    return () => { window.removeEventListener('online',change); window.removeEventListener('offline',change); };
+  },[]);
+  async function logout() {
+    try {
+      const rows=await offlineQueue.list(await activeUserId());
+      if (rows.length) { setLogoutCount(rows.length); return; }
+      await clearLocalData(); await supabase.auth.signOut();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível sair.'); }
+  }
+  function navigate(next: Section) { setSection(next); setFormOpen(false); setNotice(''); setKind('expense'); setSelectedTransaction(null); }
   function openForm() { setRetryId(crypto.randomUUID()); setFormOpen(true); setNotice(''); setError(''); }
   async function execute(name: string, args: Record<string, unknown>) {
     if (!workspace) return;
@@ -47,7 +104,7 @@ export default function LedgerWorkspace() {
     try {
       await ledgerRpc(name, { p_space: workspace.space.id, ...args });
       setFormOpen(false); setNotice('Salvo. Os saldos foram atualizados.');
-      setWorkspace(await loadLedgerWorkspace());
+      await reloadData();
       setRetryId(crypto.randomUUID());
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível salvar.'); }
     finally { setBusy(false); }
@@ -61,26 +118,27 @@ export default function LedgerWorkspace() {
     const account = workspace.accounts.find(item => item.id === text('account'));
     try {
       if (section === 'accounts') await execute('create_financial_account', { p_name: text('name'), p_kind: text('type'), p_opening_cents: parseBrlCents(text('amount') || '0'), p_opening_on: text('date') });
-      else if (section === 'categories') await execute('create_category', { p_name: text('name'), p_kind: text('kind'), p_parent: text('parent') || null, p_income_class: text('kind') === 'income' ? 'recurring' : null });
+      else if (section === 'categories') await execute('create_category', { p_name: text('name'), p_kind: text('kind'), p_parent: text('parent') || null, p_income_class: text('kind') === 'income' ? text('income_class') : null, p_is_essential: text('kind') === 'expense' && data.get('essential') === 'on', p_fixity: text('kind') === 'expense' ? text('fixity') : null });
       else if (section === 'people') await execute('create_person', { p_nickname: text('name') });
       else if (section === 'cards') await execute('create_credit_card', { p_name: text('name'), p_limit_cents: amount(), p_closing_day: Number(text('closing')), p_due_day: Number(text('due')), p_payment_account: account?.id ?? null });
       else if (section === 'budgets') await execute('create_budget', { p_payload: { category_id: text('category'), amount_cents: amount(), effective_from_month: `${text('month')}-01` } });
       else if (section === 'agenda') await execute('create_commitment', { p_payload: { title: text('name'), direction: text('kind'), certainty: text('certainty'), amount_cents: amount(), due_on: text('date'), category_id: text('category'), payment_method: 'account', payment_financial_account_id: account?.id } });
       else if (section === 'transactions') {
         const category = workspace.categories.find(item => item.id === text('category'));
-        if (kind === 'card_purchase') await execute('record_card_purchase', { p_card: text('card'), p_category: category?.id, p_total_cents: amount(), p_installments: Number(text('installments')), p_on: text('date'), p_description: text('name'), p_client_uuid: retryId });
+        if (kind === 'card_purchase') await execute('record_card_purchase', { p_card: text('card'), p_category: category?.id, p_total_cents: amount(), p_installments: Number(text('installments')), p_on: text('date'), p_description: text('name'), p_client_uuid: retryId, p_reserve:text('reserve') || null });
         else if (kind === 'card_payment') await execute('pay_card', { p_card: text('card'), p_origin_ledger: account?.ledger_account_id, p_amount_cents: amount(), p_on: text('date'), p_channel: text('channel'), p_client_uuid: retryId });
         else if (kind === 'transfer') await execute('transfer_between_accounts', { p_from: account?.id, p_to: text('destination'), p_amount_cents: amount(), p_occurred_on: text('date'), p_client_uuid: retryId });
         else {
           if (!category?.ledger_account_id || !account) throw new Error('Escolha uma conta e uma categoria final.');
           const cents = amount(), sign = kind === 'income' ? -1 : 1;
           await execute('post_transaction', { p_payload: { kind, occurred_on: text('date'), competence_month: `${text('date').slice(0,7)}-01`, description: text('name'), client_uuid: retryId,
-            entries: [{ ledger_account_id: category.ledger_account_id, amount_cents: sign*cents }, { ledger_account_id: account.ledger_account_id, amount_cents: -sign*cents }] } });
+            entries: [{ ledger_account_id: category.ledger_account_id, amount_cents: sign*cents,reserve_id:kind === 'expense' ? text('reserve') || null : null }, { ledger_account_id: account.ledger_account_id, amount_cents: -sign*cents }] } });
         }
       }
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Verifique os campos.'); }
   }
-  const canWrite = workspace?.role !== 'viewer';
+  const canWrite = workspace?.role !== 'viewer' && online && !usingCache;
+  const extraSection = ['tags','recurrences','settings','audit','portfolio','closing','reserves','notifications'].includes(section);
   const categoryOptions = workspace?.categories.filter(c => c.ledger_account_id && c.kind === (section === 'agenda' ? kind === 'inflow' ? 'income' : 'expense' : kind === 'income' ? 'income' : 'expense')) ?? [];
   const field = (label: string, content: ReactElement<{ id?: string }>) => {
     const id = `${section}-${label.replace(/[^a-zA-Z0-9]/g,'-')}`;
@@ -91,24 +149,28 @@ export default function LedgerWorkspace() {
   return <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
       <div><p className="font-bold">Finanças</p><p className="text-xs text-slate-500">{workspace?.space.name ?? 'Carregando seu espaço'}</p></div>
-      <div className="flex gap-3"><button onClick={togglePrivacy} className="text-sm">{privacy ? 'Mostrar valores' : 'Ocultar valores'}</button><button onClick={() => void refresh()} disabled={busy} aria-label="Atualizar"><RefreshCw size={18}/></button><button onClick={() => void supabase.auth.signOut()} aria-label="Sair"><LogOut size={18}/></button></div>
+      <div className="flex gap-3"><button onClick={togglePrivacy} className="text-sm">{privacy ? 'Mostrar valores' : 'Ocultar valores'}</button><button onClick={() => void refresh()} disabled={busy} aria-label="Atualizar"><RefreshCw size={18}/></button><button onClick={() => void logout()} aria-label="Sair"><LogOut size={18}/></button></div>
     </header>
+    {(!online || usingCache) && <div role="status" className="sticky top-0 z-20 bg-amber-100 px-5 py-3 text-sm text-amber-950">Sem conexão{cacheTime ? ` · atualizado em ${new Date(cacheTime).toLocaleString('pt-BR')}` : ''}. Os valores são os últimos recebidos do servidor.</div>}
+    {logoutCount!==null && <div role="dialog" aria-label="Sair com lançamentos não enviados" className="mx-auto mt-4 max-w-3xl space-y-3 rounded-xl border border-amber-300 bg-white p-5 dark:bg-slate-900"><p>Você tem {logoutCount} lançamentos não enviados. Se sair agora, eles serão apagados deste aparelho.</p><div className="flex flex-wrap gap-4 text-sm font-semibold"><button disabled={!online} onClick={() => { void sendLocalQueue().then(async () => { setLogoutCount((await offlineQueue.list(await activeUserId())).length); }).catch(failure => setError(failure.message)); }}>Enviar antes de sair</button><button onClick={() => { void clearLocalData().then(() => supabase.auth.signOut()).catch(failure => setError(failure.message)); }}>Sair e apagar do aparelho</button><button onClick={() => setLogoutCount(null)}>Cancelar saída</button></div></div>}
     <div className="mx-auto grid max-w-7xl gap-6 p-4 md:grid-cols-[210px_1fr] md:p-6">
       <nav className="flex gap-2 overflow-x-auto md:flex-col" aria-label="Navegação principal">{navigation.map(item => <button key={item.id} onClick={() => navigate(item.id)} aria-current={section === item.id ? 'page' : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${section === item.id ? 'bg-teal-600 text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}><item.icon size={18}/>{item.label}</button>)}</nav>
       <main className="min-w-0 space-y-5">
-        <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">{navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'')}</h1>{canWrite && workspace && section !== 'dashboard' && <button onClick={openForm} className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white"><Plus size={18}/>Cadastrar</button>}</div>
+        <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">{navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'')}</h1>{canWrite && workspace && section !== 'dashboard' && !extraSection && <button onClick={openForm} className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white"><Plus size={18}/>Cadastrar</button>}</div>
         {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</div>}
         {notice && <p role="status" className="text-sm text-teal-700 dark:text-teal-300">{notice}</p>}
         {!workspace && <div className={panelClass}>{busy ? 'Carregando…' : 'Não foi possível abrir seus dados. Use Atualizar para tentar novamente.'}</div>}
+        {workspace && <LedgerQuickEntry workspace={workspace} money={money} onChanged={reloadData}/>}
         {workspace && formOpen && <form onSubmit={submit} className={`${panelClass} grid gap-4 sm:grid-cols-2`}>
           {['accounts','categories','cards','people','transactions','agenda'].includes(section) && !['card_payment'].includes(kind) && field('Nome ou descrição',<input name="name" required maxLength={100} className={inputClass}/>)}
-          {section === 'accounts' && field('Tipo',<select name="type" className={inputClass}><option value="checking">Conta corrente</option><option value="wallet">Carteira</option><option value="savings">Poupança</option><option value="investment">Investimento</option></select>)}
-          {section === 'categories' && <>{field('Tipo',<select name="kind" className={inputClass}><option value="expense">Despesa</option><option value="income">Receita</option></select>)}{field('Dentro de outra categoria',<select name="parent" className={inputClass}><option value="">Categoria principal</option>{workspace.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}</>}
+          {section === 'accounts' && field('Tipo',<select name="type" className={inputClass}><option value="checking">Conta corrente</option><option value="payment">Conta de pagamento</option><option value="wallet">Carteira</option><option value="savings">Poupança</option><option value="benefit">Benefício VR/VA</option><option value="investment">Investimento</option><option value="property">Bem</option></select>)}
+          {section === 'categories' && <>{field('Tipo',<select name="kind" value={kind === 'income' ? 'income' : 'expense'} onChange={event => setKind(event.target.value)} className={inputClass}><option value="expense">Despesa</option><option value="income">Receita</option></select>)}{field('Dentro de outra categoria',<select name="parent" className={inputClass}><option value="">Categoria principal</option>{workspace.categories.filter(c => !c.ledger_account_id && c.kind === (kind === 'income' ? 'income' : 'expense')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}{kind === 'income' ? field('Classe da receita',<select name="income_class" className={inputClass}><option value="recurring">Recorrente, como salário</option><option value="extraordinary">Extraordinária, como venda ou presente</option><option value="benefit">Benefício VR/VA</option><option value="cashback">Cashback</option><option value="financial">Financeira</option></select>) : <>{field('Comportamento da despesa',<select name="fixity" className={inputClass}><option value="variable">Variável</option><option value="fixed">Fixa</option></select>)}<label className="flex items-center gap-2 text-sm"><input name="essential" type="checkbox"/>É uma despesa essencial</label></>}</>}
           {section === 'transactions' && field('Operação',<select value={kind} onChange={e => setKind(e.target.value)} className={inputClass}><option value="expense">Despesa</option><option value="income">Receita</option><option value="transfer">Transferência</option><option value="card_purchase">Compra no cartão</option><option value="card_payment">Pagamento do cartão</option></select>)}
           {section === 'agenda' && <>{field('Direção',<select name="kind" value={kind === 'inflow' ? 'inflow' : 'outflow'} onChange={e => setKind(e.target.value)} className={inputClass}><option value="outflow">A pagar</option><option value="inflow">A receber</option></select>)}{field('Valor previsto',<select name="certainty" className={inputClass}><option value="confirmed">Confirmado</option><option value="estimated">Estimado</option>{kind === 'inflow' && <option value="conditional">Condicional</option>}</select>)}</>}
           {['cards','transactions','agenda'].includes(section) && kind !== 'card_purchase' && accountField()}
           {section === 'transactions' && kind === 'transfer' && accountField('destination','Conta de destino')}
           {(section === 'agenda' || section === 'budgets' || section === 'transactions' && !['transfer','card_payment'].includes(kind)) && categoryField()}
+          {section === 'transactions' && ['expense','card_purchase'].includes(kind) && field('Usar uma meta (opcional)',<select name="reserve" className={inputClass}><option value="">Gasto sem vínculo com uma meta</option>{reserveSummary?.reserves.filter(reserve => reserve.reserve_type === 'goal' && ['active','achieved'].includes(reserve.status)).map(reserve => <option key={reserve.id} value={reserve.id}>{reserve.name} · {money(reserve.balance_cents)}</option>)}</select>)}
           {section === 'transactions' && ['card_purchase','card_payment'].includes(kind) && field('Cartão',<select name="card" required className={inputClass}><option value="">Selecione</option>{workspace.cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}
           {section === 'transactions' && kind === 'card_purchase' && field('Parcelas',<input name="installments" type="number" min="1" max="600" defaultValue="1" required className={inputClass}/>)}
           {section === 'transactions' && kind === 'card_payment' && field('Meio de pagamento',<select name="channel" className={inputClass}><option value="pix">Pix</option><option value="boleto">Boleto</option></select>)}
@@ -119,15 +181,27 @@ export default function LedgerWorkspace() {
           <div className="flex gap-3 sm:col-span-2"><button disabled={busy} className="rounded-xl bg-teal-600 px-5 py-2.5 font-semibold text-white disabled:opacity-50">{busy ? 'Salvando…' : 'Salvar'}</button><button type="button" onClick={() => setFormOpen(false)}>Cancelar</button></div>
         </form>}
         {workspace && section === 'dashboard' && <>
-          <div className="grid gap-4 sm:grid-cols-3">{[{ label:'Saldo das contas',value:sumCents(workspace.accounts.map(a => a.balance_cents)) },{ label:'Limite utilizado',value:sumCents(workspace.cards.map(c => c.used_cents)) },{ label:'Contas a pagar',value:sumCents(workspace.commitments.filter(c => c.direction === 'outflow' && ['pending','partial'].includes(c.settlement_status)).map(c => c.remaining_cents ?? 0)) }].map(item => <div key={item.label} className={panelClass}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-2 text-2xl font-semibold">{money(item.value)}</p></div>)}</div>
+          <LedgerFreeToSpend workspace={workspace} money={money} offline={!online || usingCache}/>
+          <div className="grid gap-4 sm:grid-cols-3">{[{ label:'Saldo em contas',value:workspace.totals.cash_cents, detail:'Contas corrente, de pagamento e carteiras, até hoje.' },{ label:'Limite utilizado',value:workspace.totals.card_used_cents, detail:'Dívidas e autorizações pendentes dos cartões.' },{ label:'Contas a pagar',value:workspace.totals.commitment_outflows_cents, detail:'Compromissos pendentes e parcialmente pagos.' }].map(item => <div key={item.label} className={panelClass}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-2 text-2xl font-semibold">{money(item.value)}</p><p className="mt-2 text-xs text-slate-500">{item.detail}</p></div>)}</div>
+          {workspace.accounts.some(a => a.liquidity !== 'cash') && <div className={panelClass}><h2 className="font-semibold">Outros saldos</h2><p className="mt-1 text-sm text-slate-500">Benefícios, investimentos e bens são acompanhados separadamente do saldo em contas.</p><div className="mt-4 grid gap-4 sm:grid-cols-3">{[{ liquidity:'benefit',label:'Benefícios VR/VA',value:workspace.totals.benefit_cents },{ liquidity:'investment',label:'Investimentos e poupança',value:workspace.totals.investment_cents },{ liquidity:'property',label:'Bens',value:workspace.totals.property_cents }].filter(item => workspace.accounts.some(a => a.liquidity === item.liquidity)).map(item => <div key={item.liquidity}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-1 text-xl font-semibold">{money(item.value)}</p></div>)}</div></div>}
           <div className={panelClass}><h2 className="font-semibold">Comece pelos cadastros</h2><p className="mt-2 text-sm text-slate-500">Cadastre suas contas e os saldos atuais. Depois organize as categorias, adicione seus cartões e registre as movimentações.</p><button onClick={() => navigate('accounts')} className="mt-4 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white">Cadastrar uma conta</button></div>
         </>}
-        {workspace && section !== 'dashboard' && <div className={`${panelClass} space-y-3`}>
+        {workspace && (!online || usingCache) && extraSection && <p className={panelClass}>Sem conexão. Esta tela precisa de internet. Você pode cadastrar um lançamento rápido acima.</p>}
+        {workspace && online && !usingCache && <>
+          {extraSection && !['portfolio','closing','reserves','notifications'].includes(section) && <LedgerExtras key={`${workspace.space.id}-${section}`} section={section as ExtraSection} workspace={workspace} money={money} onChanged={refresh}/>}
+          {section === 'reserves' && <LedgerReserves workspace={workspace} money={money} onChanged={refresh}/>}
+          {section === 'notifications' && <LedgerNotifications key={workspace.space.id} workspace={workspace} money={money} onNavigate={navigate}/>}
+          {section === 'portfolio' && <LedgerPortfolio workspace={workspace} money={money} onChanged={refresh}/>}
+          {section === 'closing' && <LedgerClosing workspace={workspace} money={money} onChanged={refresh}/>}
+          {section === 'transactions' && selectedTransaction && <LedgerTransactionActions key={selectedTransaction} workspace={workspace} transactionId={selectedTransaction} money={money} onChanged={refresh} onClose={() => setSelectedTransaction(null)}/>}
+          {section === 'cards' && <LedgerCardOperations workspace={workspace} money={money} onChanged={refresh}/>}
+        </>}
+        {workspace && section !== 'dashboard' && !extraSection && <div className={`${panelClass} space-y-3`}>
           {section === 'accounts' && workspace.accounts.map(a => <Row key={a.id} title={a.name} detail="Saldo atual" value={money(a.balance_cents)}/>)}
           {section === 'categories' && workspace.categories.map(c => <Row key={c.id} title={c.name} detail={c.kind === 'expense' ? 'Despesa' : 'Receita'} value={c.ledger_account_id ? 'Categoria final' : 'Grupo'}/>)}
           {section === 'cards' && workspace.cards.map(c => <Row key={c.id} title={c.name} detail={`Utilizado: ${money(c.used_cents)}`} value={`Disponível: ${money(c.free_cents)}`}/>)}
           {section === 'people' && workspace.people.map(p => <Row key={p.id} title={p.nickname} detail={p.balance_cents >= 0 ? 'A receber' : 'A pagar'} value={money(Math.abs(p.balance_cents))}/>)}
-          {section === 'transactions' && workspace.transactions.map(t => <Row key={t.id} title={t.description} detail={t.occurred_on} value={t.status === 'cancelled' ? 'Cancelado' : 'Registrado'}/>)}
+          {section === 'transactions' && workspace.transactions.map(t => <div key={t.id}><Row title={t.description} detail={t.occurred_on} value={t.status === 'cancelled' ? 'Cancelado' : 'Registrado'}/>{online && !usingCache && <button onClick={() => setSelectedTransaction(t.id)} className="text-sm font-semibold text-teal-600" aria-label={`Ver detalhes de ${t.description}`}>Detalhes e ações</button>}</div>)}
           {section === 'agenda' && workspace.commitments.map(c => <div key={c.id}><Row title={c.title} detail={c.effective_due_on} value={c.settlement_status === 'settled' ? 'Pago' : c.settlement_status === 'cancelled' ? 'Cancelado' : money(c.remaining_cents ?? 0)}/>{canWrite && c.kind !== 'reminder' && ['pending','partial'].includes(c.settlement_status) && <button disabled={busy} onClick={() => void execute('settle_commitment',{ p_commitment:c.id,p_amount_cents:c.remaining_cents,p_on:workspace.space.today,p_client_uuid:crypto.randomUUID() })} className="mt-2 text-sm font-semibold text-teal-600">Registrar pagamento integral</button>}</div>)}
           {section === 'budgets' && workspace.budgets.map(b => <Row key={b.id} title={workspace.categories.find(c => c.id === b.category_id)?.name ?? 'Orçamento'} detail={`Gasto: ${money(b.consumed_cents)} · Previsto: ${money(b.predicted_cents)}`} value={`Restante: ${money(b.remaining_cents)}`}/>)}
           {(section === 'accounts' ? workspace.accounts : section === 'categories' ? workspace.categories : section === 'cards' ? workspace.cards : section === 'people' ? workspace.people : section === 'transactions' ? workspace.transactions : section === 'agenda' ? workspace.commitments : workspace.budgets).length === 0 && <p className="text-sm text-slate-500">Nenhum registro. Use Cadastrar para começar.</p>}

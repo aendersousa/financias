@@ -46,6 +46,8 @@ interface AppState {
   reset: () => void
   toggleTheme: () => void
   togglePrivacyMode: () => void
+  setPrivacyMode: (hidden: boolean) => void
+  setTheme: (theme: Theme) => void
 
   addAccount: (data: NewAccount) => Promise<void>
   removeAccount: (id: number) => Promise<void>
@@ -107,6 +109,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: false,
   theme: getInitialTheme(),
   privacyMode: readPrivacyMode(),
+  setPrivacyMode: (hidden) => {
+    persistPrivacyMode(hidden)
+    set({ privacyMode: hidden })
+  },
+  setTheme: (next) => {
+    applyTheme(next)
+    set({ theme: next })
+  },
   togglePrivacyMode: () => {
     const hidden = !get().privacyMode
     persistPrivacyMode(hidden)

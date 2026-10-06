@@ -27,9 +27,16 @@ foreach ($migration in (Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'mig
   if ($LASTEXITCODE -ne 0) { $result | Write-Output; throw "Migration failed: $($migration.Name)" }
   Write-Output "Applied $($migration.Name)"
 }
+$assertionCount = 0
+$fileCount = 0
 foreach ($test in (Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'tests/database') -Filter '*.test.sql' | Sort-Object Name)) {
   $result = & psql $connection -X -q -v ON_ERROR_STOP=1 -f $test.FullName 2>&1
   if ($LASTEXITCODE -ne 0 -or ($result -match 'not ok|Looks like you')) { $result | Write-Output; throw "Test failed: $($test.Name)" }
-  Write-Output "Passed $($test.Name)"
+  $plans = @($result | Select-String -Pattern '^\s*1\.\.(\d+)\s*$')
+  if ($plans.Count -ne 1) { throw "Missing or ambiguous TAP plan: $($test.Name)" }
+  $count = [int]$plans[0].Matches[0].Groups[1].Value
+  $assertionCount += $count
+  $fileCount++
+  Write-Output "Passed $($test.Name) ($count assertions)"
 }
-Write-Output "Verified fresh migrations and database tests in $databaseName. Database retained for inspection."
+Write-Output "Verified $assertionCount assertions in $fileCount files after fresh migrations in $databaseName. Database retained for inspection."
