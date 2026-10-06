@@ -19,7 +19,7 @@ interface SpendReadModel extends FreeToSpendInput {
   scheduled: readonly (FreeToSpendInput['scheduled'][number] & { label?: string })[];
 }
 type Projection = { input: SpendReadModel; calculation: { horizonEnd: string; conservative: FreeToSpendScenario; expected: FreeToSpendScenario }; diagnostics?: FreeToSpendDiagnostics };
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
 const dateLabel = (value: string) => value.split('-').reverse().join('/');
 const itemGroups: Record<string,string> = { income:'Entrada prevista',agenda:'Conta a pagar',card:'Fatura',card_reserve:'Fatura vinculada à reserva',person:'Valor com pessoa',scheduled:'Movimentação agendada',scheduled_reserve:'Gasto agendado com reserva' };
 

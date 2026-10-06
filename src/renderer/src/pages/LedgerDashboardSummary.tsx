@@ -8,7 +8,7 @@ interface Summary {
   future_installments:FutureInstallments;
   net_worth:{ month:string; net_worth_cents:number; growth_cents:number; opening_cents:number };
 }
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
 const colors = ['bg-teal-600','bg-cyan-600','bg-indigo-500','bg-violet-500','bg-amber-500','bg-slate-400'];
 
 export default function LedgerDashboardSummary({ workspace,money,privacy }: ReportProps) {

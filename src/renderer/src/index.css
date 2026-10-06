@@ -93,7 +93,7 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+    @apply rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900;
   }
 
   .field-label {
@@ -113,14 +113,38 @@ body {
   }
 
   .table-shell {
-    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900;
   }
 
   .table-head {
-    @apply bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/50 dark:text-slate-400;
+    @apply bg-slate-50 text-left text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400;
   }
 
   .table-row-hover {
     @apply transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40;
   }
+}
+
+/* Categories defines the shared visual language for every financial screen. */
+.dashboard-header .page-header, .workspace-header .page-header {
+  margin-bottom: 0;
+}
+.dashboard-header .page-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.dashboard-header .page-header p {
+  font-size: 14px;
+  margin-top: 0;
+}
+.dashboard-panel { padding: 16px; }
+.dashboard-summary { border-radius: 12px; }
+.dark .dashboard-stat:first-child { background: #0f172a; }
+button:focus-visible, [role='button']:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-input, .btn-primary, .table-row-hover { transition: none; }
 }

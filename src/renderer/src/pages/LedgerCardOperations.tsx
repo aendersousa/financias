@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents, sumCents } from '../../../shared/finance/money';
 
-const input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950';
+const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
 export default function LedgerCardOperations({ workspace,money,onChanged }: { workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void> }) {
   const [operation,setOperation] = useState('charges');
   const [card,setCard] = useState('');
@@ -38,7 +38,7 @@ export default function LedgerCardOperations({ workspace,money,onChanged }: { wo
     finally { setBusy(false); }
   }
   const field = (title: string,id: string) => <label htmlFor={id} className="text-sm font-medium">{title}</label>;
-  return <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+  return <section className="space-y-4 card p-5 dark:border-slate-800 dark:bg-slate-900">
     <h2 className="font-semibold">Encargos e parcelamentos</h2>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-teal-700 dark:text-teal-300">{notice}</p>}
@@ -49,7 +49,7 @@ export default function LedgerCardOperations({ workspace,money,onChanged }: { wo
       {operation === 'plan' && <><div className="grid gap-2">{field('Total parcelado (R$)','plan-total')}<input id="plan-total" name="amount" required inputMode="decimal" className={input}/></div><div className="grid gap-2">{field('Quantidade de parcelas','plan-count')}<input id="plan-count" name="count" type="number" min={1} max={600} required className={input}/></div><div className="grid gap-2 sm:col-span-2">{field('Valores das parcelas, um por linha (opcional)','plan-parts')}<textarea id="plan-parts" name="parts" rows={3} placeholder={'520,00\n520,00'} className={input}/><p className="text-xs text-slate-500">Se ficar vazio, o total será dividido. Registre a entrada como pagamento do cartão antes de parcelar o restante.</p></div></>}
       {operation === 'prepay' && <><div className="grid gap-2 sm:col-span-2">{field('Compra original','prepay-purchase')}<select id="prepay-purchase" name="purchase" required className={input}><option value="">Selecione</option>{workspace.transactions.filter(t => t.kind === 'card_purchase' && t.status === 'posted').map(t => <option key={t.id} value={t.id}>{t.occurred_on} · {t.description}</option>)}</select></div><div className="grid gap-2">{field('Parcelas que deseja antecipar','prepay-numbers')}<input id="prepay-numbers" name="numbers" placeholder="5,6,7" required className={input}/></div><div className="grid gap-2">{field('Desconto informado pelo banco (R$)','prepay-discount')}<input id="prepay-discount" name="discount" inputMode="decimal" defaultValue="0,00" className={input}/></div><p className="text-xs text-slate-500 sm:col-span-2">As parcelas futuras serão transferidas para a fatura aberta da compra original.</p></>}
       {operation !== 'charges' && <div className="grid gap-2">{field('Data da contratação','operation-date')}<input id="operation-date" name="date" type="date" defaultValue={workspace.space.today} required className={input}/></div>}
-      <div className="sm:col-span-2"><button disabled={busy} className="rounded-xl bg-teal-600 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{busy ? 'Registrando…' : 'Registrar operação'}</button></div>
+      <div className="sm:col-span-2"><button disabled={busy} className="btn-primary px-4 py-2.5 font-semibold text-white disabled:opacity-50">{busy ? 'Registrando…' : 'Registrar operação'}</button></div>
     </form>
   </section>;
 }

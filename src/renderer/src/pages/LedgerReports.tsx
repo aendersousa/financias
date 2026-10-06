@@ -7,7 +7,7 @@ export interface FutureInstallments { total_cents: number; next_cycle_cents: num
 interface Reports { month: string; as_of: string; available_accounts: { id: string; name: string; archived: boolean }[]; consumption: { income_cents: number; expense_cents: number; snapshot: boolean; items: ReportItem[] }; installment_consumption: { expense_cents: number; items: ReportItem[] }; cash_flow: Flow; benefit_flow: Flow; comparison: { month: string; income_cents: number; expense_cents: number; expense_change_percent: number | null; new?:boolean; snapshot: boolean }[]; net_worth: { month: string; net_worth_cents: number; opening_cents: number; growth_cents: number; snapshot: boolean }[]; future_installments: FutureInstallments }
 interface Flow { net_cents: number; opening_cents?: number; sections: Record<string, number>; items: ReportItem[] }
 export interface ReportProps { workspace: LedgerWorkspace; money: (value: number) => string; privacy: boolean }
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
 const control = 'rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950';
 const sectionLabels: Record<string,string> = { operational:'Operacional',debts:'Empréstimos e financiamentos',investments:'Investimentos e bens',people:'Valores com pessoas' };
 export const reportDate = (value: string) => value.split('-').reverse().join('/');

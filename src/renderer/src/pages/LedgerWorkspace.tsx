@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader';
 import { cloneElement, Fragment, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { ArrowLeftRight, Bell, CalendarDays, CreditCard, History, LayoutDashboard, LogOut, Plus, RefreshCw, Repeat, Settings, Tags, Users, Wallet } from 'lucide-react';
 import { formatBrlCents, parseBrlCents } from '../../../shared/finance/money';
@@ -53,8 +54,8 @@ const navigation = [
   { id: 'notifications', label: 'Notificações', icon: Bell },
   { id: 'settings', label: 'Configurações', icon: Settings }
 ] as const;
-const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
-const panelClass = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
+const inputClass = 'w-full field-input px-3 py-2.5 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100';
+const panelClass = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
 const navigationGroups: Partial<Record<Section,string>> = {accounts:'Cadastre nesta ordem',transactions:'Movimentações',agenda:'Planejamento',reports:'Acompanhamento',tags:'Organização'};
 
 export default function LedgerWorkspace() {
@@ -189,7 +190,7 @@ export default function LedgerWorkspace() {
     <div className="mx-auto grid max-w-7xl gap-6 p-4 md:grid-cols-[210px_1fr] md:p-6">
       <nav className="flex gap-1 overflow-x-auto md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] md:flex-col md:self-start md:overflow-y-auto" aria-label="Navegação principal">{navigation.map(item => <Fragment key={item.id}>{navigationGroups[item.id] && <p className="hidden px-4 pb-1 pt-3 text-xs font-medium text-slate-500 md:block">{navigationGroups[item.id]}</p>}<button onClick={() => navigate(item.id)} aria-current={section === item.id ? 'page' : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium ${section === item.id ? 'bg-teal-600 text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}><item.icon size={18} className="shrink-0"/>{item.label}</button></Fragment>)}</nav>
       <main className="min-w-0 space-y-5">
-        <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">{navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'')}</h1>{canWrite && workspace && section !== 'dashboard' && (!extraSection || ['agenda','budgets'].includes(section)) && (!['accounts','categories','cards','budgets'].includes(section) || canManage) && <button onClick={openForm} className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white"><Plus size={18}/>Cadastrar</button>}</div>
+        <div className="workspace-header flex flex-wrap items-center justify-between gap-3"><PageHeader icon={navigation.find(n => n.id === section)?.icon ?? LayoutDashboard} title={navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'') ?? 'Finanças'} />{canWrite && workspace && section !== 'dashboard' && (!extraSection || ['agenda','budgets'].includes(section)) && (!['accounts','categories','cards','budgets'].includes(section) || canManage) && <button onClick={openForm} className="flex items-center gap-2 btn-primary px-4 py-2.5 text-sm font-semibold text-white"><Plus size={18}/>Cadastrar</button>}</div>
         {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</div>}
         {notice && <p role="status" className="text-sm text-teal-700 dark:text-teal-300">{notice}</p>}
         {!workspace && <div className={panelClass}>{busy ? 'Carregando…' : 'Não foi possível abrir seus dados. Use Atualizar para tentar novamente.'}</div>}
@@ -211,14 +212,14 @@ export default function LedgerWorkspace() {
           {['accounts','transactions','agenda'].includes(section) && field(section === 'agenda' ? 'Vencimento' : 'Data',<input name="date" type="date" defaultValue={workspace.space.today} required className={inputClass}/>)}
           {section === 'cards' && <>{field('Dia de fechamento',<input name="closing" type="number" min="1" max="31" required className={inputClass}/>)}{field('Dia de vencimento',<input name="due" type="number" min="1" max="31" required className={inputClass}/>)}</>}
           {section === 'budgets' && field('A partir do mês',<input name="month" type="month" defaultValue={workspace.space.today.slice(0,7)} required className={inputClass}/>)}
-          <div className="flex gap-3 sm:col-span-2"><button disabled={busy} className="rounded-xl bg-teal-600 px-5 py-2.5 font-semibold text-white disabled:opacity-50">{busy ? 'Salvando…' : 'Salvar'}</button><button type="button" onClick={() => setFormOpen(false)}>Cancelar</button></div>
+          <div className="flex gap-3 sm:col-span-2"><button disabled={busy} className="btn-primary px-5 py-2.5 font-semibold text-white disabled:opacity-50">{busy ? 'Salvando…' : 'Salvar'}</button><button type="button" onClick={() => setFormOpen(false)}>Cancelar</button></div>
         </form>}
         {workspace && section === 'dashboard' && <>
           <LedgerFreeToSpend workspace={workspace} money={money} offline={!online || usingCache}/>
           {online && !usingCache && <LedgerDashboardSummary workspace={workspace} money={money} privacy={privacy}/>}
           <div className="grid gap-4 sm:grid-cols-3">{[{ label:'Saldo em contas',value:workspace.totals.cash_cents, detail:'Contas corrente, de pagamento e carteiras, até hoje.' },{ label:'Limite utilizado',value:workspace.totals.card_used_cents, detail:'Dívidas e autorizações pendentes dos cartões.' },{ label:'Contas a pagar',value:workspace.totals.commitment_outflows_cents, detail:'Compromissos pendentes e parcialmente pagos.' }].map(item => <div key={item.label} className={panelClass}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-2 text-2xl font-semibold">{money(item.value)}</p><p className="mt-2 text-xs text-slate-500">{item.detail}</p></div>)}</div>
           {workspace.accounts.some(a => a.liquidity !== 'cash') && <div className={panelClass}><h2 className="font-semibold">Outros saldos</h2><p className="mt-1 text-sm text-slate-500">Benefícios, investimentos e bens são acompanhados separadamente do saldo em contas.</p><div className="mt-4 grid gap-4 sm:grid-cols-3">{[{ liquidity:'benefit',label:'Benefícios VR/VA',value:workspace.totals.benefit_cents },{ liquidity:'investment',label:'Investimentos e poupança',value:workspace.totals.investment_cents },{ liquidity:'property',label:'Bens',value:workspace.totals.property_cents }].filter(item => workspace.accounts.some(a => a.liquidity === item.liquidity)).map(item => <div key={item.liquidity}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-1 text-xl font-semibold">{money(item.value)}</p></div>)}</div></div>}
-          <div className={panelClass}><h2 className="font-semibold">Comece pelos cadastros</h2><p className="mt-2 text-sm text-slate-500">Cadastre suas contas e os saldos atuais. Depois organize as categorias, adicione seus cartões e registre as movimentações.</p><button onClick={() => navigate('accounts')} className="mt-4 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white">Cadastrar uma conta</button></div>
+          <div className={panelClass}><h2 className="font-semibold">Comece pelos cadastros</h2><p className="mt-2 text-sm text-slate-500">Cadastre suas contas e os saldos atuais. Depois organize as categorias, adicione seus cartões e registre as movimentações.</p><button onClick={() => navigate('accounts')} className="mt-4 btn-primary px-4 py-2 text-sm font-semibold text-white">Cadastrar uma conta</button></div>
         </>}
         {workspace && (!online || usingCache) && extraSection && <p className={panelClass}>Sem conexão. Esta tela precisa de internet. Você pode cadastrar um lançamento rápido acima.</p>}
         {workspace && online && !usingCache && <>

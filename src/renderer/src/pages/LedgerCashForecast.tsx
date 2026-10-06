@@ -11,8 +11,8 @@ interface Forecast {
   expected:{minimumCents:number;minimumOn:string};nextMainIncomeOn:string|null;
   events:{id:string;label:string;kind:string;on:string;conservativeCents:number;expectedCents:number;projected?:boolean;estimatedChargesCents?:number;occurrences?:{label:string;projected?:boolean}[]}[];
 }
-const panel='rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
-const input='rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950';
+const panel='card p-5 dark:border-slate-800 dark:bg-slate-900';
+const input='field-input px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800';
 const horizons:{value:Horizon;label:string}[]=[{value:'month',label:'Fim do mês'},{value:'30_days',label:'30 dias'},{value:'90_days',label:'90 dias'},{value:'6_months',label:'6 meses'},{value:'custom',label:'Data personalizada'}];
 const date=(value:string)=>value.slice(0,10).split('-').reverse().join('/');
 const shortDate=(value:string)=>date(value).slice(0,5);
@@ -73,7 +73,7 @@ export default function LedgerCashForecast({workspace,money,privacy}:{workspace:
       <section className={`${panel} space-y-5`} aria-label="Curva diária de saldo">
         <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold">De {date(forecast.today)} até {date(forecast.until)}</h2><p className="mt-1 text-sm text-slate-500">Saldo em contas hoje: {money(forecast.cashBalanceCents)}</p></div><div className="flex flex-wrap gap-4 text-xs"><span className="inline-flex items-center gap-2"><span className="h-0.5 w-5 bg-teal-600"/>Conservador</span><span className="inline-flex items-center gap-2"><span className="w-5 border-t-2 border-dashed border-indigo-500"/>Se as receitas previstas entrarem</span></div></div>
         {forecast.conservative.firstNegativeOn&&<p className="border-l-4 border-amber-500 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">Saldo projetado negativo em {shortDate(forecast.conservative.firstNegativeOn)}. Confira os pagamentos e as entradas desse período.</p>}
-        {privacy?<div className="flex min-h-64 items-center justify-center bg-slate-50 text-sm text-slate-500 dark:bg-slate-950">Valores e curva ocultos. Use Mostrar valores para consultar.</div>:<div className="min-w-0 max-w-full overflow-hidden" style={{containerType:'inline-size'}} role="img" aria-label="Saldos projetados diários nos cenários conservador e esperado">
+        {privacy?<div className="flex min-h-64 items-center justify-center bg-slate-50 text-sm text-slate-500 dark:bg-slate-800">Valores e curva ocultos. Use Mostrar valores para consultar.</div>:<div className="min-w-0 max-w-full overflow-hidden" style={{containerType:'inline-size'}} role="img" aria-label="Saldos projetados diários nos cenários conservador e esperado">
           <ResponsiveContainer width="100%" height={300} minWidth={0}><LineChart data={forecast.series} margin={{top:20,right:15,left:0,bottom:5}}>
             <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.1}/>
             <XAxis dataKey="on" tickFormatter={shortDate} tickLine={false} axisLine={false} minTickGap={45} tick={{fontSize:12,fill:'#94a3b8'}}/>

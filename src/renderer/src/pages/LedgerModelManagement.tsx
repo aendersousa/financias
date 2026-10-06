@@ -15,8 +15,8 @@ interface Editor {
   category: string;
   payment: string;
 }
-const input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950';
-const primary = 'rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50';
+const input = 'w-full field-input px-3 py-2.5 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800';
+const primary = 'btn-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50';
 const kinds: Record<EntryPreset['kind'], string> = { expense: 'Despesa', income: 'Receita', card_purchase: 'Compra no cartão em 1x' };
 const decimal = (cents: number) => `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`;
 
@@ -150,7 +150,7 @@ export default function LedgerModelManagement({ workspace, money, onChanged }: {
       {notice && <p role="status" className="text-sm text-teal-700 dark:text-teal-300">{notice}</p>}
       {loading && <p className="text-sm text-slate-500">Carregando seus modelos…</p>}
       {!loading && visibleModels.length === 0 && <p className="text-sm text-slate-500">Nenhum modelo cadastrado neste espaço.</p>}
-      {visibleModels.map(model => <article key={model.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-950">
+      {visibleModels.map(model => <article key={model.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">
         <div><h3 className="font-medium">{model.name}</h3><p className="mt-1 text-xs text-slate-500">{context(model)}</p>{model.payload.description && <p className="mt-1 text-xs text-slate-500">{model.payload.description}</p>}<p className="mt-1 font-medium">{typeof model.payload.amountCents === 'number' ? money(model.payload.amountCents) : 'Valor escolhido ao usar'}</p></div>
         <div className="flex gap-4 text-xs font-semibold"><button type="button" disabled={disabled} aria-label={`Editar modelo ${model.name}`} onClick={() => open(model)} className="text-teal-700 disabled:opacity-50 dark:text-teal-300">Editar modelo</button><button type="button" disabled={disabled} aria-label={`Excluir modelo ${model.name}`} onClick={() => { setRemoving(model); setEditor(null); setError(''); setNotice(''); }} className="text-red-700 disabled:opacity-50 dark:text-red-300">Excluir modelo</button></div>
       </article>)}

@@ -19,8 +19,8 @@ interface ForeignSummary {
   currencies:{ code:string; minor_unit:number }[]; settings_version:number; iof_percent:number | null; purchases:ForeignPurchase[];
 }
 type Action={ kind:'create' } | { kind:'confirm' | 'reestimate'; purchase:string };
-const panel='rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
-const input='w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950';
+const panel='card p-5 dark:border-slate-800 dark:bg-slate-900';
+const input='w-full field-input px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800';
 const button='rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
 const decimal=(value:string) => {
   const cleaned=value.trim().replace(',', '.');
@@ -171,7 +171,7 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
         {field(action.kind==='confirm' ? 'IOF final em reais (informe 0 se não houve)' : 'IOF em reais (opcional)','fx-iof',<input id="fx-iof" value={iof} onChange={event => setIof(event.target.value)} inputMode="decimal" required={action.kind==='confirm'} className={input}/>)}
         {action.kind==='create' ? <>{field('Data do IOF (se diferente)','fx-iof-date',<input id="fx-iof-date" name="iof_date" type="date" className={input}/>)}<label className="flex items-center gap-2 text-sm"><input name="confirmed" type="checkbox"/>Este já é o valor final cobrado em reais</label></> : field('Origem do valor confirmado','fx-source',<select id="fx-source" aria-label="Origem do valor confirmado" name="source" defaultValue={selected?.card_id ? 'invoice' : 'statement'} className={input}><option value="invoice">Fatura do cartão</option><option value="statement">Extrato bancário</option><option value="user">Informado manualmente</option></select>)}
       </>}
-      {(quote || quoteError) && <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-950 sm:col-span-2" aria-live="polite">{quoteError ? <p className="text-red-700 dark:text-red-300">{quoteError}</p> : quote && <>
+      {(quote || quoteError) && <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800 sm:col-span-2" aria-live="polite">{quoteError ? <p className="text-red-700 dark:text-red-300">{quoteError}</p> : quote && <>
         <p className="font-semibold">{quote.total_cents===null ? 'Informe uma taxa ou o valor em reais para converter.' : `${quote.suggested ? 'Com a última taxa registrada: ' : 'Valor em reais: '}${money(quote.total_cents)}`}</p>
         {quote.rate && <p className="text-slate-500">Taxa aplicada: {privacy ? '••••' : decimalLabel(quote.rate)} reais por unidade de {currency}.</p>}
         {quote.suggested && quote.rate && <><p className="text-slate-500">Esta é uma sugestão baseada no último registro deste espaço. Confira a taxa que deseja usar.</p>{action.kind!=='confirm' && <button type="button" onClick={() => {setRate(quote.rate!);setEntryMode('rate');}} className="font-semibold text-teal-700 dark:text-teal-300">Usar última taxa registrada</button>}</>}

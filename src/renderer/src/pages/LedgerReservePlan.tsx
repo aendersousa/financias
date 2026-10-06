@@ -7,7 +7,7 @@ interface FundingPlan { reserveId: string; suggestedCents: number | null; contri
 interface FundingEvent { id: string; reserve_id: string; scheduled_for: string; occurred_on: string; suggested_cents: number; contributed_cents: number; shortfall_cents: number; origin: string }
 interface Funding { plans: FundingPlan[]; events: FundingEvent[] }
 type PlannedReserve = LedgerReserve & { contribution_mode: 'automatic' | 'manual'; priority: number; alert_thresholds: number[] };
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900', input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950', primary = 'rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900', input = 'w-full field-input', primary = 'btn-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
 const field = (title: string, content: ReactNode) => <label className="grid gap-2 text-sm"><span>{title}</span>{isValidElement(content) ? cloneElement(content as ReactElement<{ 'aria-label'?: string }>, { 'aria-label': title }) : content}</label>;
 const decimal = (value: number) => `${Math.floor(value / 100)},${String(value % 100).padStart(2, '0')}`;
 

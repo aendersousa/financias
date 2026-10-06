@@ -8,7 +8,7 @@ import { ledgerRpc, type FinancialSpace } from '../lib/ledgerRepository';
 interface Summary { kind: string; description: string; occurredOn: string; amountCents: number | null; entries: { name: string; amountCents: number }[] }
 interface Comparison { comparison: 'missing' | 'same' | 'different' | 'operation'; server: (Summary & { id: string; status: string; version: number }) | null; original: Summary | null; reservedOperation: string | null }
 interface Choices { space: { id: string; name: string }; accounts: { id: string; name: string; ledgerAccountId: string }[]; cards: { id: string; name: string }[]; categories: { id: string; name: string; ledgerAccountId: string }[] }
-const input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950';
+const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
 const decimal = (value: number) => `${Math.floor(value / 100)},${String(value % 100).padStart(2, '0')}`;
 const operationName = (value: string | null) => ({ value_asset: 'avaliação de patrimônio', account_balance_check: 'conferência de saldo', import_statement_read: 'importação de extrato', confirm_card_charges: 'encargos da fatura', create_loan: 'cadastro de empréstimo' } as Record<string, string>)[value ?? ''] ?? 'operação já registrada';
 
@@ -81,7 +81,7 @@ export default function LedgerQueueConflict({ item, money, onResolved }: { item:
       {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
       {comparisonError && <p className="text-sm text-amber-800 dark:text-amber-300">{comparisonError} Você pode enviar para outro espaço ao qual ainda tem acesso.</p>}
       {busy && <p role="status" className="text-sm text-slate-500">Conferindo os dados…</p>}
-      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950"><h4 className="font-semibold">Neste aparelho</h4><p>{item.content.description || 'Lançamento rápido'} · {item.content.occurredOn}</p><strong>{money(item.content.amountCents)}</strong><p className="mt-1 text-xs text-slate-500">{item.lastReason}</p></div>
+      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800"><h4 className="font-semibold">Neste aparelho</h4><p>{item.content.description || 'Lançamento rápido'} · {item.content.occurredOn}</p><strong>{money(item.content.amountCents)}</strong><p className="mt-1 text-xs text-slate-500">{item.lastReason}</p></div>
       {comparison?.server && <>{view('No servidor', comparison.server)}<p className="text-xs text-slate-500">{comparison.server.status === 'cancelled' ? 'O registro no servidor está cancelado.' : 'O registro no servidor foi recebido.'} Versão {comparison.server.version}.</p></>}
       {comparison?.original && comparison.server && (comparison.original.description !== comparison.server.description || comparison.original.amountCents !== comparison.server.amountCents || comparison.original.occurredOn !== comparison.server.occurredOn) && view('Como foi recebido originalmente', comparison.original)}
       {comparison?.comparison === 'same' && <p className="text-sm">O servidor já recebeu este identificador com o mesmo conteúdo. Você pode manter o registro que está lá.</p>}
@@ -101,7 +101,7 @@ export default function LedgerQueueConflict({ item, money, onResolved }: { item:
         <div className="grid gap-1"><label htmlFor={`${id}-description`}>Descrição do novo envio</label><input id={`${id}-description`} name="description" maxLength={100} defaultValue={item.content.description} className={input}/></div>
         <div className="grid gap-1"><label htmlFor={`${id}-date`}>Data do novo envio</label><input id={`${id}-date`} name="date" type="date" required defaultValue={item.content.occurredOn} className={input}/></div>
         <label className="flex gap-2 text-xs sm:col-span-2"><input type="checkbox" required/>Conferi e quero enviar este conteúdo com um novo identificador.</label>
-        <div className="flex gap-3 sm:col-span-2"><button disabled={busy || mode === 'move' && !choices} className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar novo envio</button><button type="button" disabled={busy} onClick={() => setMode('compare')}>Cancelar novo envio</button></div>
+        <div className="flex gap-3 sm:col-span-2"><button disabled={busy || mode === 'move' && !choices} className="btn-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar novo envio</button><button type="button" disabled={busy} onClick={() => setMode('compare')}>Cancelar novo envio</button></div>
       </form>}
     </section>}
   </div>;

@@ -14,7 +14,7 @@ interface Health {
   next_month_obligations: { id: string; label: string; due_on: string; amount_cents: number; principal_cents: number; kind: string }[];
   future_installments: FutureInstallments;
 }
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
 const groupLabels: Record<string,string> = { fixed:'Despesas fixas',variable:'Despesas variáveis',installments_and_debts:'Parcelas e encargos financeiros',unidentified_adjustments:'Diferenças não identificadas' };
 const obligationLabels: Record<string,string> = { fixed_recurrence:'Despesa fixa recorrente',loan_recurrence:'Dívida sem cronograma',loan:'Empréstimo ou financiamento',card:'Parcelas do cartão' };
 

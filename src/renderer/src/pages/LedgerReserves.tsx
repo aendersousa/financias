@@ -20,9 +20,9 @@ export interface ReserveSummary {
   uncovered_accounts: { id: string; name: string; uncovered_cents: number }[];
 }
 export interface ContributionPreview { requiresWarning: boolean; conservativeBeforeCents?: number; conservativeAfterCents?: number; approvalToken: string | null; projectionOn?: string; reserveVersion: number }
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
-const input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950';
-const primary = 'rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
+const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
+const primary = 'btn-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
 const statusLabels = { active:'Em andamento',achieved:'Meta atingida',settled:'Quitada',closed:'Encerrada' };
 const eventLabels = { contribution:'Aporte',release:'Liberação',consume:'Gasto vinculado',refund:'Devolução',terminal_release:'Encerramento' };
 

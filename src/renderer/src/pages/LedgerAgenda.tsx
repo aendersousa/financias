@@ -4,9 +4,9 @@ import { parseBrlCents } from '../../../shared/finance/money';
 
 interface AgendaItem { id: string; type: string; title: string; on: string; nominal_due_on?: string; competence_month?: string; due_amount_cents?: number; remaining_cents: number | null; paid_cents?: number; direction: string | null; certainty?: string; settlement_status: string; version: number; category_id?: string | null; category_name?: string; notes?: string | null; payment_name?: string; payment_method?: string; payment_financial_account_id?: string; payment_credit_card_id?: string; loan_installment?: boolean; reserve_id?: string; recurrence_rule_id?: string }
 interface Calendar { month: string; today: string; items: AgendaItem[] }
-const input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950';
-const panel = 'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900';
-const primary = 'rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
+const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
+const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
+const primary = 'btn-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50';
 const field = (name: string, content: ReactNode) => <label className="grid gap-2 text-sm"><span>{name}</span>{isValidElement(content) ? cloneElement(content as ReactElement<{ 'aria-label'?: string }>, { 'aria-label': name }) : content}</label>;
 const decimal = (value: number) => `${Math.floor(value / 100)},${String(value % 100).padStart(2, '0')}`;
 const statuses: Record<string, string> = { settled: 'Concluído', cancelled: 'Cancelado', partial: 'Parcial', pending: 'Pendente', scheduled: 'Agendado' };

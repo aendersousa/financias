@@ -1,3 +1,5 @@
+import PageHeader from '../components/PageHeader'
+import { LayoutDashboard } from 'lucide-react'
 import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useMemo } from 'react'
 import {
@@ -163,10 +165,10 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => 
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <div><h1>Visão geral</h1><p>Seu dinheiro, de perto. Acompanhe o que entra e o que sai.</p></div>
+        <PageHeader icon={LayoutDashboard} title="Visão geral" subtitle="Seu dinheiro, de perto. Acompanhe o que entra e o que sai." />
         <div className="dashboard-actions">
           <span className="dashboard-period"><CalendarDays size={16} />{monthLabel}</span>
-          <button className="dashboard-primary" onClick={() => onNavigate('transactions')}><Plus size={17} />Registrar transação</button>
+          <button className="btn-primary flex items-center gap-2" onClick={() => onNavigate('transactions')}><Plus size={17} />Registrar transação</button>
         </div>
       </header>
 
