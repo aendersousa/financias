@@ -63,6 +63,13 @@ try {
   const navigate = async label => { await page.getByRole('button', { name: label, exact: true }).click(); await expect(page.getByRole('alert')).toHaveCount(0); };
   const section = title => page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
   const row = description => page.locator('article').filter({ has: page.getByText(description, { exact: true }) });
+  async function importLine(number) {
+    const button = page.getByRole('button', { name: `Ver detalhes da linha ${number}`, exact: true });
+    if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
+    const details = page.getByRole('region', { name: `Detalhes da linha ${number}`, exact: true });
+    await expect(details).toBeVisible();
+    return details;
+  }
   async function importFile(name, content, accountId, referenceMonth) {
     await navigate('Importar extrato');
     await page.getByLabel('Conta ou cartão do arquivo', { exact: true }).selectOption(accountId);
@@ -85,8 +92,9 @@ try {
   const writtenDate = today.split('-').reverse().join('/');
   await importFile('cafes-avancado.csv', `Data;Descrição;Valor\n${writtenDate};CAFE UM;-8,50\n${writtenDate};CAFE DOIS;-8,50`, bank);
   for (const label of ['1. CAFE UM', '2. CAFE DOIS']) {
-    await row(label).getByLabel('O que fazer', { exact: true }).selectOption('create');
-    await row(label).getByLabel('Categoria, pessoa ou conta', { exact: true }).selectOption(categoryLedger);
+    const lineDetails = await importLine(Number(label.split('.')[0]));
+    await lineDetails.getByLabel('O que fazer', { exact: true }).selectOption('create');
+    await lineDetails.getByLabel('Categoria, pessoa ou conta', { exact: true }).selectOption(categoryLedger);
   }
   await page.getByRole('button', { name: 'Confirmar 2 linhas', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Decisões aplicadas');
@@ -98,8 +106,9 @@ try {
   const month = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString().slice(0, 7);
   const ofx = `<OFX><CREDITCARDMSGSRSV1><CCSTMTRS><CURDEF>BRL</CURDEF><CCACCTFROM><ACCTID>1111222233334444</ACCTID></CCACCTFROM><BANKTRANLIST><DTSTART>${today.replaceAll('-', '')}</DTSTART><DTEND>${today.replaceAll('-', '')}</DTEND><STMTTRN><DTPOSTED>${today.replaceAll('-', '')}</DTPOSTED><TRNAMT>-43.78</TRNAMT><FITID>hotel-advanced</FITID><NAME>HOTEL AVANCADO</NAME></STMTTRN></BANKTRANLIST></CCSTMTRS></CREDITCARDMSGSRSV1></OFX>`;
   await importFile('hotel-avancado.ofx', ofx, card, month);
-  await row('1. HOTEL AVANCADO').getByLabel('O que fazer', { exact: true }).selectOption('create');
-  await row('1. HOTEL AVANCADO').getByLabel('Categoria da compra', { exact: true }).selectOption(categoryLedger);
+  const hotelLine = await importLine(1);
+  await hotelLine.getByLabel('O que fazer', { exact: true }).selectOption('create');
+  await hotelLine.getByLabel('Categoria da compra', { exact: true }).selectOption(categoryLedger);
   await page.getByRole('button', { name: 'Confirmar 1 linha', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Decisões aplicadas');
   assert.equal((await snapshot()).cards.find(item => item.id === card).used_cents, 4378);
@@ -530,7 +539,6 @@ try {
   stage = 'Foreign currency purchase'; console.log('Advanced browser: estimated conversion and separate IOF, confirmation and privacy');
   await expect(management.getByRole('status')).toContainText('Estado do cartão atualizado');
   await navigate('Compras internacionais');
-  await page.getByRole('button', { name: 'Cadastrar compra internacional', exact: true }).click();
   const international = page.getByRole('form', { name: 'Nova compra internacional', exact: true });
   await international.getByLabel('Descrição', { exact: true }).fill('Compra USD avançada');
   await international.getByLabel('Valor original (USD)', { exact: true }).fill('10,00');
@@ -539,13 +547,14 @@ try {
   await international.getByLabel('Taxa: reais por unidade da moeda', { exact: true }).fill('5,00');
   await international.getByLabel('IOF em reais (opcional)', { exact: true }).fill('1,00');
   await international.getByRole('button', { name: 'Registrar compra', exact: true }).click();
-  const internationalRow = page.getByRole('article', { name: 'Compra USD avançada', exact: true });
+  const internationalRow = page.getByRole('table', { name: 'Compras internacionais', exact: true }).getByRole('row').filter({ has:page.getByRole('button', { name:'Ver detalhes da compra Compra USD avançada', exact:true }) });
   await expect(internationalRow).toContainText('Conversão estimada');
   const foreignSummary = () => rpc('foreign_currency_summary', { p_space: space });
   const estimated = (await foreignSummary()).purchases.find(item => item.description === 'Compra USD avançada');
   assert.equal(estimated.current_brl_cents, 5000); assert.equal(estimated.iof_cents, 100);
   assert.equal((await cardSummary()).balance_cents, -17100, 'An estimate enters card debt; IOF stays in its own entry');
-  await internationalRow.getByRole('button', { name: 'Confirmar conversão', exact: true }).click();
+  await internationalRow.getByRole('button', { name:'Ver detalhes da compra Compra USD avançada', exact:true }).click();
+  await page.getByRole('region', { name:'Detalhes da compra Compra USD avançada', exact:true }).getByRole('button', { name: 'Confirmar conversão', exact: true }).click();
   const confirmConversion = page.getByRole('form', { name: 'Confirmar conversão', exact: true });
   await confirmConversion.getByLabel('Valor da compra em reais (sem IOF)', { exact: true }).fill('52,00');
   await confirmConversion.getByLabel('IOF final em reais (informe 0 se não houve)', { exact: true }).fill('1,20');

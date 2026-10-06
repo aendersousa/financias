@@ -88,6 +88,12 @@ try {
   await page.getByLabel('Conta ou cartão do lançamento rápido',{ exact:true }).selectOption({ label:'Carteira offline' });
   await page.getByRole('button',{ name:'Salvar lançamento rápido',exact:true }).click();
   await expect(page.getByText(/1 lançamentos pendentes de envio/)).toBeVisible();
+  await page.getByRole('button',{ name:'Lançamentos',exact:true }).click();
+  const offlineTransactions = page.getByRole('table',{ name:'Lançamentos',exact:true });
+  await expect(offlineTransactions).toBeVisible();
+  await expect(offlineTransactions.getByRole('button')).toHaveCount(0);
+  await expect(page.getByRole('form',{ name:'Adicionar lançamento',exact:true })).toHaveCount(0);
+  await expect(page.getByText(/1 lançamentos pendentes de envio/)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/1 lançamentos pendentes de envio/)).toBeVisible();
   await expect(page.getByLabel('Livre para gastar conservador',{ exact:true })).toHaveText('R$ 100,00');

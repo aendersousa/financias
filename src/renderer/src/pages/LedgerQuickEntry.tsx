@@ -9,7 +9,7 @@ import LedgerQueueConflict from './LedgerQueueConflict';
 import LedgerModelManagement from './LedgerModelManagement';
 
 const input='w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
-export default function LedgerQuickEntry({ workspace,money,onChanged }: { workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void> }) {
+export default function LedgerQuickEntry({ workspace,money,onChanged,compact }: { workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void>; compact?: boolean }) {
   const [rows,setRows]=useState<QueueItem[]>([]),[open,setOpen]=useState(() => new URLSearchParams(location.search).get('quick')==='expense'),[kind,setKind]=useState<'expense'|'income'|'card_purchase'>('expense');
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[clientUuid,setClientUuid]=useState(() => crypto.randomUUID());
   const [editing,setEditing]=useState<QueueItem | null>(null),[deleteItem,setDeleteItem]=useState<QueueItem | null>(null);

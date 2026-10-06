@@ -39,11 +39,21 @@ try {
   async function navigate(label) { await page.getByRole('button',{ name:label,exact:true }).click(); }
   async function open() {
     await expect(page.getByRole('alert')).toHaveCount(0);
+    if (await page.getByRole('heading',{ name:'Lançamentos',exact:true }).count()) {
+      await expect(page.getByRole('form',{ name:'Adicionar lançamento',exact:true })).toBeVisible();
+      return;
+    }
     await page.getByRole('button',{ name:'Cadastrar',exact:true }).click();
   }
   async function save() {
-    await page.getByRole('button',{ name:'Salvar',exact:true }).click();
-    await expect(page.getByRole('status')).toContainText('Salvo');
+    const transactionForm = page.getByRole('form',{ name:'Adicionar lançamento',exact:true });
+    if (await transactionForm.count()) {
+      await transactionForm.getByRole('button',{ name:'Adicionar lançamento',exact:true }).click();
+      await expect(page.getByRole('status').filter({ hasText:/Lançamento adicionado|Salvo/ })).toBeVisible();
+    } else {
+      await page.getByRole('button',{ name:'Salvar',exact:true }).click();
+      await expect(page.getByRole('status')).toContainText('Salvo');
+    }
     await expect(page.getByRole('alert')).toHaveCount(0);
   }
   async function rpc(name,args = {}) {

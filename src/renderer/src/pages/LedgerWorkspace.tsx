@@ -182,9 +182,50 @@ export default function LedgerWorkspace() {
   const accountField = (name = 'account', label = 'Conta') => field(label,<select name={name} required className={inputClass} defaultValue=""><option value="" disabled>Selecione uma conta</option>{workspace?.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>);
   const categoryField = () => field('Categoria',<select name="category" required className={inputClass} defaultValue=""><option value="" disabled>Selecione uma categoria</option>{categoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>);
   return <div className="walletup-app min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-    <header className="app-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
-      <div><Brand />{workspace && spaces.length > 1 ? <select aria-label="Espaço financeiro ativo" value={workspace.space.id} disabled={busy || !online || usingCache} onChange={event => void switchSpace(event.target.value)} className="mt-1 max-w-64 rounded-lg border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700">{spaces.map(space => <option key={space.id} value={space.id}>{space.name}</option>)}</select> : <p className="text-xs text-slate-500">{workspace?.space.name ?? 'Carregando seu espaço'}</p>}</div>
-      <div className="flex gap-3"><button onClick={togglePrivacy} className="text-sm">{privacy ? 'Mostrar valores' : 'Ocultar valores'}</button><button onClick={() => void refresh()} disabled={busy} aria-label="Atualizar"><RefreshCw size={18}/></button><button onClick={() => void logout()} aria-label="Sair"><LogOut size={18}/></button></div>
+    <header className="app-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center gap-3">
+        <Brand />
+        {workspace && spaces.length > 1 ? (
+          <select
+            aria-label="Espaço financeiro ativo"
+            value={workspace.space.id}
+            disabled={busy || !online || usingCache}
+            onChange={event => void switchSpace(event.target.value)}
+            className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            {spaces.map(space => <option key={space.id} value={space.id}>{space.name}</option>)}
+          </select>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span>{workspace?.space.name ?? 'Carregando seu espaço'}</span>
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={togglePrivacy}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          {privacy ? <EyeOff size={15} /> : <Eye size={15} />}
+          <span>{privacy ? 'Mostrar valores' : 'Ocultar valores'}</span>
+        </button>
+        <button
+          onClick={() => void refresh()}
+          disabled={busy}
+          aria-label="Atualizar"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <RefreshCw size={15} className={busy ? 'animate-spin' : ''} />
+        </button>
+        <button
+          onClick={() => void logout()}
+          aria-label="Sair"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:border-red-900/50 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+        >
+          <LogOut size={15} />
+        </button>
+      </div>
     </header>
     {(!online || usingCache) && <div role="status" className="sticky top-0 z-20 bg-amber-100 px-5 py-3 text-sm text-amber-950">Sem conexão{cacheTime ? ` · atualizado em ${new Date(cacheTime).toLocaleString('pt-BR')}` : ''}. Os valores são os últimos recebidos do servidor.</div>}
     {logoutCount!==null && <div role="dialog" aria-label="Sair com lançamentos não enviados" className="mx-auto mt-4 max-w-3xl space-y-3 rounded-xl border border-amber-300 bg-white p-5 dark:bg-slate-900"><p>Você tem {logoutCount} lançamentos não enviados. Se sair agora, eles serão apagados deste aparelho.</p><div className="flex flex-wrap gap-4 text-sm font-semibold"><button disabled={!online} onClick={() => { void sendLocalQueue().then(async () => { setLogoutCount((await offlineQueue.list(await activeUserId())).length); }).catch(failure => setError(failure.message)); }}>Enviar antes de sair</button><button onClick={() => { void clearLocalData().then(() => supabase.auth.signOut()).catch(failure => setError(failure.message)); }}>Sair e apagar do aparelho</button><button onClick={() => setLogoutCount(null)}>Cancelar saída</button></div></div>}

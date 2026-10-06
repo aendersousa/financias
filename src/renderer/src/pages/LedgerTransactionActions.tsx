@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 
@@ -6,14 +6,16 @@ interface Entry { id: string; ledger_account_id: string; amount_cents: number; l
 interface Detail { transaction: { id: string; version: number; kind: string; status: string; description: string; notes: string | null; occurred_on: string; competence_month: string }; entries: Entry[]; financially_locked: boolean; remaining_consumption_cents: number; unidentified_adjustment_cents: number }
 const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
 const textCents = (value: number) => `${BigInt(Math.abs(value))/100n},${String(BigInt(Math.abs(value))%100n).padStart(2,'0')}`;
-export default function LedgerTransactionActions({ workspace,transactionId,money,onChanged,onClose }: { workspace: LedgerWorkspace; transactionId: string; money: (value: number) => string; onChanged: () => Promise<void>; onClose: () => void }) {
+export default function LedgerTransactionActions({ workspace,transactionId,money,onChanged,onClose,mutationPending,externalBusy=false,onBusyChange }: { workspace: LedgerWorkspace; transactionId: string; money: (value: number) => string; onChanged: () => Promise<void>; onClose: () => void; mutationPending?:{current:boolean}; externalBusy?:boolean; onBusyChange?:(busy:boolean)=>void }) {
   const [detail,setDetail] = useState<Detail | null>(null),[error,setError] = useState(''),[notice,setNotice] = useState(''),[busy,setBusy] = useState(false);
   const [operation,setOperation] = useState('notes'),[clientId,setClientId] = useState(() => crypto.randomUUID());
+  const localPending=useRef(false),pending=mutationPending??localPending,disabled=busy||externalBusy;
   async function load() { setDetail(await ledgerRpc<Detail>('transaction_detail',{ p_space:workspace.space.id,p_transaction:transactionId })); }
   useEffect(() => { void load().catch(failure => setError(failure.message)); },[workspace.space.id,transactionId]);
   useEffect(() => { if (operation === 'refund' && detail && detail.remaining_consumption_cents <= 0) setOperation('notes'); },[operation,detail]);
   async function run(name: string,args: Record<string,unknown>) {
-    setBusy(true); setError(''); setNotice('');
+    if(pending.current||externalBusy||workspace.role==='viewer')return;
+    pending.current=true;setBusy(true);onBusyChange?.(true); setError(''); setNotice('');
     try { await ledgerRpc(name,{ p_space:workspace.space.id,...args }); await load(); await onChanged(); setClientId(crypto.randomUUID()); setNotice('Alteração registrada.'); }
     catch (failure) {
       const message=failure instanceof Error ? failure.message : 'Não foi possível salvar.';
@@ -23,10 +25,10 @@ export default function LedgerTransactionActions({ workspace,transactionId,money
           ? 'Cancele primeiro o ajuste ligado ao IOF. Depois, cancele a cobrança original de IOF.'
           : message);
     }
-    finally { setBusy(false); }
+    finally { pending.current=false;setBusy(false);onBusyChange?.(false); }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!detail || busy) return;
+    event.preventDefault(); if (!detail || disabled) return;
     const data = new FormData(event.currentTarget),text = (key: string) => String(data.get(key) ?? '').trim(),tx = detail.transaction;
     try {
       if (operation === 'notes') await run('annotate_transaction',{ p_transaction:tx.id,p_version:tx.version,p_changes:{ description:text('description'),notes:text('notes') || null } });
@@ -45,15 +47,15 @@ export default function LedgerTransactionActions({ workspace,transactionId,money
   const canEdit = canWrite && detail && !detail.financially_locked && !detail.entries.some(e => e.statement_status === 'closed') && detail.entries.length === 2 && ['expense','income','transfer','card_purchase'].includes(detail.transaction.kind);
   const canRefund = canWrite && detail && ['expense','card_purchase'].includes(detail.transaction.kind) && detail.remaining_consumption_cents > 0;
   const canExplain = canWrite && detail && !detail.financially_locked && detail.transaction.kind==='balance_adjustment' && detail.unidentified_adjustment_cents!==0;
-  const field = (title: string,id: string) => <label htmlFor={id} className="text-sm font-medium">{title}</label>;
-  return <section className="space-y-4 rounded-2xl border border-brand-300 bg-white p-5 dark:border-brand-800 dark:bg-slate-900" aria-label="Detalhes do lançamento">
-    <div className="flex justify-between gap-3"><h2 className="font-semibold">Detalhes do lançamento</h2><button onClick={onClose} className="text-sm">Fechar detalhes</button></div>
+  const field = (title: string,id: string) => <label htmlFor={id} className="field-label">{title}</label>;
+  return <section className="card min-w-0 space-y-4 p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Detalhes do lançamento">
+    <div className="flex justify-between gap-3"><h2 className="font-semibold">Detalhes do lançamento</h2><button disabled={disabled} onClick={onClose} className="text-sm text-slate-500 dark:text-slate-400">Fechar detalhes</button></div>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    {detail && <><p className="font-medium">{detail.transaction.description}</p><p className="text-sm text-slate-500">{detail.transaction.occurred_on} · referência {detail.transaction.competence_month.slice(0,7)} · {detail.transaction.status === 'cancelled' ? 'Cancelado' : 'Registrado'}</p>
-      {detail.entries.map(e => <div key={e.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-2 dark:border-slate-800"><div><p className="text-sm">{e.account_name}</p>{e.reconciliation_status && <p className="text-xs text-slate-500">{e.reconciliation_status === 'reconciled' ? 'Conferido no extrato' : 'Não conferido'}</p>}</div><div className="flex items-center gap-3"><strong className="text-sm">{money(e.amount_cents)}</strong>{canWrite && e.reconciliation_status && <button disabled={busy} onClick={() => void run('reconcile_entry',{ p_entry:e.id,p_version:detail.transaction.version,p_reconciled:e.reconciliation_status !== 'reconciled' })} className="text-sm text-brand-600">{e.reconciliation_status === 'reconciled' ? 'Desfazer conferência' : 'Marcar como conferido'}</button>}</div></div>)}
+    {detail && <><p className="font-medium [overflow-wrap:anywhere]">{detail.transaction.description}</p><p className="text-sm text-slate-500">{detail.transaction.occurred_on} · referência {detail.transaction.competence_month.slice(0,7)} · {detail.transaction.status === 'cancelled' ? 'Cancelado' : 'Registrado'}</p>
+      {detail.entries.map(e => <div key={e.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-2 dark:border-slate-800"><div><p className="text-sm [overflow-wrap:anywhere]">{e.account_name}</p>{e.reconciliation_status && <p className="text-xs text-slate-500">{e.reconciliation_status === 'reconciled' ? 'Conferido no extrato' : 'Não conferido'}</p>}</div><div className="flex flex-wrap items-center gap-3"><strong className="text-sm">{money(e.amount_cents)}</strong>{canWrite && e.reconciliation_status && <button disabled={disabled} onClick={() => void run('reconcile_entry',{ p_entry:e.id,p_version:detail.transaction.version,p_reconciled:e.reconciliation_status !== 'reconciled' })} className="text-sm text-brand-600">{e.reconciliation_status === 'reconciled' ? 'Desfazer conferência' : 'Marcar como conferido'}</button>}</div></div>)}
       {detail.financially_locked && <p className="text-sm text-amber-700 dark:text-amber-300">Os valores estão protegidos pelo fechamento mensal. Anotações e conferência no extrato continuam disponíveis.</p>}
-      {canWrite && <form key={`${detail.transaction.version}-${operation}`} onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+      {canWrite && <form key={`${detail.transaction.version}-${operation}`} onSubmit={submit} className="min-w-0"><fieldset disabled={disabled} className="grid min-w-0 gap-4 sm:grid-cols-2">
         <div className="grid gap-2 sm:col-span-2">{field('Ação sobre o lançamento','transaction-action')}<select id="transaction-action" value={operation} onChange={event => { setOperation(event.target.value); setClientId(crypto.randomUUID()); setError(''); setNotice(''); }} className={input}><option value="notes">Editar descrição e observações</option>{canEdit && <option value="edit">Corrigir valor, categoria ou data</option>}{canRefund && <option value="refund">Registrar estorno ou reembolso</option>}{canExplain && <option value="explain">Explicar diferença de saldo</option>}<option value="cancel">Cancelar lançamento</option></select></div>
         {['notes','edit'].includes(operation) && <><div className="grid gap-2">{field('Descrição','transaction-description')}<input id="transaction-description" name="description" required maxLength={200} defaultValue={detail.transaction.description} className={input}/></div><div className="grid gap-2">{field('Observações','transaction-notes')}<input id="transaction-notes" name="notes" defaultValue={detail.transaction.notes ?? ''} className={input}/></div></>}
         {['edit','refund'].includes(operation) && <><div className="grid gap-2">{field(operation === 'refund' ? 'Valor devolvido (R$)' : 'Valor corrigido (R$)','transaction-amount')}<input id="transaction-amount" name="amount" inputMode="decimal" required defaultValue={operation === 'edit' ? textCents(detail.entries[0].amount_cents) : undefined} className={input}/></div><div className="grid gap-2">{field('Data do fato','transaction-date')}<input id="transaction-date" name="date" type="date" required defaultValue={operation === 'edit' ? detail.transaction.occurred_on : workspace.space.today} className={input}/></div></>}
@@ -61,8 +63,8 @@ export default function LedgerTransactionActions({ workspace,transactionId,money
         {operation === 'refund' && <><p className="text-sm text-slate-500 sm:col-span-2">Disponível para estorno ou reembolso: {money(detail.remaining_consumption_cents)}.</p><div className="grid gap-2">{detail.transaction.kind === 'card_purchase' ? <>{field('Tratamento das parcelas','transaction-refund-model')}<select id="transaction-refund-model" name="model" className={input}><option value="cancel_remaining">Reduzir parcelas e creditar o restante</option><option value="credit_open_statement">Creditar na fatura aberta e manter parcelas</option></select></> : <>{field('Conta que recebeu a devolução','transaction-refund-account')}<select id="transaction-refund-account" name="account" required className={input}><option value="">Selecione</option>{workspace.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></>}</div></>}
         {operation === 'explain' && <><p className="text-sm text-slate-500 sm:col-span-2">Ainda não identificado: {money(Math.abs(detail.unidentified_adjustment_cents))}. Classifique uma parte ou o total. O saldo bancário e a conferência do extrato serão preservados.</p><div className="grid gap-2">{field('Valor a explicar (R$)','explanation-amount')}<input id="explanation-amount" name="amount" inputMode="decimal" required defaultValue={textCents(detail.unidentified_adjustment_cents)} className={input}/></div><div className="grid gap-2">{field('Classificar a diferença como','explanation-category')}<select id="explanation-category" name="category" className={input}><option value="">Correção do saldo inicial</option>{workspace.categories.filter(category=>category.ledger_account_id && category.kind===(detail.unidentified_adjustment_cents>0?'expense':'income')).map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div className="grid gap-2">{field('Competência da parte explicada','explanation-month')}<input id="explanation-month" name="month" type="month" defaultValue={detail.transaction.competence_month.slice(0,7)} required className={input}/></div></>}
         {['cancel','edit','explain'].includes(operation) && <div className="grid gap-2 sm:col-span-2">{field('Motivo da alteração','transaction-reason')}<input id="transaction-reason" name="reason" required className={input}/></div>}
-        <div className="sm:col-span-2"><button disabled={busy} className="btn-primary px-4 py-2.5 font-semibold text-white disabled:opacity-50">Salvar alteração</button></div>
-      </form>}
+        <div className="sm:col-span-2"><button disabled={disabled} className="btn-primary px-4 py-2.5 font-semibold text-white disabled:opacity-50">Salvar alteração</button></div>
+      </fieldset></form>}
     </>}
   </section>;
 }
