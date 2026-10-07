@@ -36,12 +36,13 @@ fs.writeFileSync(path.join(deployDir, '.nojekyll'), '', 'utf8');
 console.log('Staging changes in gh-pages worktree...');
 execSync('git add -A', { cwd: deployDir, stdio: 'inherit' });
 
+const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
 const status = execSync('git status --porcelain', { cwd: deployDir, encoding: 'utf8' }).trim();
 if (!status) {
   console.log('No changes detected in gh-pages.');
 } else {
-  console.log('Committing release 2.1.11 to gh-pages...');
-  execSync('git commit -m "deploy: WalletUp 2.1.11 unifica organizacao nas configuracoes e notificacoes no header"', {
+  console.log(`Committing release ${pkg.version} to gh-pages...`);
+  execSync(`git commit -m "deploy: WalletUp ${pkg.version} remove lancamento rapido das configuracoes"`, {
     cwd: deployDir,
     stdio: 'inherit'
   });
