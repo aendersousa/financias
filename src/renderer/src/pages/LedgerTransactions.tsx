@@ -91,10 +91,10 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       <label className="flex w-full flex-col gap-1 sm:w-72"><span className="field-label">Buscar lançamento</span><input value={search} onChange={event=>{setSearch(event.target.value);setSelected(null)}} placeholder="Descrição" className={input}/></label>
       <label className={labelClass}><span className="field-label">Situação do lançamento</span><select aria-label="Situação do lançamento" value={status} onChange={event=>{setStatus(event.target.value);setSelected(null)}} className={input}><option value="all">Todos</option><option value="posted">Registrados</option><option value="cancelled">Cancelados</option></select></label>
     </div>
-    <TransactionTable transactions={visible}
+    <TransactionTable transactions={visible} money={money}
       renderName={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Abrir lançamento '+transaction.description} className="block max-w-full text-left [overflow-wrap:anywhere]">{transaction.description}</button>:transaction.description}
       renderActions={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Ver detalhes de '+transaction.description} aria-expanded={selected===transaction.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>:null}
       renderEditor={transaction=>online&&selected===transaction.id?<LedgerTransactionActions key={transaction.id} workspace={workspace} transactionId={transaction.id} money={money} onChanged={onChanged} onClose={()=>setSelected(null)} mutationPending={pending} externalBusy={busy} onBusyChange={setBusy}/>:null}/>
-    <p className="text-xs text-slate-500 dark:text-slate-400">Exibindo os últimos {workspace.transactions.length} lançamentos recebidos do espaço.</p>
+    <p className="text-xs text-slate-500 dark:text-slate-400">Exibindo {visible.length} de {workspace.transactions.length} lançamentos recebidos do espaço (até os 200 mais recentes).</p>
   </div>
 }

@@ -56,6 +56,8 @@ interface PersonDetail {
   balance_cents: number;
   movements: {
     id: string;
+    version?: number;
+    notes?: string | null;
     occurred_on: string;
     description: string;
     status: string;
@@ -253,6 +255,17 @@ export default function LedgerPeople({
       const targetPerson = text('person') || movementPersonId;
       if (!targetPerson) throw new Error('Selecione uma pessoa.');
 
+      const targetContact = contacts.find(c => c.id === targetPerson);
+      const customDesc = text('description');
+      const defaultDesc = movementDirection === 'lend'
+        ? `Empréstimo para ${targetContact?.nickname || 'pessoa'}`
+        : movementDirection === 'borrow'
+        ? `Empréstimo de ${targetContact?.nickname || 'pessoa'}`
+        : movementDirection === 'receive'
+        ? `Recebimento de ${targetContact?.nickname || 'pessoa'}`
+        : `Pagamento para ${targetContact?.nickname || 'pessoa'}`;
+      const finalDesc = customDesc || defaultDesc;
+
       pending.current = true;
       setBusy(true);
       setError('');
@@ -265,14 +278,24 @@ export default function LedgerPeople({
         p_direction: movementDirection,
         p_amount_cents: amount,
         p_occurred_on: text('date'),
-        p_client_uuid: crypto.randomUUID()
+        p_client_uuid: crypto.randomUUID(),
+        p_description: finalDesc
       });
 
       await onChanged();
       await loadContacts();
+      if (selectedPersonId === targetPerson) {
+        await loadPersonDetail(targetPerson);
+      }
       setMovementPersonId(null);
       setMovementAmount('');
-      setNotice('Movimentação registrada com sucesso!');
+      setNotice(
+        movementDirection === 'lend'
+          ? `Empréstimo para ${targetContact?.nickname || 'pessoa'} registrado com sucesso!`
+          : movementDirection === 'borrow'
+          ? `Empréstimo de ${targetContact?.nickname || 'pessoa'} registrado com sucesso!`
+          : 'Movimentação registrada com sucesso!'
+      );
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Não foi possível registrar.');
     } finally {
@@ -503,6 +526,10 @@ export default function LedgerPeople({
     try {
       // 1. If moving cash, settle with person
       if (loanMoveCash && loanAccountId) {
+        const loanDesc = loanDirection === 'lend'
+          ? `Empréstimo para ${targetPerson.nickname}`
+          : `Empréstimo de ${targetPerson.nickname}`;
+
         await ledgerRpc('settle_person', {
           p_space: workspace.space.id,
           p_person: targetPerson.id,
@@ -510,7 +537,8 @@ export default function LedgerPeople({
           p_direction: loanDirection === 'lend' ? 'lend' : 'borrow',
           p_amount_cents: loanCalc.principalCents,
           p_occurred_on: workspace.space.today,
-          p_client_uuid: crypto.randomUUID()
+          p_client_uuid: crypto.randomUUID(),
+          p_description: loanDesc
         });
       }
 
@@ -630,6 +658,33 @@ export default function LedgerPeople({
       setNotice('Lembrete adicionado à Agenda com sucesso!');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Não foi possível criar o lembrete.');
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  // Annotate / rename movement transaction
+  async function handleAnnotateMovement(transactionId: string, version: number, description: string) {
+    if (pending.current || !canWrite) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await ledgerRpc('annotate_transaction', {
+        p_space: workspace.space.id,
+        p_transaction: transactionId,
+        p_version: version,
+        p_changes: { description: description.trim() }
+      });
+      await onChanged();
+      if (selectedPersonId) {
+        await loadPersonDetail(selectedPersonId);
+      }
+      setNotice('Descrição do lançamento atualizada com sucesso!');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível atualizar o lançamento.');
     } finally {
       pending.current = false;
       setBusy(false);
@@ -1510,6 +1565,9 @@ export default function LedgerPeople({
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    O lançamento será registrado no extrato como <strong>&quot;{loanDirection === 'lend' ? 'Empréstimo para' : 'Empréstimo de'} {contacts.find(c => c.id === loanPersonId)?.nickname || 'pessoa'}&quot;</strong>.
+                  </p>
                 </div>
               )}
             </div>
@@ -1752,7 +1810,7 @@ export default function LedgerPeople({
 
             <div className="grid gap-1.5 text-sm">
               <label htmlFor="movement-date" className="font-medium">
-                Data do pagamento/acerto *
+                Data da movimentação *
               </label>
               <input
                 id="movement-date"
@@ -1765,6 +1823,28 @@ export default function LedgerPeople({
                 className={input}
               />
             </div>
+          </div>
+
+          <div className="grid gap-1.5 text-sm">
+            <label htmlFor="movement-description" className="font-medium text-slate-700 dark:text-slate-300">
+              Descrição no extrato (opcional)
+            </label>
+            <input
+              id="movement-description"
+              name="description"
+              aria-label="Descrição da movimentação com pessoa"
+              maxLength={100}
+              placeholder={
+                movementDirection === 'lend'
+                  ? `Padrão: Empréstimo para ${activeMovementPerson?.nickname || 'pessoa'}`
+                  : movementDirection === 'borrow'
+                  ? `Padrão: Empréstimo de ${activeMovementPerson?.nickname || 'pessoa'}`
+                  : movementDirection === 'receive'
+                  ? `Padrão: Recebimento de ${activeMovementPerson?.nickname || 'pessoa'}`
+                  : `Padrão: Pagamento para ${activeMovementPerson?.nickname || 'pessoa'}`
+              }
+              className={input}
+            />
           </div>
 
           <div className="flex items-center gap-3 pt-2">
@@ -2249,6 +2329,8 @@ export default function LedgerPeople({
                 onSettleReminder={handleSettleReminder}
                 busy={busy}
                 today={workspace.space.today}
+                onAnnotateMovement={handleAnnotateMovement}
+                workspaceTransactions={workspace.transactions}
               />
             ) : null
           }
@@ -2273,6 +2355,8 @@ function PersonDetailPanel({
   onToggleReminder,
   onAddReminder,
   onSettleReminder,
+  onAnnotateMovement,
+  workspaceTransactions,
   busy,
   today
 }: {
@@ -2289,11 +2373,15 @@ function PersonDetailPanel({
   onToggleReminder: (reminderId: string, version: number, completed: boolean) => Promise<void>;
   onAddReminder: (title: string, dueOn: string) => Promise<void>;
   onSettleReminder: (reminder: { title: string; effective_due_on: string }) => void;
+  onAnnotateMovement?: (transactionId: string, version: number, description: string) => Promise<void>;
+  workspaceTransactions?: LedgerWorkspace['transactions'];
   busy: boolean;
   today: string;
 }) {
   const [activeTab, setActiveTab] = useState<'movements' | 'reminders' | 'notes'>('movements');
   const [showAddReminder, setShowAddReminder] = useState(false);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [editingTxDesc, setEditingTxDesc] = useState('');
 
   const pendingRemindersCount = detail?.reminders.filter(r => !r.completed_at).length ?? 0;
 
@@ -2505,45 +2593,176 @@ function PersonDetailPanel({
               <div className="space-y-1.5">
                 {detail.movements.map(item => {
                   const isPositive = item.person_amount_cents > 0;
+                  const isLoan = item.description.toLowerCase().includes('empréstimo');
+                  const isReceive = item.description.toLowerCase().startsWith('recebimento');
+                  const isPay = item.description.toLowerCase().startsWith('pagamento');
+                  const isAcerto = item.description.startsWith('Acerto com');
+
                   return (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-xs sm:text-sm transition-colors hover:bg-slate-100/70 dark:border-slate-800/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
+                      className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-xs sm:text-sm transition-colors hover:bg-slate-100/70 dark:border-slate-800/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                            {item.description}
-                          </span>
-                          {item.status === 'cancelled' && (
-                            <span className="rounded-full bg-red-100 px-1.5 py-0.2 text-[10px] font-bold text-red-700 dark:bg-red-950 dark:text-red-300 shrink-0">
-                              Cancelado
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                              {item.description}
                             </span>
-                          )}
-                          {item.occurred_on > today && (
-                            <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0">
-                              Agendado
-                            </span>
-                          )}
+                            {isLoan && (
+                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 shrink-0">
+                                Empréstimo
+                              </span>
+                            )}
+                            {isReceive && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 shrink-0">
+                                Recebimento
+                              </span>
+                            )}
+                            {isPay && (
+                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-300 shrink-0">
+                                Pagamento
+                              </span>
+                            )}
+                            {item.status === 'cancelled' && (
+                              <span className="rounded-full bg-red-100 px-1.5 py-0.2 text-[10px] font-bold text-red-700 dark:bg-red-950 dark:text-red-300 shrink-0">
+                                Cancelado
+                              </span>
+                            )}
+                            {item.occurred_on > today && (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0">
+                                Agendado
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                            <span>{displayDate(item.occurred_on)}</span>
+                            {onAnnotateMovement && item.status !== 'cancelled' && (
+                              <>
+                                <span>•</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (editingTxId === item.id) {
+                                      setEditingTxId(null);
+                                    } else {
+                                      setEditingTxId(item.id);
+                                      setEditingTxDesc(item.description);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+                                >
+                                  <Edit3 size={11} />
+                                  <span>Renomear</span>
+                                </button>
+                                {isAcerto && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const suggested = item.person_amount_cents > 0
+                                        ? `Empréstimo para ${person.nickname}`
+                                        : `Recebimento de ${person.nickname}`;
+                                      setEditingTxId(item.id);
+                                      setEditingTxDesc(suggested);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900/60 transition shrink-0"
+                                    title="Mudar o nome para Empréstimo"
+                                  >
+                                    <Coins size={10} />
+                                    <span>Mudar para Empréstimo</span>
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <p className="mt-0.5 text-xs text-slate-400">
-                          {displayDate(item.occurred_on)}
-                        </p>
+                        <div className="text-right shrink-0">
+                          <p
+                            className={`font-bold ${
+                              isPositive
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-rose-600 dark:text-rose-400'
+                            }`}
+                          >
+                            {isPositive ? '+' : ''}{money(item.person_amount_cents)}
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Saldo após: {money(item.running_balance_cents)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p
-                          className={`font-bold ${
-                            isPositive
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-rose-600 dark:text-rose-400'
-                          }`}
-                        >
-                          {isPositive ? '+' : ''}{money(item.person_amount_cents)}
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          Saldo após: {money(item.running_balance_cents)}
-                        </p>
-                      </div>
+
+                      {/* Inline Renaming Box */}
+                      {editingTxId === item.id && (
+                        <div className="mt-2.5 rounded-xl border border-brand-200 bg-brand-50/50 p-3 text-xs dark:border-brand-900/60 dark:bg-brand-950/30">
+                          <div className="space-y-2">
+                            <label className="font-semibold text-slate-800 dark:text-slate-200">
+                              Editar descrição do lançamento:
+                            </label>
+                            <input
+                              type="text"
+                              value={editingTxDesc}
+                              onChange={e => setEditingTxDesc(e.target.value)}
+                              maxLength={100}
+                              placeholder={`Ex: Empréstimo para ${person.nickname}`}
+                              className="field-input w-full text-xs"
+                              autoFocus
+                            />
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400">Sugestões rápidas:</span>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTxDesc(`Empréstimo para ${person.nickname}`)}
+                                className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              >
+                                Empréstimo para {person.nickname}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTxDesc(`Empréstimo de ${person.nickname}`)}
+                                className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              >
+                                Empréstimo de {person.nickname}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTxDesc(`Recebimento de ${person.nickname}`)}
+                                className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              >
+                                Recebimento de {person.nickname}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTxDesc(`Pagamento para ${person.nickname}`)}
+                                className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              >
+                                Pagamento para {person.nickname}
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                type="button"
+                                disabled={busy || !editingTxDesc.trim()}
+                                onClick={async () => {
+                                  const v = item.version ?? workspaceTransactions?.find(t => t.id === item.id)?.version ?? 1;
+                                  await onAnnotateMovement?.(item.id, v, editingTxDesc.trim());
+                                  setEditingTxId(null);
+                                }}
+                                className="btn-primary px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                Salvar descrição
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTxId(null)}
+                                className="px-2 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
