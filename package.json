@@ -1,6 +1,6 @@
 {
   "name": "financias",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "App desktop de gestao financeira pessoal",
   "main": "out/main/index.js",
   "scripts": {

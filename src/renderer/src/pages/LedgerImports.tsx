@@ -4,6 +4,7 @@ import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { useAppStore } from '../store/useAppStore';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { ImportHistoryTable, ImportReviewTable } from '../components/ImportTables';
+import { Upload } from 'lucide-react';
 
 interface ImportAccount { id: string; name: string; liquidity: string; accountType?: 'card'; importProfile: StatementCsvProfile | null; fitidsUnreliable: boolean; institution: string | null; lastDigits: string | null }
 interface ImportBatch { id: string; financial_account_id: string | null; credit_card_id?: string | null; ledger_account_id: string; accountName?: string; file_name: string; status: 'in_review' | 'completed' | 'undone'; version: number; created_at: string; lines_read: number; lines_new: number; lines_duplicate: number; fitids_regenerated: boolean; canUndo?: boolean }
@@ -35,6 +36,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
   const privacy = useAppStore(state => state.privacyMode), canWrite = workspace.role !== 'viewer';
   const currentSpace = useRef(workspace.space.id); currentSpace.current = workspace.space.id;
+  const fileInput = useRef<HTMLInputElement>(null);
   const account = overview?.accounts.find(item => item.id === accountId);
   async function loadOverview() { const space = workspace.space.id, data = await ledgerRpc<Overview>('import_overview', { p_space: space }); if (currentSpace.current === space) setOverview(data); }
   useEffect(() => {
@@ -146,7 +148,21 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
       {canWrite ? <form aria-label="Preparar importação" onSubmit={event => void prepare(event)} className="card min-w-0 space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex w-full min-w-0 flex-col gap-1 sm:w-64"><label htmlFor="import-account" className="field-label">Conta ou cartão do arquivo</label><select id="import-account" value={accountId} onChange={event => chooseAccount(event.target.value)} disabled={busy} required className={input}><option value="">Selecione a conta ou o cartão</option>{overview?.accounts.map(item => <option key={item.id} value={item.id}>{item.name}{item.liquidity === 'benefit' ? ' · Benefício' : item.accountType === 'card' ? ' · Cartão' : ''}</option>)}</select></div>
-          <div className="flex w-full min-w-0 flex-col gap-1 sm:w-72"><label htmlFor="import-file" className="field-label">Arquivo OFX ou CSV</label><input id="import-file" key={accountId} type="file" accept=".ofx,.csv,text/csv,application/x-ofx" disabled={busy || !accountId} onChange={event => void selectFile(event.target.files?.[0])} className={input}/></div>
+          <div className="flex w-full min-w-0 flex-col gap-1 sm:w-96">
+            <label htmlFor="import-file" className="field-label">Arquivo OFX ou CSV</label>
+            <div className="flex min-w-0 items-center gap-3">
+              <input ref={fileInput} id="import-file" key={accountId} type="file" accept=".ofx,.csv,text/csv,application/x-ofx" hidden disabled={busy || !accountId} onChange={event => {
+                const file = event.currentTarget.files?.[0];
+                if (!file) return;
+                event.currentTarget.value = '';
+                void selectFile(file);
+              }}/>
+              <button type="button" disabled={busy || !accountId} onClick={() => fileInput.current?.click()} aria-label="Escolher arquivo OFX ou CSV" aria-describedby="import-file-name" className={`${primary} inline-flex shrink-0 items-center gap-2 disabled:cursor-not-allowed`}>
+                <Upload size={16} aria-hidden="true"/>Escolher arquivo
+              </button>
+              <span id="import-file-name" aria-live="polite" className={`min-w-0 text-xs [overflow-wrap:anywhere] ${bytes ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>{bytes ? fileName : 'Nenhum arquivo selecionado'}</span>
+            </div>
+          </div>
           <button disabled={busy || !bytes} className={primary}>{busy ? 'Preparando…' : 'Conferir arquivo'}</button>
         </div>
         <p className="max-w-prose text-xs text-slate-500 dark:text-slate-400">Escolha a conta, confira as colunas e revise o arquivo. Seus saldos só mudam quando você confirma as linhas.</p>
