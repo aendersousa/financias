@@ -61,8 +61,13 @@ try {
   }
   page = await openPage(owner);
   const navigate = async label => { await page.getByRole('button', { name: label, exact: true }).click(); await expect(page.getByRole('alert')).toHaveCount(0); };
-  const section = title => page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
-  const row = description => page.locator('article').filter({ has: page.getByText(description, { exact: true }) });
+  async function planningDetails(buttonName, regionName) {
+    const button = page.getByRole('button', { name: buttonName, exact: true });
+    if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
+    const details = page.getByRole('region', { name: regionName, exact: true });
+    await expect(details).toBeVisible();
+    return details;
+  }
   async function importLine(number) {
     const button = page.getByRole('button', { name: `Ver detalhes da linha ${number}`, exact: true });
     if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
@@ -117,13 +122,14 @@ try {
 
   stage = 'Agenda edit and partial payment'; console.log('Advanced browser: Agenda calendar, item edit and partial payment');
   await navigate('Agenda');
-  const agendaRow = row('Energia avançada');
+  const agendaRow = await planningDetails('Detalhes do item Energia avançada', 'Detalhes do item Energia avançada');
   await agendaRow.getByRole('button', { name: 'Editar este item', exact: true }).click();
   await page.getByLabel('Descrição do item', { exact: true }).fill('Energia avançada editada');
   await page.getByLabel('Valor previsto (R$)', { exact: true }).fill('220,00');
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Agenda atualizada');
-  await row('Energia avançada editada').getByRole('button', { name: 'Informar valor e data', exact: true }).click();
+  const editedAgenda = await planningDetails('Detalhes do item Energia avançada editada', 'Detalhes do item Energia avançada editada');
+  await editedAgenda.getByRole('button', { name: 'Informar valor e data', exact: true }).click();
   await page.getByLabel('Valor recebido ou pago (R$)', { exact: true }).fill('50,00');
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Agenda atualizada');
@@ -233,7 +239,7 @@ try {
   await page.getByRole('button', { name: 'Atualizar', exact: true }).first().click();
   await navigate('Metas e provisões');
   const planRegion = page.getByRole('region', { name: 'Planejamento de aportes', exact: true });
-  const provisionPlan = planRegion.locator('article').filter({ has: page.getByRole('heading', { name: 'IPVA avançado', exact: true }) });
+  const provisionPlan = await planningDetails('Ver detalhes do plano IPVA avançado', 'Detalhes do plano IPVA avançado');
   await provisionPlan.getByRole('button', { name: 'Configurar plano e cotas', exact: true }).click();
   await provisionPlan.getByLabel('Prioridade do aporte (maior primeiro)', { exact: true }).fill('5');
   await provisionPlan.getByRole('checkbox', { name: 'Substituir o valor, as datas ou as cotas da provisão', exact: true }).check();
@@ -264,7 +270,7 @@ try {
   const budget = await rpc('create_budget', { p_space: space, p_payload: { category_id: category, amount_cents: 50000, effective_from_month: `${today.slice(0, 7)}-01` } });
   await page.getByRole('button', { name: 'Atualizar', exact: true }).first().click();
   await navigate('Orçamentos');
-  const budgetPanel = section('Mercado avançado editado');
+  const budgetPanel = await planningDetails('Detalhes do orçamento Mercado avançado editado', 'Detalhes do orçamento Mercado avançado editado');
   await budgetPanel.getByRole('button', { name: 'Ajustar ou encerrar orçamento', exact: true }).click();
   await budgetPanel.getByLabel('Como aplicar o ajuste', { exact: true }).selectOption('month');
   await budgetPanel.getByLabel('Novo limite (R$)', { exact: true }).fill('650,00');
@@ -615,7 +621,7 @@ try {
   const beforeWarning = await snapshot();
   await page.getByRole('button', { name: 'Atualizar', exact: true }).first().click();
   await navigate('Metas e provisões');
-  const warningReserve = section('Meta com aviso avançada');
+  const warningReserve = await planningDetails('Ver detalhes de Meta com aviso avançada', 'Detalhes da reserva Meta com aviso avançada');
   await warningReserve.getByRole('button', { name: 'Separar dinheiro', exact: true }).click();
   await page.getByLabel('Valor da movimentação (R$)', { exact: true }).fill('10000,00');
   await page.getByRole('button', { name: 'Registrar aporte', exact: true }).click();
@@ -642,7 +648,7 @@ try {
   await navigate('Previsão de saldo');
   const cashCurve = page.getByRole('region', { name: 'Curva diária de saldo', exact: true });
   await expect(cashCurve).toBeVisible();
-  await page.getByLabel('Período da previsão', { exact: true }).selectOption('30_days');
+  await page.getByRole('combobox', { name: 'Período da previsão', exact: true }).selectOption('30_days');
   await page.getByRole('button', { name: 'Atualizar previsão', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Período da previsão salvo' })).toBeVisible();
   await expect(cashCurve).toBeVisible();
@@ -662,14 +668,15 @@ try {
   await page.screenshot({ path: 'out/verification/forecast-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await navigate('Agenda'); await navigate('Previsão de saldo');
-  await expect(page.getByLabel('Período da previsão', { exact: true })).toHaveValue('30_days');
+  await expect(page.getByRole('combobox', { name: 'Período da previsão', exact: true })).toHaveValue('30_days');
   await expect(cashCurve).toBeVisible();
 
   stage = 'Loan schedule UI'; console.log('Advanced browser: creditor schedule UI');
   const loan = await rpc('create_loan', { p_space: space, p_name: 'Empréstimo avançado', p_kind: 'loan', p_opening_cents: 100000, p_on: today, p_lender: 'Credor local', p_client_uuid: randomUUID() });
   await page.getByRole('button', { name: 'Atualizar', exact: true }).first().click();
   await navigate('Patrimônio');
-  await page.getByRole('button', { name: 'Cadastrar cronograma', exact: true }).click();
+  const loanDetails = await planningDetails('Ver detalhes de Empréstimo avançado', 'Detalhes do empréstimo Empréstimo avançado');
+  await loanDetails.getByRole('button', { name: 'Cadastrar cronograma', exact: true }).click();
   await page.getByLabel('Quantidade', { exact: true }).fill('2');
   await page.getByLabel('Taxa mensal (%)', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Gerar sugestão', exact: true }).click();
