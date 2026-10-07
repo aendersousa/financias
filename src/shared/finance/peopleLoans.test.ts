@@ -82,26 +82,26 @@ describe('peopleLoans calculations', () => {
     expect(result.schedule[1].amountCents).toBe(27500);
   });
 
-  it('calculates fixed interest per month (e.g. R$ 50,00 per month for 3 months = R$ 150,00 total)', () => {
+  it('calculates fixed interest per month (e.g. R$ 30,00 per month for 2 months = R$ 60,00 total)', () => {
     const result = calculatePeopleLoan({
       principalInput: '300,00',
       interestType: 'fixed',
       interestRate: '',
-      interestFixedInput: '50,00',
+      interestFixedInput: '30,00',
       interestPeriod: 'monthly',
-      months: 3,
+      months: 2,
       payMode: 'installments',
-      firstDueDate: '2026-11-01',
-      today: '2026-10-01'
+      firstDueDate: '2026-11-07',
+      today: '2026-10-07'
     });
 
     expect(result.principalCents).toBe(30000);
-    expect(result.interestCents).toBe(15000); // 50 * 3 = 150
-    expect(result.totalCents).toBe(45000);
-    expect(result.schedule).toHaveLength(3);
-    expect(result.schedule[0].amountCents).toBe(15000);
-    expect(result.schedule[1].amountCents).toBe(15000);
-    expect(result.schedule[2].amountCents).toBe(15000);
+    expect(result.interestCents).toBe(6000); // R$ 30 * 2 = R$ 60
+    expect(result.totalCents).toBe(36000);
+    expect(result.effectiveRate).toBe(20); // 60 / 300 = 20%
+    expect(result.count).toBe(2);
+    expect(result.schedule[0].amountCents).toBe(18000);
+    expect(result.schedule[1].amountCents).toBe(18000);
   });
 
   it('handles single lump sum payment at the end of the term', () => {
