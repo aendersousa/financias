@@ -122,5 +122,31 @@ describe('peopleLoans calculations', () => {
     expect(result.schedule[0].amountCents).toBe(220000);
     expect(result.schedule[0].dueDate).toBe('2027-04-15');
   });
+
+  it('calculates daily installments (e.g. 1500 in 30 daily installments)', () => {
+    const result = calculatePeopleLoan({
+      principalInput: '1500,00',
+      interestType: 'none',
+      interestRate: '',
+      interestFixedInput: '',
+      interestPeriod: 'total',
+      installmentsCount: 30,
+      frequency: 'daily',
+      payMode: 'installments',
+      firstDueDate: '2026-10-08',
+      today: '2026-10-07'
+    });
+
+    expect(result.principalCents).toBe(150000);
+    expect(result.count).toBe(30);
+    expect(result.frequency).toBe('daily');
+    expect(result.schedule).toHaveLength(30);
+    expect(result.schedule[0].amountCents).toBe(5000);
+    expect(result.schedule[0].dueDate).toBe('2026-10-08');
+    expect(result.schedule[1].dueDate).toBe('2026-10-09');
+    expect(result.schedule[29].dueDate).toBe('2026-11-06');
+    const total = result.schedule.reduce((acc, s) => acc + s.amountCents, 0);
+    expect(total).toBe(150000);
+  });
 });
 

@@ -30,7 +30,7 @@ import {
 import PeopleTable from '../components/PeopleTable';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
-import { addMonthsClamped, calculatePeopleLoan } from '../../../shared/finance/peopleLoans';
+import { addDays, addMonthsClamped, calculatePeopleLoan, type PeopleLoanFrequency } from '../../../shared/finance/peopleLoans';
 import CurrencyInput from '../components/CurrencyInput';
 
 const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -96,6 +96,16 @@ export default function LedgerPeople({
   const [addPersonDebt, setAddPersonDebt] = useState<'none' | 'receivable' | 'payable'>('none');
   const [addPersonDebtAmount, setAddPersonDebtAmount] = useState('');
   const [addPersonDebtDate, setAddPersonDebtDate] = useState(workspace.space.today);
+  const [addPersonConfigureLoan, setAddPersonConfigureLoan] = useState(true);
+  const [addPersonLoanInterestType, setAddPersonLoanInterestType] = useState<'percent' | 'fixed' | 'none'>('none');
+  const [addPersonLoanInterestRate, setAddPersonLoanInterestRate] = useState('5');
+  const [addPersonLoanInterestFixed, setAddPersonLoanInterestFixed] = useState('');
+  const [addPersonLoanInterestPeriod, setAddPersonLoanInterestPeriod] = useState<'total' | 'monthly' | 'daily'>('monthly');
+  const [addPersonLoanFrequency, setAddPersonLoanFrequency] = useState<PeopleLoanFrequency>('monthly');
+  const [addPersonLoanCount, setAddPersonLoanCount] = useState(1);
+  const [addPersonLoanPayMode, setAddPersonLoanPayMode] = useState<'installments' | 'single'>('installments');
+  const [addPersonLoanFirstDue, setAddPersonLoanFirstDue] = useState(() => addMonthsClamped(workspace.space.today, 1));
+  const [addPersonLoanCreateReminders, setAddPersonLoanCreateReminders] = useState(true);
 
   // Loan with interest and installments state
   const [showLoanForm, setShowLoanForm] = useState(false);
@@ -105,7 +115,9 @@ export default function LedgerPeople({
   const [loanInterestType, setLoanInterestType] = useState<'percent' | 'fixed' | 'none'>('none');
   const [loanInterestRate, setLoanInterestRate] = useState('5');
   const [loanInterestFixed, setLoanInterestFixed] = useState('');
-  const [loanInterestPeriod, setLoanInterestPeriod] = useState<'total' | 'monthly'>('total');
+  const [loanInterestPeriod, setLoanInterestPeriod] = useState<'total' | 'monthly' | 'daily'>('monthly');
+  const [loanFrequency, setLoanFrequency] = useState<PeopleLoanFrequency>('monthly');
+  const [loanInstallmentsCount, setLoanInstallmentsCount] = useState(1);
   const [loanMonths, setLoanMonths] = useState(1);
   const [loanPayMode, setLoanPayMode] = useState<'installments' | 'single'>('installments');
   const [loanFirstDueDate, setLoanFirstDueDate] = useState(() => addMonthsClamped(workspace.space.today, 1));
@@ -460,9 +472,18 @@ export default function LedgerPeople({
   }
 
   // Open loan form
-  function openLoanForPerson(personId?: string) {
+  function openLoanForPerson(personId?: string, useExistingBalance = false) {
     if (personId) {
       setLoanPersonId(personId);
+      const target = contacts.find(c => c.id === personId);
+      if (target && target.balance_cents !== 0) {
+        if (useExistingBalance || !loanPrincipal) {
+          const cents = Math.abs(target.balance_cents);
+          setLoanPrincipal((cents / 100).toFixed(2).replace('.', ','));
+          setLoanDirection(target.balance_cents > 0 ? 'lend' : 'borrow');
+          setLoanMoveCash(false);
+        }
+      }
     } else if (activeContacts.length > 0 && !loanPersonId) {
       setLoanPersonId(activeContacts[0].id);
     }
@@ -474,6 +495,36 @@ export default function LedgerPeople({
     setNotice('');
   }
 
+  // Calculate loan simulation for adding person
+  const addPersonLoanCalc = useMemo(() => {
+    if (!addPersonConfigureLoan || addPersonDebt === 'none') return null;
+    return calculatePeopleLoan({
+      principalInput: addPersonDebtAmount,
+      interestType: addPersonLoanInterestType,
+      interestRate: addPersonLoanInterestRate,
+      interestFixedInput: addPersonLoanInterestFixed,
+      interestPeriod: addPersonLoanInterestPeriod,
+      installmentsCount: addPersonLoanCount,
+      frequency: addPersonLoanFrequency,
+      payMode: addPersonLoanPayMode,
+      firstDueDate: addPersonLoanFirstDue,
+      today: workspace.space.today
+    });
+  }, [
+    addPersonConfigureLoan,
+    addPersonDebt,
+    addPersonDebtAmount,
+    addPersonLoanInterestType,
+    addPersonLoanInterestRate,
+    addPersonLoanInterestFixed,
+    addPersonLoanInterestPeriod,
+    addPersonLoanCount,
+    addPersonLoanFrequency,
+    addPersonLoanPayMode,
+    addPersonLoanFirstDue,
+    workspace.space.today
+  ]);
+
   // Calculate loan simulation in real-time
   const loanCalc = useMemo(() => {
     return calculatePeopleLoan({
@@ -482,7 +533,8 @@ export default function LedgerPeople({
       interestRate: loanInterestRate,
       interestFixedInput: loanInterestFixed,
       interestPeriod: loanInterestPeriod,
-      months: loanMonths,
+      installmentsCount: loanFrequency === 'monthly' ? loanMonths : loanInstallmentsCount,
+      frequency: loanFrequency,
       payMode: loanPayMode,
       firstDueDate: loanFirstDueDate,
       today: workspace.space.today
@@ -494,6 +546,8 @@ export default function LedgerPeople({
     loanInterestFixed,
     loanInterestPeriod,
     loanMonths,
+    loanInstallmentsCount,
+    loanFrequency,
     loanPayMode,
     loanFirstDueDate,
     workspace.space.today
@@ -544,23 +598,34 @@ export default function LedgerPeople({
 
       // 2. If saving notes, append summary
       if (loanSaveNotes) {
+        const freqLabel = loanCalc.frequency === 'daily'
+          ? (loanCalc.count === 1 ? 'dia' : 'dias')
+          : loanCalc.frequency === 'weekly'
+          ? (loanCalc.count === 1 ? 'semana' : 'semanas')
+          : (loanCalc.months === 1 ? 'mês' : 'meses');
+
+        const freqAdj = loanCalc.frequency === 'daily'
+          ? 'diárias'
+          : loanCalc.frequency === 'weekly'
+          ? 'semanais'
+          : 'mensais';
+
         const conditionDesc = loanPayMode === 'single'
           ? `pagamento único de ${money(loanCalc.totalCents)} em ${displayDate(loanCalc.schedule[0]?.dueDate || '')}`
-          : `${loanCalc.count} parcelas mensais de ~${money(loanCalc.baseInstallmentCents)} (total ${money(loanCalc.totalCents)})`;
+          : `${loanCalc.count} parcelas ${freqAdj} de ~${money(loanCalc.baseInstallmentCents)} (total ${money(loanCalc.totalCents)})`;
 
+        const periodLabel = loanInterestPeriod === 'daily' ? '/dia' : loanInterestPeriod === 'monthly' ? '/mês' : 'total';
         const interestDesc = loanCalc.interestCents > 0
           ? `+ Juros: ${money(loanCalc.interestCents)} (${
               loanInterestType === 'percent'
-                ? `${loanInterestRate}% ${loanInterestPeriod === 'monthly' ? '/mês' : 'total'}`
-                : `${money(parseBrlCents(loanInterestFixed))} ${loanInterestPeriod === 'monthly' ? '/mês' : 'total'}`
+                ? `${loanInterestRate}% ${periodLabel}`
+                : `${money(parseBrlCents(loanInterestFixed))} ${periodLabel}`
             } - taxa efetiva de ${loanCalc.effectiveRate.toFixed(1)}%)`
           : 'sem juros adicionais';
 
         const noteEntry = `📌 [Empréstimo em ${displayDate(workspace.space.today)}] ${
           loanDirection === 'lend' ? 'Emprestado para' : 'Pegou emprestado de'
-        } ${targetPerson.nickname}: Principal ${money(loanCalc.principalCents)} (${interestDesc}) | Devolução em ${loanCalc.months} ${
-          loanCalc.months === 1 ? 'mês' : 'meses'
-        } (${conditionDesc}).`;
+        } ${targetPerson.nickname}: Principal ${money(loanCalc.principalCents)} (${interestDesc}) | Devolução em ${loanCalc.count} ${freqLabel} (${conditionDesc}).`;
 
         const updatedNotes = targetPerson.notes ? `${targetPerson.notes}\n\n${noteEntry}` : noteEntry;
 
@@ -597,9 +662,13 @@ export default function LedgerPeople({
       setLoanPrincipal('');
       setLoanInterestFixed('');
       setNotice(
-        `Empréstimo com ${targetPerson.nickname} registrado com sucesso! ${
-          loanCreateReminders ? `${loanCalc.schedule.length} lembrete(s) criado(s) na Agenda.` : ''
-        }`
+        !loanMoveCash
+          ? `Condições de parcelas e juros configuradas com sucesso para ${targetPerson.nickname}! ${
+              loanCreateReminders ? `${loanCalc.schedule.length} lembrete(s) criado(s) na Agenda.` : ''
+            }`
+          : `Empréstimo com ${targetPerson.nickname} registrado com sucesso! ${
+              loanCreateReminders ? `${loanCalc.schedule.length} lembrete(s) criado(s) na Agenda.` : ''
+            }`
       );
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Não foi possível registrar o empréstimo.');
@@ -944,13 +1013,47 @@ export default function LedgerPeople({
             setNotice('');
 
             try {
+              // 1. Prepare notes with loan terms if configured
+              let initialNotes = notes;
+              if (addPersonDebt !== 'none' && addPersonConfigureLoan && addPersonLoanCalc) {
+                const freqLabel = addPersonLoanFrequency === 'daily'
+                  ? (addPersonLoanCalc.count === 1 ? 'dia' : 'dias')
+                  : addPersonLoanFrequency === 'weekly'
+                  ? (addPersonLoanCalc.count === 1 ? 'semana' : 'semanas')
+                  : (addPersonLoanCalc.count === 1 ? 'mês' : 'meses');
+
+                const freqAdj = addPersonLoanFrequency === 'daily'
+                  ? 'diárias'
+                  : addPersonLoanFrequency === 'weekly'
+                  ? 'semanais'
+                  : 'mensais';
+
+                const conditionDesc = addPersonLoanPayMode === 'single'
+                  ? `pagamento único de ${money(addPersonLoanCalc.totalCents)} em ${displayDate(addPersonLoanCalc.schedule[0]?.dueDate || '')}`
+                  : `${addPersonLoanCalc.count} parcelas ${freqAdj} de ~${money(addPersonLoanCalc.baseInstallmentCents)} (total ${money(addPersonLoanCalc.totalCents)})`;
+
+                const interestDesc = addPersonLoanCalc.interestCents > 0
+                  ? `+ Juros: ${money(addPersonLoanCalc.interestCents)} (${
+                      addPersonLoanInterestType === 'percent'
+                        ? `${addPersonLoanInterestRate}% ${addPersonLoanInterestPeriod === 'daily' ? '/dia' : addPersonLoanInterestPeriod === 'monthly' ? '/mês' : 'total'}`
+                        : `${money(parseBrlCents(addPersonLoanInterestFixed))} ${addPersonLoanInterestPeriod === 'daily' ? '/dia' : addPersonLoanInterestPeriod === 'monthly' ? '/mês' : 'total'}`
+                    } - taxa efetiva de ${addPersonLoanCalc.effectiveRate.toFixed(1)}%)`
+                  : 'sem juros adicionais';
+
+                const loanNote = `📌 [Empréstimo em ${displayDate(addPersonDebtDate || workspace.space.today)}] ${
+                  addPersonDebt === 'receivable' ? 'Emprestado para' : 'Pegou emprestado de'
+                } ${nickname}: Principal ${money(addPersonLoanCalc.principalCents)} (${interestDesc}) | Devolução em ${addPersonLoanCalc.count} ${freqLabel} (${conditionDesc}).`;
+
+                initialNotes = initialNotes ? `${initialNotes}\n\n${loanNote}` : loanNote;
+              }
+
               // 1. Create person
               const id = await ledgerRpc<string>('manage_person', {
                 p_space: workspace.space.id,
                 p_person: null,
                 p_version: null,
                 p_action: 'create',
-                p_changes: { nickname, notes },
+                p_changes: { nickname, notes: initialNotes },
                 p_client_uuid: crypto.randomUUID()
               });
 
@@ -972,19 +1075,45 @@ export default function LedgerPeople({
                 }
               }
 
+              // 3. If loan reminders are enabled, create Agenda commitments
+              if (
+                addPersonDebt !== 'none' &&
+                addPersonConfigureLoan &&
+                addPersonLoanCreateReminders &&
+                addPersonLoanCalc &&
+                addPersonLoanCalc.schedule.length > 0
+              ) {
+                for (const item of addPersonLoanCalc.schedule) {
+                  const title = `${addPersonDebt === 'receivable' ? 'Cobrar' : 'Pagar'} ${nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
+                  await ledgerRpc('create_commitment', {
+                    p_space: workspace.space.id,
+                    p_payload: {
+                      kind: 'reminder',
+                      person_id: id,
+                      title,
+                      due_on: item.dueDate
+                    }
+                  });
+                }
+              }
+
               form.reset();
               setAddPersonDebt('none');
               setAddPersonDebtAmount('');
               setAddPersonDebtDate(workspace.space.today);
+              setAddPersonConfigureLoan(false);
+              setAddPersonLoanInterestFixed('');
               setShowAddPerson(false);
               setSelectedPersonId(id);
               await loadContacts();
               await onChanged();
               setNotice(
                 addPersonDebt !== 'none' && parseBrlCents(addPersonDebtAmount) > 0
-                  ? `Pessoa "${nickname}" adicionada com saldo inicial de ${money(parseBrlCents(addPersonDebtAmount))} (${
-                      addPersonDebt === 'receivable' ? 'a receber' : 'a pagar'
-                    })!`
+                  ? addPersonConfigureLoan && addPersonLoanCalc
+                    ? `Pessoa "${nickname}" adicionada com saldo de ${money(parseBrlCents(addPersonDebtAmount))} e ${addPersonLoanCalc.schedule.length} lembrete(s) criado(s) na Agenda!`
+                    : `Pessoa "${nickname}" adicionada com saldo inicial de ${money(parseBrlCents(addPersonDebtAmount))} (${
+                        addPersonDebt === 'receivable' ? 'a receber' : 'a pagar'
+                      })!`
                   : `Pessoa "${nickname}" adicionada com sucesso!`
               );
             } catch (failure) {
@@ -1071,7 +1200,10 @@ export default function LedgerPeople({
 
               <button
                 type="button"
-                onClick={() => setAddPersonDebt('receivable')}
+                onClick={() => {
+                  setAddPersonDebt('receivable');
+                  setAddPersonConfigureLoan(true);
+                }}
                 className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
                   addPersonDebt === 'receivable'
                     ? 'border-emerald-500 bg-emerald-50/80 font-semibold text-emerald-950 ring-2 ring-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200'
@@ -1089,7 +1221,10 @@ export default function LedgerPeople({
 
               <button
                 type="button"
-                onClick={() => setAddPersonDebt('payable')}
+                onClick={() => {
+                  setAddPersonDebt('payable');
+                  setAddPersonConfigureLoan(true);
+                }}
                 className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
                   addPersonDebt === 'payable'
                     ? 'border-rose-500 bg-rose-50/80 font-semibold text-rose-950 ring-2 ring-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200'
@@ -1137,6 +1272,295 @@ export default function LedgerPeople({
                 <p className="text-xs text-slate-500 sm:col-span-2">
                   Esse valor será lançado como saldo inicial desta pessoa sem afetar as despesas ou receitas correntes.
                 </p>
+
+                {/* Loan conditions card */}
+                <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900/60 sm:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Coins size={16} className="text-amber-600 dark:text-amber-400" />
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        Condições do empréstimo (juros, parcelas e prazos)
+                      </span>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-brand-600 dark:text-brand-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={addPersonConfigureLoan}
+                        onChange={e => setAddPersonConfigureLoan(e.target.checked)}
+                        className="rounded text-brand-600 focus:ring-brand-500"
+                      />
+                      <span>{addPersonConfigureLoan ? 'Configurando condições' : 'Definir juros / parcelas'}</span>
+                    </label>
+                  </div>
+
+                  {!addPersonConfigureLoan ? (
+                    <p className="pt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Marque acima se você combinou juros (por mês ou diário), quantidade de parcelas ou quer criar lembretes de cobrança na Agenda.
+                    </p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {/* Periodicidade */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                          Como será feito o pagamento?
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddPersonLoanFrequency('monthly');
+                              setAddPersonLoanPayMode('installments');
+                            }}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                              addPersonLoanFrequency === 'monthly' && addPersonLoanPayMode === 'installments'
+                                ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                            }`}
+                          >
+                            <span>Mensal (por mês)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddPersonLoanFrequency('daily');
+                              setAddPersonLoanPayMode('installments');
+                            }}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                              addPersonLoanFrequency === 'daily' && addPersonLoanPayMode === 'installments'
+                                ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                            }`}
+                          >
+                            <span>Diário (por dia)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddPersonLoanFrequency('weekly');
+                              setAddPersonLoanPayMode('installments');
+                            }}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                              addPersonLoanFrequency === 'weekly' && addPersonLoanPayMode === 'installments'
+                                ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                            }`}
+                          >
+                            <span>Semanal</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddPersonLoanPayMode('single')}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                              addPersonLoanPayMode === 'single'
+                                ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                            }`}
+                          >
+                            <span>Pagamento único</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Prazo e Primeiro Vencimento */}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {addPersonLoanPayMode === 'installments' && (
+                          <div className="grid gap-1.5 text-xs">
+                            <label className="font-medium text-slate-700 dark:text-slate-300">
+                              {addPersonLoanFrequency === 'daily'
+                                ? 'Quantidade de dias (parcelas diárias) *'
+                                : addPersonLoanFrequency === 'weekly'
+                                ? 'Quantidade de semanas *'
+                                : 'Quantidade de meses (parcelas mensais) *'}
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap gap-1">
+                                {(addPersonLoanFrequency === 'daily'
+                                  ? [7, 15, 30, 60]
+                                  : addPersonLoanFrequency === 'weekly'
+                                  ? [2, 4, 8, 12]
+                                  : [1, 2, 3, 6, 12]
+                                ).map(n => (
+                                  <button
+                                    key={n}
+                                    type="button"
+                                    onClick={() => setAddPersonLoanCount(n)}
+                                    className={`rounded-lg px-2 py-1 text-xs font-semibold transition ${
+                                      addPersonLoanCount === n
+                                        ? 'bg-brand-600 text-white shadow-xs dark:bg-brand-500'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    {n}
+                                    {addPersonLoanFrequency === 'daily' ? 'd' : addPersonLoanFrequency === 'weekly' ? 'sem' : 'm'}
+                                  </button>
+                                ))}
+                              </div>
+                              <input
+                                type="number"
+                                min={1}
+                                max={addPersonLoanFrequency === 'daily' ? 365 : 60}
+                                value={addPersonLoanCount}
+                                onChange={e =>
+                                  setAddPersonLoanCount(
+                                    Math.max(1, Math.min(addPersonLoanFrequency === 'daily' ? 365 : 60, Number(e.target.value) || 1))
+                                  )
+                                }
+                                className="field-input w-16 text-center text-xs"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid gap-1.5 text-xs">
+                          <label className="font-medium text-slate-700 dark:text-slate-300">
+                            Data do {addPersonLoanPayMode === 'single' ? 'pagamento' : '1º vencimento'} *
+                          </label>
+                          <input
+                            type="date"
+                            value={addPersonLoanFirstDue}
+                            onChange={e => setAddPersonLoanFirstDue(e.target.value)}
+                            required
+                            className="field-input text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Juros */}
+                      <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/40">
+                        <label className="font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                          Juros combinados:
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddPersonLoanInterestType('none')}
+                            className={`flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-semibold transition ${
+                              addPersonLoanInterestType === 'none'
+                                ? 'border-brand-500 bg-white text-brand-900 ring-2 ring-brand-500/30 dark:bg-slate-800 dark:text-brand-200'
+                                : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+                            }`}
+                          >
+                            <Check size={14} />
+                            <span>Sem juros</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddPersonLoanInterestType('fixed')}
+                            className={`flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-semibold transition ${
+                              addPersonLoanInterestType === 'fixed'
+                                ? 'border-brand-500 bg-white text-brand-900 ring-2 ring-brand-500/30 dark:bg-slate-800 dark:text-brand-200'
+                                : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+                            }`}
+                          >
+                            <Coins size={14} />
+                            <span>Valor fixo em R$</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddPersonLoanInterestType('percent')}
+                            className={`flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-semibold transition ${
+                              addPersonLoanInterestType === 'percent'
+                                ? 'border-brand-500 bg-white text-brand-900 ring-2 ring-brand-500/30 dark:bg-slate-800 dark:text-brand-200'
+                                : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+                            }`}
+                          >
+                            <Percent size={14} />
+                            <span>Taxa em %</span>
+                          </button>
+                        </div>
+
+                        {addPersonLoanInterestType === 'fixed' && (
+                          <div className="grid gap-2 sm:grid-cols-2 pt-1">
+                            <div className="grid gap-1">
+                              <label className="font-medium text-slate-700 dark:text-slate-300">Valor do juro (R$)</label>
+                              <CurrencyInput
+                                value={addPersonLoanInterestFixed}
+                                onChange={e => setAddPersonLoanInterestFixed(e.target.value)}
+                                placeholder="0,00"
+                                className="field-input text-xs"
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="font-medium text-slate-700 dark:text-slate-300">Cobrança do juro</label>
+                              <select
+                                value={addPersonLoanInterestPeriod}
+                                onChange={e => setAddPersonLoanInterestPeriod(e.target.value as any)}
+                                className="field-input text-xs"
+                              >
+                                {addPersonLoanFrequency === 'daily' && <option value="daily">Por dia (diário)</option>}
+                                <option value="monthly">Por mês (mensal)</option>
+                                <option value="total">Valor fixo no total</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
+                        {addPersonLoanInterestType === 'percent' && (
+                          <div className="grid gap-2 sm:grid-cols-2 pt-1">
+                            <div className="grid gap-1">
+                              <label className="font-medium text-slate-700 dark:text-slate-300">Taxa (%)</label>
+                              <input
+                                type="text"
+                                value={addPersonLoanInterestRate}
+                                onChange={e => setAddPersonLoanInterestRate(e.target.value)}
+                                placeholder="Ex: 5"
+                                className="field-input text-xs"
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="font-medium text-slate-700 dark:text-slate-300">Período da taxa</label>
+                              <select
+                                value={addPersonLoanInterestPeriod}
+                                onChange={e => setAddPersonLoanInterestPeriod(e.target.value as any)}
+                                className="field-input text-xs"
+                              >
+                                {addPersonLoanFrequency === 'daily' && <option value="daily">% ao dia</option>}
+                                <option value="monthly">% ao mês</option>
+                                <option value="total">% no total</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Resumo da simulação */}
+                      {addPersonLoanCalc && (
+                        <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-900/60 dark:bg-brand-950/30">
+                          <div className="grid gap-2 sm:grid-cols-3 text-xs">
+                            <div className="rounded-lg bg-white p-2 shadow-2xs dark:bg-slate-800">
+                              <span className="text-slate-500 dark:text-slate-400">Principal</span>
+                              <p className="font-bold text-slate-900 dark:text-slate-100">{money(addPersonLoanCalc.principalCents)}</p>
+                            </div>
+                            <div className="rounded-lg bg-white p-2 shadow-2xs dark:bg-slate-800">
+                              <span className="text-slate-500 dark:text-slate-400">Juros</span>
+                              <p className="font-bold text-amber-700 dark:text-amber-400">+{money(addPersonLoanCalc.interestCents)}</p>
+                            </div>
+                            <div className="rounded-lg bg-white p-2 shadow-2xs dark:bg-slate-800">
+                              <span className="text-slate-500 dark:text-slate-400">Total a {addPersonDebt === 'receivable' ? 'receber' : 'pagar'}</span>
+                              <p className="font-bold text-brand-700 dark:text-brand-300">{money(addPersonLoanCalc.totalCents)}</p>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Devolução: {addPersonLoanPayMode === 'single'
+                              ? `1x pagamento único de ${money(addPersonLoanCalc.totalCents)} em ${displayDate(addPersonLoanCalc.schedule[0]?.dueDate || '')}`
+                              : `${addPersonLoanCalc.count}x de ~${money(addPersonLoanCalc.baseInstallmentCents)} (${addPersonLoanFrequency === 'daily' ? 'diárias' : addPersonLoanFrequency === 'weekly' ? 'semanais' : 'mensais'})`}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Checkbox de lembretes */}
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={addPersonLoanCreateReminders}
+                          onChange={e => setAddPersonLoanCreateReminders(e.target.checked)}
+                          className="rounded text-brand-600 focus:ring-brand-500"
+                        />
+                        <span>Criar lembretes de {addPersonDebt === 'receivable' ? 'cobrança' : 'pagamento'} na Agenda para cada vencimento</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1197,7 +1621,13 @@ export default function LedgerPeople({
               <select
                 id="loan-person-select"
                 value={loanPersonId}
-                onChange={e => setLoanPersonId(e.target.value)}
+                onChange={e => {
+                  setLoanPersonId(e.target.value);
+                  const found = contacts.find(c => c.id === e.target.value);
+                  if (found && found.balance_cents !== 0) {
+                    setLoanDirection(found.balance_cents > 0 ? 'lend' : 'borrow');
+                  }
+                }}
                 required
                 className={input}
               >
@@ -1243,7 +1673,102 @@ export default function LedgerPeople({
             </div>
           </div>
 
-          {/* Principal Amount & Term in Months */}
+          {/* Prompt se a pessoa selecionada já tiver dívida existente */}
+          {(() => {
+            const currentContact = contacts.find(c => c.id === loanPersonId);
+            if (!currentContact || currentContact.balance_cents === 0) return null;
+            const owesYou = currentContact.balance_cents > 0;
+            const balanceAbs = Math.abs(currentContact.balance_cents);
+            return (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/60 dark:bg-amber-950/30">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="font-bold text-amber-900 dark:text-amber-200">
+                      Saldo pendente existente: {currentContact.nickname} {owesYou ? `já te deve ${money(balanceAbs)}` : `você já deve ${money(balanceAbs)}`}.
+                    </span>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                      Deseja parcelar ou adicionar juros a este saldo existente sem movimentar o banco novamente?
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoanPrincipal((balanceAbs / 100).toFixed(2).replace('.', ','));
+                      setLoanDirection(owesYou ? 'lend' : 'borrow');
+                      setLoanMoveCash(false);
+                    }}
+                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
+                  >
+                    Usar saldo de {money(balanceAbs)}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Periodicidade de pagamento */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Como será feito o pagamento / devolução? *
+            </label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoanFrequency('monthly');
+                  setLoanPayMode('installments');
+                }}
+                className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                  loanFrequency === 'monthly' && loanPayMode === 'installments'
+                    ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                }`}
+              >
+                <span>Mensal (por mês)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoanFrequency('daily');
+                  setLoanPayMode('installments');
+                }}
+                className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                  loanFrequency === 'daily' && loanPayMode === 'installments'
+                    ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                }`}
+              >
+                <span>Diário (por dia)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoanFrequency('weekly');
+                  setLoanPayMode('installments');
+                }}
+                className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                  loanFrequency === 'weekly' && loanPayMode === 'installments'
+                    ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                }`}
+              >
+                <span>Semanal</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoanPayMode('single')}
+                className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
+                  loanPayMode === 'single'
+                    ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                }`}
+              >
+                <span>Pagamento único</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Principal Amount & Prazo */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5 text-sm">
               <label htmlFor="loan-principal-input" className="font-medium text-slate-700 dark:text-slate-300">
@@ -1261,35 +1786,62 @@ export default function LedgerPeople({
 
             <div className="grid gap-1.5 text-sm">
               <label className="font-medium text-slate-700 dark:text-slate-300">
-                Prazo: quantos meses ficará com o dinheiro? *
+                {loanFrequency === 'daily'
+                  ? `Prazo: quantos dias ${loanPayMode === 'single' ? 'até pagar' : '(parcelas diárias)'}? *`
+                  : loanFrequency === 'weekly'
+                  ? `Prazo: quantas semanas ${loanPayMode === 'single' ? 'até pagar' : '(parcelas semanais)'}? *`
+                  : `Prazo: quantos meses ${loanPayMode === 'single' ? 'até pagar' : '(parcelas mensais)'}? *`}
               </label>
               <div className="flex items-center gap-2">
                 <div className="flex flex-wrap gap-1">
-                  {[1, 2, 3, 6, 12].map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setLoanMonths(m)}
-                      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                        loanMonths === m
-                          ? 'bg-brand-600 text-white shadow-sm dark:bg-brand-500'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                      }`}
-                    >
-                      {m} {m === 1 ? 'mês' : 'm'}
-                    </button>
-                  ))}
+                  {(loanFrequency === 'daily'
+                    ? [7, 15, 30, 60]
+                    : loanFrequency === 'weekly'
+                    ? [2, 4, 8, 12]
+                    : [1, 2, 3, 6, 12]
+                  ).map(n => {
+                    const isSelected = loanFrequency === 'monthly' ? loanMonths === n : loanInstallmentsCount === n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          if (loanFrequency === 'monthly') {
+                            setLoanMonths(n);
+                          } else {
+                            setLoanInstallmentsCount(n);
+                          }
+                        }}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                          isSelected
+                            ? 'bg-brand-600 text-white shadow-xs dark:bg-brand-500'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        {n} {loanFrequency === 'daily' ? 'd' : loanFrequency === 'weekly' ? 'sem' : (n === 1 ? 'mês' : 'm')}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     min={1}
-                    max={60}
-                    value={loanMonths}
-                    onChange={e => setLoanMonths(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+                    max={loanFrequency === 'daily' ? 365 : 60}
+                    value={loanFrequency === 'monthly' ? loanMonths : loanInstallmentsCount}
+                    onChange={e => {
+                      const val = Math.max(1, Math.min(loanFrequency === 'daily' ? 365 : 60, Number(e.target.value) || 1));
+                      if (loanFrequency === 'monthly') {
+                        setLoanMonths(val);
+                      } else {
+                        setLoanInstallmentsCount(val);
+                      }
+                    }}
                     className="field-input w-20 text-center text-xs"
                   />
-                  <span className="text-xs text-slate-500">meses</span>
+                  <span className="text-xs text-slate-500">
+                    {loanFrequency === 'daily' ? 'dias' : loanFrequency === 'weekly' ? 'sem' : 'meses'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1364,11 +1916,21 @@ export default function LedgerPeople({
                   </label>
                   <select
                     value={loanInterestPeriod}
-                    onChange={e => setLoanInterestPeriod(e.target.value as 'total' | 'monthly')}
+                    onChange={e => setLoanInterestPeriod(e.target.value as 'total' | 'monthly' | 'daily')}
                     className={input}
                   >
-                    <option value="total">No total de todo o período</option>
-                    <option value="monthly">Ao mês ({loanInterestRate}% a cada mês decorrido)</option>
+                    {loanFrequency === 'daily' ? (
+                      <>
+                        <option value="daily">Ao dia ({loanInterestRate}% a cada dia)</option>
+                        <option value="monthly">Ao mês ({loanInterestRate}% ao mês proporcional)</option>
+                        <option value="total">No total de todo o período</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="monthly">Ao mês ({loanInterestRate}% a cada mês decorrido)</option>
+                        <option value="total">No total de todo o período</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -1393,15 +1955,27 @@ export default function LedgerPeople({
                   </label>
                   <select
                     value={loanInterestPeriod}
-                    onChange={e => setLoanInterestPeriod(e.target.value as 'total' | 'monthly')}
+                    onChange={e => setLoanInterestPeriod(e.target.value as 'total' | 'monthly' | 'daily')}
                     className={input}
                   >
-                    <option value="monthly">
-                      Por mês {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por mês)` : '(a cada mês)'}
-                    </option>
-                    <option value="total">
-                      No total do empréstimo (valor fixo único)
-                    </option>
+                    {loanFrequency === 'daily' ? (
+                      <>
+                        <option value="daily">
+                          Por dia {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por dia)` : '(a cada dia)'}
+                        </option>
+                        <option value="monthly">
+                          Por mês {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por mês proporcional)` : '(ao mês)'}
+                        </option>
+                        <option value="total">No total do empréstimo (valor fixo único)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="monthly">
+                          Por mês {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por mês)` : '(a cada mês)'}
+                        </option>
+                        <option value="total">No total do empréstimo (valor fixo único)</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -1420,7 +1994,11 @@ export default function LedgerPeople({
                 className={input}
               >
                 <option value="installments">
-                  Parcelado mês a mês (em {loanMonths} {loanMonths === 1 ? 'parcela' : 'parcelas'})
+                  {loanFrequency === 'daily'
+                    ? `Parcelado dia a dia (em ${loanInstallmentsCount} parcelas diárias)`
+                    : loanFrequency === 'weekly'
+                    ? `Parcelado semana a semana (em ${loanInstallmentsCount} parcelas semanais)`
+                    : `Parcelado mês a mês (em ${loanMonths} parcelas mensais)`}
                 </option>
                 <option value="single">Tudo de uma vez no final do prazo (parcela única)</option>
               </select>
@@ -2322,6 +2900,7 @@ export default function LedgerPeople({
                 onAgenda={onAgenda}
                 onMovement={() => openMovementForPerson(item.id)}
                 onOpenLoan={() => openLoanForPerson(item.id)}
+                onOpenLoanWithBalance={() => openLoanForPerson(item.id, true)}
                 onClose={() => setSelectedPersonId(null)}
                 onManage={(action, changes) => managePerson(action, changes, item)}
                 onToggleReminder={toggleReminder}
@@ -2350,6 +2929,7 @@ function PersonDetailPanel({
   onAgenda,
   onMovement,
   onOpenLoan,
+  onOpenLoanWithBalance,
   onClose,
   onManage,
   onToggleReminder,
@@ -2368,6 +2948,7 @@ function PersonDetailPanel({
   onAgenda: () => void;
   onMovement: () => void;
   onOpenLoan: () => void;
+  onOpenLoanWithBalance?: () => void;
   onClose: () => void;
   onManage: (action: string, changes?: Record<string, unknown>) => Promise<boolean>;
   onToggleReminder: (reminderId: string, version: number, completed: boolean) => Promise<void>;
@@ -2476,6 +3057,19 @@ function PersonDetailPanel({
                 <Coins size={14} className="text-brand-600 dark:text-brand-400" />
                 <span>Empréstimo</span>
               </button>
+
+              {person.balance_cents !== 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => (onOpenLoanWithBalance ? onOpenLoanWithBalance() : onOpenLoan())}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/80 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-xs hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+                  title="Configurar parcelamento (diário/mensal), juros e lembretes para este saldo existente"
+                >
+                  <Calendar size={14} className="text-amber-700 dark:text-amber-400" />
+                  <span>Parcelas e juros</span>
+                </button>
+              )}
             </>
           )}
 

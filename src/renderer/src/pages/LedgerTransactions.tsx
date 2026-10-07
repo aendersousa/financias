@@ -10,6 +10,7 @@ import LedgerTransactionActions from './LedgerTransactionActions'
 type Kind='expense'|'income'|'transfer'|'card_purchase'|'card_payment'
 const input='field-input w-full'
 const labelClass='flex w-full flex-col gap-1 sm:w-44'
+const pageSize=7
 export default function LedgerTransactions({workspace,money,reserves,online,onChanged}:{
   workspace:LedgerWorkspace
   money:(cents:number)=>string
@@ -20,11 +21,17 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   const [kind,setKind]=useState<Kind>('expense'),[nonce,setNonce]=useState(0)
   const [selected,setSelected]=useState<string|null>(null),[search,setSearch]=useState(''),[status,setStatus]=useState('all')
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
+  const [page,setPage]=useState(1)
   const pending=useRef(false),requests=useRef(new Map<string,string>())
   const writer=workspace.role!=='viewer'
   const categories=workspace.categories.filter(category=>category.ledger_account_id&&category.kind===(kind==='income'?'income':'expense'))
   const goals=reserves?.reserves.filter(reserve=>reserve.reserve_type==='goal'&&['active','achieved'].includes(reserve.status))??[]
   const visible=workspace.transactions.filter(transaction=>(status==='all'||transaction.status===status)&&transaction.description.toLocaleLowerCase('pt-BR').includes(search.trim().toLocaleLowerCase('pt-BR')))
+  const pageCount=Math.max(1,Math.ceil(visible.length/pageSize))
+  const currentPage=Math.min(page,pageCount)
+  const pageStart=(currentPage-1)*pageSize
+  const pageTransactions=visible.slice(pageStart,pageStart+pageSize)
+  useEffect(()=>{setPage(value=>Math.min(value,pageCount))},[pageCount])
   useEffect(()=>{if(!online)setSelected(null)},[online])
   function openDetails(id:string) {if(busy)return;setSelected(selected===id?null:id)}
   async function save(event:FormEvent<HTMLFormElement>) {
@@ -61,7 +68,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       if(name==='post_transaction')args={p_payload:{...(args.p_payload as Record<string,unknown>),client_uuid:uuid}}
       else args={...args,p_client_uuid:uuid}
       await ledgerRpc(name,{p_space:workspace.space.id,...args})
-      requests.current.delete(key);setNonce(value=>value+1);setSelected(null)
+      requests.current.delete(key);setNonce(value=>value+1);setSelected(null);setPage(1)
       try {await onChanged();setNotice('Salvo. Os saldos foram atualizados.')}
       catch {setNotice('Lançamento registrado. Use Atualizar para consultar os saldos.')}
     } catch(failure) {setError(failure instanceof Error?failure.message:'Confira os campos e tente novamente.')}
@@ -88,13 +95,18 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
     {notice&&<p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
     <LedgerQuickEntry compact workspace={workspace} money={money} onChanged={onChanged}/>
     <div className="flex flex-wrap items-end gap-3">
-      <label className="flex w-full flex-col gap-1 sm:w-72"><span className="field-label">Buscar lançamento</span><input value={search} onChange={event=>{setSearch(event.target.value);setSelected(null)}} placeholder="Descrição" className={input}/></label>
-      <label className={labelClass}><span className="field-label">Situação do lançamento</span><select aria-label="Situação do lançamento" value={status} onChange={event=>{setStatus(event.target.value);setSelected(null)}} className={input}><option value="all">Todos</option><option value="posted">Registrados</option><option value="cancelled">Cancelados</option></select></label>
+      <label className="flex w-full flex-col gap-1 sm:w-72"><span className="field-label">Buscar lançamento</span><input value={search} onChange={event=>{setSearch(event.target.value);setSelected(null);setPage(1)}} placeholder="Descrição" className={input}/></label>
+      <label className={labelClass}><span className="field-label">Situação do lançamento</span><select aria-label="Situação do lançamento" value={status} onChange={event=>{setStatus(event.target.value);setSelected(null);setPage(1)}} className={input}><option value="all">Todos</option><option value="posted">Registrados</option><option value="cancelled">Cancelados</option></select></label>
     </div>
-    <TransactionTable transactions={visible} money={money}
+    <TransactionTable transactions={pageTransactions} money={money}
       renderName={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Abrir lançamento '+transaction.description} className="block max-w-full text-left [overflow-wrap:anywhere]">{transaction.description}</button>:transaction.description}
       renderActions={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Ver detalhes de '+transaction.description} aria-expanded={selected===transaction.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>:null}
       renderEditor={transaction=>online&&selected===transaction.id?<LedgerTransactionActions key={transaction.id} workspace={workspace} transactionId={transaction.id} money={money} onChanged={onChanged} onClose={()=>setSelected(null)} mutationPending={pending} externalBusy={busy} onBusyChange={setBusy}/>:null}/>
-    <p className="text-xs text-slate-500 dark:text-slate-400">Exibindo {visible.length} de {workspace.transactions.length} lançamentos recebidos do espaço (até os 200 mais recentes).</p>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p role="status" className="text-xs text-slate-500 dark:text-slate-400">{visible.length?`Exibindo ${pageStart+1}–${pageStart+pageTransactions.length} de ${visible.length} lançamentos.`:'Nenhum lançamento encontrado.'}{workspace.transactions.length>=200&&' Histórico limitado aos 200 mais recentes.'}</p>
+      <nav aria-label="Páginas dos lançamentos" className="flex flex-wrap items-center gap-1">
+        {Array.from({length:pageCount},(_,index)=>index+1).map(number=><button key={number} type="button" disabled={busy} aria-label={`Página ${number}`} aria-current={currentPage===number?'page':undefined} onClick={()=>{setPage(number);setSelected(null)}} className={`min-h-9 min-w-9 rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${currentPage===number?'bg-brand-500 text-slate-950':'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}>{number}</button>)}
+      </nav>
+    </div>
   </div>
 }
