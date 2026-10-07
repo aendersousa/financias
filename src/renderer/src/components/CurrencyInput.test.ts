@@ -74,3 +74,4 @@ describe('CurrencyInput logic', () => {
     expect(parseCurrencyToCents(1870.5)).toBe(187050);
   });
 });
+
