@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
+  AlertCircle,
   ArrowDownLeft,
   ArrowUpRight,
   Calendar,
   Check,
+  CheckCircle2,
   ChevronDown,
+  ChevronUp,
+  Clock,
+  Coins,
   Edit3,
   HandCoins,
   History,
+  Percent,
   Plus,
   Receipt,
   Scale,
@@ -22,6 +28,7 @@ import {
 import PeopleTable from '../components/PeopleTable';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
+import { addMonthsClamped, calculatePeopleLoan } from '../../../shared/finance/peopleLoans';
 import CurrencyInput from '../components/CurrencyInput';
 
 const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -58,6 +65,7 @@ interface PersonDetail {
     title: string;
     effective_due_on: string;
     completed_at: string | null;
+    version: number;
   }[];
 }
 
@@ -77,7 +85,32 @@ export default function LedgerPeople({
   const [movementPersonId, setMovementPersonId] = useState<string | null>(null);
   const [movementDirection, setMovementDirection] = useState<Direction>('receive');
   const [movementAmount, setMovementAmount] = useState<string>('');
+  const [movementDate, setMovementDate] = useState<string>(workspace.space.today);
+
+  // Add person with initial debt state
   const [showAddPerson, setShowAddPerson] = useState(false);
+  const [addPersonDebt, setAddPersonDebt] = useState<'none' | 'receivable' | 'payable'>('none');
+  const [addPersonDebtAmount, setAddPersonDebtAmount] = useState('');
+  const [addPersonDebtDate, setAddPersonDebtDate] = useState(workspace.space.today);
+
+  // Loan with interest and installments state
+  const [showLoanForm, setShowLoanForm] = useState(false);
+  const [loanPersonId, setLoanPersonId] = useState('');
+  const [loanDirection, setLoanDirection] = useState<'lend' | 'borrow'>('lend');
+  const [loanPrincipal, setLoanPrincipal] = useState('');
+  const [loanInterestType, setLoanInterestType] = useState<'percent' | 'fixed' | 'none'>('none');
+  const [loanInterestRate, setLoanInterestRate] = useState('5');
+  const [loanInterestFixed, setLoanInterestFixed] = useState('');
+  const [loanInterestPeriod, setLoanInterestPeriod] = useState<'total' | 'monthly'>('total');
+  const [loanMonths, setLoanMonths] = useState(1);
+  const [loanPayMode, setLoanPayMode] = useState<'installments' | 'single'>('installments');
+  const [loanFirstDueDate, setLoanFirstDueDate] = useState(() => addMonthsClamped(workspace.space.today, 1));
+  const [loanMoveCash, setLoanMoveCash] = useState(true);
+  const [loanAccountId, setLoanAccountId] = useState('');
+  const [loanCreateReminders, setLoanCreateReminders] = useState(true);
+  const [loanSaveNotes, setLoanSaveNotes] = useState(true);
+
+  // Shared expense
   const [showSharedExpense, setShowSharedExpense] = useState(false);
   const [sharedSelectedPeople, setSharedSelectedPeople] = useState<string[]>([]);
   const [sharedTotalInput, setSharedTotalInput] = useState<string>('');
@@ -97,6 +130,13 @@ export default function LedgerPeople({
   const canWrite = workspace.role !== 'viewer';
   const cashAccounts = workspace.accounts.filter(account => account.liquidity === 'cash');
 
+  // Initialize account for loan if needed
+  useEffect(() => {
+    if (!loanAccountId && cashAccounts.length > 0) {
+      setLoanAccountId(cashAccounts[0].id);
+    }
+  }, [cashAccounts, loanAccountId]);
+
   // Load contacts
   async function loadContacts() {
     try {
@@ -107,6 +147,19 @@ export default function LedgerPeople({
       setContacts(result.people);
     } catch {
       // ignore or show non-blocking
+    }
+  }
+
+  // Load single person detail
+  async function loadPersonDetail(personId: string) {
+    try {
+      const result = await ledgerRpc<PersonDetail>('person_detail', {
+        p_space: workspace.space.id,
+        p_person: personId
+      });
+      setDetail(result);
+    } catch {
+      // non-blocking
     }
   }
 
@@ -340,26 +393,255 @@ export default function LedgerPeople({
   }
 
   // Open direct movement for a specific contact
-  function openMovementForPerson(personId: string) {
+  function openMovementForPerson(
+    personId: string,
+    preferredAmount?: string,
+    preferredDirection?: Direction,
+    preferredDate?: string
+  ) {
     const target = contacts.find(c => c.id === personId);
     setMovementPersonId(personId);
     setShowSharedExpense(false);
     setShowAddPerson(false);
+    setShowLoanForm(false);
     setError('');
     setNotice('');
 
-    if (target) {
+    if (preferredDirection) {
+      setMovementDirection(preferredDirection);
+    } else if (target) {
       if (target.balance_cents > 0) {
         setMovementDirection('receive');
-        setMovementAmount((target.balance_cents / 100).toFixed(2).replace('.', ','));
       } else if (target.balance_cents < 0) {
         setMovementDirection('pay');
-        setMovementAmount((Math.abs(target.balance_cents) / 100).toFixed(2).replace('.', ','));
       } else {
         setMovementDirection('lend');
-        setMovementAmount('');
       }
     }
+
+    if (preferredAmount !== undefined) {
+      setMovementAmount(preferredAmount);
+    } else if (target && target.balance_cents !== 0) {
+      setMovementAmount((Math.abs(target.balance_cents) / 100).toFixed(2).replace('.', ','));
+    } else {
+      setMovementAmount('');
+    }
+
+    if (preferredDate) {
+      setMovementDate(preferredDate);
+    } else {
+      setMovementDate(workspace.space.today);
+    }
+  }
+
+  // Open loan form
+  function openLoanForPerson(personId?: string) {
+    if (personId) {
+      setLoanPersonId(personId);
+    } else if (activeContacts.length > 0 && !loanPersonId) {
+      setLoanPersonId(activeContacts[0].id);
+    }
+    setShowLoanForm(true);
+    setShowAddPerson(false);
+    setShowSharedExpense(false);
+    setMovementPersonId(null);
+    setError('');
+    setNotice('');
+  }
+
+  // Calculate loan simulation in real-time
+  const loanCalc = useMemo(() => {
+    return calculatePeopleLoan({
+      principalInput: loanPrincipal,
+      interestType: loanInterestType,
+      interestRate: loanInterestRate,
+      interestFixedInput: loanInterestFixed,
+      interestPeriod: loanInterestPeriod,
+      months: loanMonths,
+      payMode: loanPayMode,
+      firstDueDate: loanFirstDueDate,
+      today: workspace.space.today
+    });
+  }, [
+    loanPrincipal,
+    loanInterestType,
+    loanInterestRate,
+    loanInterestFixed,
+    loanInterestPeriod,
+    loanMonths,
+    loanPayMode,
+    loanFirstDueDate,
+    workspace.space.today
+  ]);
+
+  // Submit Loan with interest, schedule, and reminders
+  async function submitLoan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending.current || !canWrite) return;
+
+    const targetPerson = contacts.find(c => c.id === loanPersonId);
+    if (!targetPerson) {
+      setError('Selecione uma pessoa para o empréstimo.');
+      return;
+    }
+    if (loanCalc.principalCents <= 0) {
+      setError('Informe um valor de empréstimo maior que zero.');
+      return;
+    }
+    if (loanMoveCash && !loanAccountId) {
+      setError('Selecione uma conta bancária para a saída/entrada do dinheiro.');
+      return;
+    }
+
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+
+    try {
+      // 1. If moving cash, settle with person
+      if (loanMoveCash && loanAccountId) {
+        await ledgerRpc('settle_person', {
+          p_space: workspace.space.id,
+          p_person: targetPerson.id,
+          p_account: loanAccountId,
+          p_direction: loanDirection === 'lend' ? 'lend' : 'borrow',
+          p_amount_cents: loanCalc.principalCents,
+          p_occurred_on: workspace.space.today,
+          p_client_uuid: crypto.randomUUID()
+        });
+      }
+
+      // 2. If saving notes, append summary
+      if (loanSaveNotes) {
+        const conditionDesc = loanPayMode === 'single'
+          ? `pagamento único de ${money(loanCalc.totalCents)} em ${displayDate(loanCalc.schedule[0]?.dueDate || '')}`
+          : `${loanCalc.count} parcelas mensais de ~${money(loanCalc.baseInstallmentCents)} (total ${money(loanCalc.totalCents)})`;
+
+        const interestDesc = loanCalc.interestCents > 0
+          ? `+ Juros: ${money(loanCalc.interestCents)} (${loanCalc.effectiveRate.toFixed(1)}%)`
+          : 'sem juros adicionais';
+
+        const noteEntry = `📌 [Empréstimo em ${displayDate(workspace.space.today)}] ${
+          loanDirection === 'lend' ? 'Emprestado para' : 'Pegou emprestado de'
+        } ${targetPerson.nickname}: Principal ${money(loanCalc.principalCents)} (${interestDesc}) | Devolução em ${loanCalc.months} ${
+          loanCalc.months === 1 ? 'mês' : 'meses'
+        } (${conditionDesc}).`;
+
+        const updatedNotes = targetPerson.notes ? `${targetPerson.notes}\n\n${noteEntry}` : noteEntry;
+
+        await ledgerRpc('manage_person', {
+          p_space: workspace.space.id,
+          p_person: targetPerson.id,
+          p_version: targetPerson.version,
+          p_action: 'update',
+          p_changes: { notes: updatedNotes },
+          p_client_uuid: crypto.randomUUID()
+        });
+      }
+
+      // 3. If creating reminders, create Agenda commitments
+      if (loanCreateReminders && loanCalc.schedule.length > 0) {
+        for (const item of loanCalc.schedule) {
+          const title = `${loanDirection === 'lend' ? 'Cobrar' : 'Pagar'} ${targetPerson.nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
+          await ledgerRpc('create_commitment', {
+            p_space: workspace.space.id,
+            p_payload: {
+              kind: 'reminder',
+              person_id: targetPerson.id,
+              title,
+              due_on: item.dueDate
+            }
+          });
+        }
+      }
+
+      await onChanged();
+      await loadContacts();
+      setSelectedPersonId(targetPerson.id);
+      setShowLoanForm(false);
+      setLoanPrincipal('');
+      setLoanInterestFixed('');
+      setNotice(
+        `Empréstimo com ${targetPerson.nickname} registrado com sucesso! ${
+          loanCreateReminders ? `${loanCalc.schedule.length} lembrete(s) criado(s) na Agenda.` : ''
+        }`
+      );
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível registrar o empréstimo.');
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  // Toggle reminder completion in Agenda
+  async function toggleReminder(reminderId: string, version: number, completed: boolean) {
+    if (pending.current || !canWrite) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+
+    try {
+      await ledgerRpc('complete_reminder', {
+        p_space: workspace.space.id,
+        p_commitment: reminderId,
+        p_version: version,
+        p_completed: completed
+      });
+      if (selectedPersonId) await loadPersonDetail(selectedPersonId);
+      await onChanged();
+      setNotice(completed ? 'Lembrete marcado como concluído!' : 'Lembrete reaberto.');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível atualizar o lembrete.');
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  // Add ad-hoc reminder linked to this person
+  async function addPersonReminder(title: string, dueOn: string) {
+    if (pending.current || !canWrite || !selectedPersonId) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+
+    try {
+      await ledgerRpc('create_commitment', {
+        p_space: workspace.space.id,
+        p_payload: {
+          kind: 'reminder',
+          person_id: selectedPersonId,
+          title,
+          due_on: dueOn
+        }
+      });
+      await loadPersonDetail(selectedPersonId);
+      await onChanged();
+      setNotice('Lembrete adicionado à Agenda com sucesso!');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível criar o lembrete.');
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  // Settle specific reminder
+  function handleSettleReminder(reminder: { title: string; effective_due_on: string }) {
+    if (!selectedPersonId) return;
+    const match = reminder.title.match(/(?:R\$\s*|valor:?\s*)([\d.,]+)/i);
+    const amountStr = match ? match[1] : '';
+    const isPay = reminder.title.toLowerCase().startsWith('pagar');
+    openMovementForPerson(
+      selectedPersonId,
+      amountStr,
+      isPay ? 'pay' : 'receive',
+      reminder.effective_due_on
+    );
   }
 
   // Calculate shared expense simulation
@@ -482,6 +764,7 @@ export default function LedgerPeople({
             onClick={() => {
               setShowAddPerson(!showAddPerson);
               setShowSharedExpense(false);
+              setShowLoanForm(false);
               setMovementPersonId(null);
             }}
             className={`btn-primary flex items-center gap-2 px-4 py-2 text-sm font-semibold transition ${
@@ -490,6 +773,23 @@ export default function LedgerPeople({
           >
             <UserPlus size={16} />
             <span>Nova pessoa</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (showLoanForm) {
+                setShowLoanForm(false);
+              } else {
+                openLoanForPerson();
+              }
+            }}
+            className={`flex items-center gap-2 rounded-xl border border-brand-300 bg-brand-50/70 px-4 py-2 text-sm font-semibold text-brand-800 shadow-sm transition hover:bg-brand-100 hover:text-brand-900 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60 ${
+              showLoanForm ? 'border-brand-500 ring-2 ring-brand-500/30' : ''
+            }`}
+          >
+            <Coins size={16} className="text-brand-600 dark:text-brand-400" />
+            <span>Empréstimo com juros & prazos</span>
           </button>
 
           <button
@@ -510,7 +810,7 @@ export default function LedgerPeople({
             }`}
           >
             <HandCoins size={16} className="text-brand-600 dark:text-brand-400" />
-            <span>Registrar acerto / empréstimo</span>
+            <span>Registrar acerto simples</span>
           </button>
 
           <button
@@ -522,6 +822,7 @@ export default function LedgerPeople({
               }
               setShowSharedExpense(!showSharedExpense);
               setShowAddPerson(false);
+              setShowLoanForm(false);
               setMovementPersonId(null);
               setSharedSelectedPeople(activeContacts.map(c => c.id));
             }}
@@ -538,18 +839,73 @@ export default function LedgerPeople({
         </div>
       )}
 
-      {/* 3. Add Person Form */}
+      {/* 3. Add Person Form (com opção de quem deve para quem) */}
       {canWrite && showAddPerson && (
         <form
           aria-label="Adicionar pessoa"
           onSubmit={async event => {
             event.preventDefault();
+            if (pending.current || !canWrite) return;
             const form = event.currentTarget;
             const values = new FormData(form);
             const nickname = String(values.get('nickname') ?? '').trim();
             const notes = String(values.get('notes') ?? '').trim() || null;
-            if (await managePerson('create', { nickname, notes })) {
+            if (!nickname) return;
+
+            pending.current = true;
+            setBusy(true);
+            setError('');
+            setNotice('');
+
+            try {
+              // 1. Create person
+              const id = await ledgerRpc<string>('manage_person', {
+                p_space: workspace.space.id,
+                p_person: null,
+                p_version: null,
+                p_action: 'create',
+                p_changes: { nickname, notes },
+                p_client_uuid: crypto.randomUUID()
+              });
+
+              // 2. If initial debt was specified, set opening balance
+              if (addPersonDebt !== 'none') {
+                const cents = parseBrlCents(addPersonDebtAmount);
+                if (cents > 0) {
+                  await ledgerRpc<string>('manage_person', {
+                    p_space: workspace.space.id,
+                    p_person: id,
+                    p_version: 1,
+                    p_action: 'opening',
+                    p_changes: {
+                      balance_cents: addPersonDebt === 'payable' ? -cents : cents,
+                      on: addPersonDebtDate || workspace.space.today
+                    },
+                    p_client_uuid: crypto.randomUUID()
+                  });
+                }
+              }
+
               form.reset();
+              setAddPersonDebt('none');
+              setAddPersonDebtAmount('');
+              setAddPersonDebtDate(workspace.space.today);
+              setShowAddPerson(false);
+              setSelectedPersonId(id);
+              await loadContacts();
+              await onChanged();
+              setNotice(
+                addPersonDebt !== 'none' && parseBrlCents(addPersonDebtAmount) > 0
+                  ? `Pessoa "${nickname}" adicionada com saldo inicial de ${money(parseBrlCents(addPersonDebtAmount))} (${
+                      addPersonDebt === 'receivable' ? 'a receber' : 'a pagar'
+                    })!`
+                  : `Pessoa "${nickname}" adicionada com sucesso!`
+              );
+            } catch (failure) {
+              setError(failure instanceof Error ? failure.message : 'Não foi possível cadastrar a pessoa.');
+            } finally {
+              pending.current = false;
+              setBusy(false);
             }
           }}
           className={`${panel} space-y-4 border-2 border-brand-200 dark:border-brand-900/60`}
@@ -597,10 +953,106 @@ export default function LedgerPeople({
                 name="notes"
                 disabled={busy}
                 maxLength={2000}
-                placeholder="Ex: Amigo da faculdade, divisão do apartamento..."
+                placeholder="Ex: Amigo da faculdade, vizinho, trabalho..."
                 className={input}
               />
             </div>
+          </div>
+
+          {/* Situação inicial: Quem deve para quem */}
+          <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Situação da dívida inicial:
+            </label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => setAddPersonDebt('none')}
+                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
+                  addPersonDebt === 'none'
+                    ? 'border-brand-500 bg-brand-50/80 font-semibold text-brand-950 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                  <Check size={16} />
+                  <span className="text-sm font-bold">Começar em dia</span>
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Não há dívida inicial (R$ 0,00)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAddPersonDebt('receivable')}
+                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
+                  addPersonDebt === 'receivable'
+                    ? 'border-emerald-500 bg-emerald-50/80 font-semibold text-emerald-950 ring-2 ring-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+                  <ArrowDownLeft size={16} />
+                  <span className="text-sm font-bold">Ela já me deve</span>
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Saldo que tenho a receber
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAddPersonDebt('payable')}
+                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
+                  addPersonDebt === 'payable'
+                    ? 'border-rose-500 bg-rose-50/80 font-semibold text-rose-950 ring-2 ring-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400">
+                  <ArrowUpRight size={16} />
+                  <span className="text-sm font-bold">Eu já devo para ela</span>
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Saldo que tenho a pagar
+                </span>
+              </button>
+            </div>
+
+            {addPersonDebt !== 'none' && (
+              <div className="mt-2 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800/50">
+                <div className="grid gap-1.5 text-sm">
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    Valor da dívida existente *
+                  </label>
+                  <CurrencyInput
+                    value={addPersonDebtAmount}
+                    onChange={e => setAddPersonDebtAmount(e.target.value)}
+                    required
+                    placeholder="0,00"
+                    className={input}
+                  />
+                </div>
+
+                <div className="grid gap-1.5 text-sm">
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    Desde quando? (data da dívida) *
+                  </label>
+                  <input
+                    type="date"
+                    value={addPersonDebtDate}
+                    onChange={e => setAddPersonDebtDate(e.target.value)}
+                    max={workspace.space.today}
+                    required
+                    className={input}
+                  />
+                </div>
+                <p className="text-xs text-slate-500 sm:col-span-2">
+                  Esse valor será lançado como saldo inicial desta pessoa sem afetar as despesas ou receitas correntes.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3 pt-1">
@@ -611,6 +1063,435 @@ export default function LedgerPeople({
               type="button"
               disabled={busy}
               onClick={() => setShowAddPerson(false)}
+              className="text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* 4. Loan Form: Empréstimo com juros, prazos e simulação */}
+      {canWrite && showLoanForm && (
+        <form
+          aria-label="Registrar empréstimo com juros e prazos"
+          onSubmit={submitLoan}
+          className={`${panel} space-y-4 border-2 border-brand-500 shadow-lg dark:border-brand-600`}
+        >
+          {/* Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                <Coins size={18} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  Empréstimo com juros e prazos
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Defina juros combinados, quantidade de meses, forma de devolução e crie lembretes de cobrança na Agenda.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLoanForm(false)}
+              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Contact selector & Direction */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5 text-sm">
+              <label htmlFor="loan-person-select" className="font-medium text-slate-700 dark:text-slate-300">
+                Pessoa do empréstimo *
+              </label>
+              <select
+                id="loan-person-select"
+                value={loanPersonId}
+                onChange={e => setLoanPersonId(e.target.value)}
+                required
+                className={input}
+              >
+                <option value="">Selecione uma pessoa</option>
+                {activeContacts.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.nickname} {c.balance_cents > 0 ? `(te deve ${money(c.balance_cents)})` : c.balance_cents < 0 ? `(você deve ${money(Math.abs(c.balance_cents))})` : '(em dia)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-1.5 text-sm">
+              <label className="font-medium text-slate-700 dark:text-slate-300">
+                Quem emprestou para quem? *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLoanDirection('lend')}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-bold transition ${
+                    loanDirection === 'lend'
+                      ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                  }`}
+                >
+                  <ArrowUpRight size={14} className="text-brand-600 dark:text-brand-400" />
+                  <span>Eu emprestei (vou receber)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoanDirection('borrow')}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-bold transition ${
+                    loanDirection === 'borrow'
+                      ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                  }`}
+                >
+                  <ArrowDownLeft size={14} className="text-amber-600 dark:text-amber-400" />
+                  <span>Peguei emprestado (vou pagar)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Principal Amount & Term in Months */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5 text-sm">
+              <label htmlFor="loan-principal-input" className="font-medium text-slate-700 dark:text-slate-300">
+                Valor principal emprestado (R$) *
+              </label>
+              <CurrencyInput
+                id="loan-principal-input"
+                value={loanPrincipal}
+                onChange={e => setLoanPrincipal(e.target.value)}
+                required
+                placeholder="0,00"
+                className={input}
+              />
+            </div>
+
+            <div className="grid gap-1.5 text-sm">
+              <label className="font-medium text-slate-700 dark:text-slate-300">
+                Prazo: quantos meses ficará com o dinheiro? *
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex flex-wrap gap-1">
+                  {[1, 2, 3, 6, 12].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setLoanMonths(m)}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                        loanMonths === m
+                          ? 'bg-brand-600 text-white shadow-sm dark:bg-brand-500'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      {m} {m === 1 ? 'mês' : 'm'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={loanMonths}
+                    onChange={e => setLoanMonths(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+                    className="field-input w-20 text-center text-xs"
+                  />
+                  <span className="text-xs text-slate-500">meses</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interest definition */}
+          <div className="space-y-2 rounded-xl bg-slate-50 p-3.5 dark:bg-slate-800/40">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Juros acordados / Rendimento:
+            </label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => setLoanInterestType('none')}
+                className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition ${
+                  loanInterestType === 'none'
+                    ? 'border-brand-500 bg-white text-brand-900 ring-2 ring-brand-500/30 dark:bg-slate-800 dark:text-brand-200'
+                    : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+                }`}
+              >
+                <Check size={15} />
+                <span>Sem juros (0%)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLoanInterestType('percent')}
+                className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition ${
+                  loanInterestType === 'percent'
+                    ? 'border-brand-500 bg-white text-brand-900 ring-2 ring-brand-500/30 dark:bg-slate-800 dark:text-brand-200'
+                    : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+                }`}
+              >
+                <Percent size={15} />
+                <span>Taxa em porcentagem (%)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLoanInterestType('fixed')}
+                className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition ${
+                  loanInterestType === 'fixed'
+                    ? 'border-brand-500 bg-white text-brand-900 ring-2 ring-brand-500/30 dark:bg-slate-800 dark:text-brand-200'
+                    : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+                }`}
+              >
+                <Coins size={15} />
+                <span>Valor fixo em reais (R$)</span>
+              </button>
+            </div>
+
+            {loanInterestType === 'percent' && (
+              <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                <div className="grid gap-1 text-xs">
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    Taxa de juros (%) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={loanInterestRate}
+                      onChange={e => setLoanInterestRate(e.target.value)}
+                      placeholder="Ex: 5"
+                      className="field-input w-full pr-8 text-sm"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
+                  </div>
+                </div>
+                <div className="grid gap-1 text-xs">
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    Período de aplicação
+                  </label>
+                  <select
+                    value={loanInterestPeriod}
+                    onChange={e => setLoanInterestPeriod(e.target.value as 'total' | 'monthly')}
+                    className={input}
+                  >
+                    <option value="total">No total de todo o período</option>
+                    <option value="monthly">Ao mês ({loanInterestRate}% a cada mês decorrido)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {loanInterestType === 'fixed' && (
+              <div className="pt-2 sm:w-1/2">
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Valor adicional de juros (R$) *
+                </label>
+                <CurrencyInput
+                  value={loanInterestFixed}
+                  onChange={e => setLoanInterestFixed(e.target.value)}
+                  placeholder="0,00"
+                  className={input}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Repayment mode & Due Date */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5 text-sm">
+              <label className="font-medium text-slate-700 dark:text-slate-300">
+                Forma de devolução / pagamento *
+              </label>
+              <select
+                value={loanPayMode}
+                onChange={e => setLoanPayMode(e.target.value as 'installments' | 'single')}
+                className={input}
+              >
+                <option value="installments">
+                  Parcelado mês a mês (em {loanMonths} {loanMonths === 1 ? 'parcela' : 'parcelas'})
+                </option>
+                <option value="single">Tudo de uma vez no final do prazo (parcela única)</option>
+              </select>
+            </div>
+
+            <div className="grid gap-1.5 text-sm">
+              <label htmlFor="loan-due-date" className="font-medium text-slate-700 dark:text-slate-300">
+                {loanPayMode === 'single' ? 'Data do vencimento único *' : 'Data do 1º vencimento *'}
+              </label>
+              <input
+                id="loan-due-date"
+                type="date"
+                value={loanFirstDueDate}
+                onChange={e => setLoanFirstDueDate(e.target.value)}
+                required
+                className={input}
+              />
+            </div>
+          </div>
+
+          {/* Real-time simulation preview card */}
+          {loanCalc.principalCents > 0 && (
+            <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50/70 via-white to-brand-50/30 p-4 shadow-sm dark:border-brand-900/50 dark:from-brand-950/40 dark:via-slate-900 dark:to-brand-950/20">
+              <div className="flex items-center justify-between gap-2 border-b border-brand-100 pb-2.5 dark:border-brand-900/50">
+                <span className="text-xs font-bold uppercase tracking-wider text-brand-800 dark:text-brand-300">
+                  Simulação do Empréstimo
+                </span>
+                <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-900/60 dark:text-brand-300">
+                  {loanCalc.months} {loanCalc.months === 1 ? 'mês' : 'meses'} • {loanCalc.count} {loanCalc.count === 1 ? 'parcela' : 'parcelas'}
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl bg-white p-2.5 shadow-sm dark:bg-slate-800">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Valor emprestado</span>
+                  <p className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    {money(loanCalc.principalCents)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-white p-2.5 shadow-sm dark:bg-slate-800">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Juros a {loanDirection === 'lend' ? 'receber' : 'pagar'}
+                  </span>
+                  <p className="text-base font-bold text-amber-700 dark:text-amber-400">
+                    +{money(loanCalc.interestCents)}
+                    {loanCalc.interestCents > 0 && (
+                      <span className="ml-1 text-xs font-normal text-slate-500">
+                        ({loanCalc.effectiveRate.toFixed(1)}%)
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-white p-2.5 shadow-sm dark:bg-slate-800">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Total a {loanDirection === 'lend' ? 'receber' : 'pagar'}
+                  </span>
+                  <p className="text-base font-bold text-brand-700 dark:text-brand-300">
+                    {money(loanCalc.totalCents)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/80 p-3 dark:bg-slate-800/80">
+                <div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Como será devolvido:</span>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    {loanPayMode === 'single'
+                      ? `Pagamento único de ${money(loanCalc.totalCents)} em ${displayDate(loanCalc.schedule[0]?.dueDate || '')}`
+                      : `${loanCalc.count}x de ~${money(loanCalc.baseInstallmentCents)}`}
+                  </p>
+                </div>
+                {loanCalc.schedule.length > 0 && (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    1º vencimento em {displayDate(loanCalc.schedule[0].dueDate)}
+                  </span>
+                )}
+              </div>
+
+              {loanCalc.schedule.length > 1 && (
+                <div className="mt-3">
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    Cronograma das parcelas:
+                  </span>
+                  <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto pr-1">
+                    {loanCalc.schedule.map(item => (
+                      <div
+                        key={item.installmentNumber}
+                        className="flex items-center justify-between rounded-lg bg-white/60 px-2.5 py-1.5 text-xs dark:bg-slate-800/50"
+                      >
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                          Parcela {item.installmentNumber}/{item.totalCount}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500 dark:text-slate-400">
+                            Vence em {displayDate(item.dueDate)}
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-slate-100">
+                            {money(item.amountCents)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bank Account and Agenda Options */}
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-800/60">
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={loanMoveCash}
+                  onChange={e => setLoanMoveCash(e.target.checked)}
+                  className="rounded text-brand-600 focus:ring-brand-500"
+                />
+                <span>Movimentar minha conta bancária agora</span>
+              </label>
+              {loanMoveCash && (
+                <div className="pl-6 grid gap-1 text-xs">
+                  <label className="text-slate-500 dark:text-slate-400">
+                    Conta bancária de onde o dinheiro {loanDirection === 'lend' ? 'saiu' : 'entrou'}:
+                  </label>
+                  <select
+                    value={loanAccountId}
+                    onChange={e => setLoanAccountId(e.target.value)}
+                    required
+                    className="field-input w-full text-xs sm:w-1/2"
+                  >
+                    <option value="">Selecione uma conta</option>
+                    {cashAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={loanCreateReminders}
+                onChange={e => setLoanCreateReminders(e.target.checked)}
+                className="rounded text-brand-600 focus:ring-brand-500"
+              />
+              <span>Criar lembretes de cobrança na Agenda para cada vencimento</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={loanSaveNotes}
+                onChange={e => setLoanSaveNotes(e.target.checked)}
+                className="rounded text-brand-600 focus:ring-brand-500"
+              />
+              <span>Salvar resumo das condições combinadas nas observações da pessoa</span>
+            </label>
+          </div>
+
+          {/* Submit */}
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              disabled={busy || !loanPersonId || loanCalc.principalCents <= 0 || (loanMoveCash && !loanAccountId)}
+              className="btn-primary px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? 'Registrando empréstimo…' : 'Confirmar empréstimo'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLoanForm(false)}
               className="text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
             >
               Cancelar
@@ -825,7 +1706,8 @@ export default function LedgerPeople({
                 aria-label="Data da movimentação com pessoa"
                 type="date"
                 required
-                defaultValue={workspace.space.today}
+                value={movementDate}
+                onChange={e => setMovementDate(e.target.value)}
                 className={input}
               />
             </div>
@@ -1205,8 +2087,12 @@ export default function LedgerPeople({
               money={money}
               onAgenda={onAgenda}
               onMovement={() => openMovementForPerson(item.id)}
+              onOpenLoan={() => openLoanForPerson(item.id)}
               onClose={() => setSelectedPersonId(null)}
               onManage={(action, changes) => managePerson(action, changes, item)}
+              onToggleReminder={toggleReminder}
+              onAddReminder={addPersonReminder}
+              onSettleReminder={handleSettleReminder}
               busy={busy}
               today={workspace.space.today}
             />
@@ -1247,8 +2133,12 @@ function PersonDetailPanel({
   money,
   onAgenda,
   onMovement,
+  onOpenLoan,
   onClose,
   onManage,
+  onToggleReminder,
+  onAddReminder,
+  onSettleReminder,
   busy,
   today
 }: {
@@ -1259,11 +2149,16 @@ function PersonDetailPanel({
   money: (value: number) => string;
   onAgenda: () => void;
   onMovement: () => void;
+  onOpenLoan: () => void;
   onClose: () => void;
   onManage: (action: string, changes?: Record<string, unknown>) => Promise<boolean>;
+  onToggleReminder: (reminderId: string, version: number, completed: boolean) => Promise<void>;
+  onAddReminder: (title: string, dueOn: string) => Promise<void>;
+  onSettleReminder: (reminder: { title: string; effective_due_on: string }) => void;
   busy: boolean;
   today: string;
 }) {
+  const [showAddReminder, setShowAddReminder] = useState(false);
   return (
     <section
       aria-label={'Detalhes da pessoa ' + person.nickname}
@@ -1350,7 +2245,17 @@ function PersonDetailPanel({
               className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
             >
               <HandCoins size={14} />
-              <span>Registrar pagamento ou recebimento</span>
+              <span>Registrar acerto / pagamento</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onOpenLoan}
+              className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 dark:border-brand-900/60 dark:bg-brand-950/40 dark:text-brand-300 dark:hover:bg-brand-900/60"
+            >
+              <Coins size={13} />
+              <span>Novo empréstimo com juros</span>
             </button>
 
             <button
@@ -1572,32 +2477,164 @@ function PersonDetailPanel({
 
       {/* Agenda reminders */}
       {detail && (
-        <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800">
-          <div className="flex items-center justify-between">
+        <div className="space-y-2.5 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
               <Calendar size={15} />
-              <span>Lembretes na Agenda</span>
+              <span>Lembretes na Agenda ({detail.reminders.length})</span>
             </h4>
-            <button
-              type="button"
-              onClick={onAgenda}
-              className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
-            >
-              Abrir Agenda
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddReminder(!showAddReminder)}
+                className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+              >
+                <Plus size={13} />
+                <span>Novo lembrete</span>
+              </button>
+              <button
+                type="button"
+                onClick={onAgenda}
+                className="text-xs font-semibold text-slate-500 hover:underline dark:text-slate-400"
+              >
+                Abrir Agenda
+              </button>
+            </div>
           </div>
+
+          {/* Quick inline add reminder */}
+          {showAddReminder && (
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                const form = new FormData(e.currentTarget);
+                const title = String(form.get('title') ?? '').trim();
+                const dueOn = String(form.get('due_on') ?? '').trim();
+                if (title && dueOn) {
+                  await onAddReminder(title, dueOn);
+                  setShowAddReminder(false);
+                }
+              }}
+              className="grid gap-2 rounded-xl border border-brand-200 bg-brand-50/40 p-3 sm:grid-cols-3 dark:border-brand-900/40 dark:bg-brand-950/20"
+            >
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Título do lembrete *
+                </label>
+                <input
+                  name="title"
+                  required
+                  placeholder={`Ex: Cobrar parcela de ${person.nickname}...`}
+                  className="field-input w-full text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Data de vencimento *
+                </label>
+                <input
+                  name="due_on"
+                  type="date"
+                  required
+                  defaultValue={today}
+                  className="field-input w-full text-xs"
+                />
+              </div>
+              <div className="flex gap-2 sm:col-span-3 pt-1">
+                <button disabled={busy} className="btn-primary px-3 py-1 text-xs font-semibold">
+                  {busy ? 'Salvando…' : 'Salvar lembrete'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddReminder(false)}
+                  className="px-2 py-1 text-xs font-medium text-slate-500 hover:underline"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
+
           {detail.reminders.length === 0 ? (
-            <p className="text-xs text-slate-500">Nenhum lembrete na Agenda ligado a esta pessoa.</p>
+            <p className="rounded-lg bg-white p-3 text-xs text-slate-500 shadow-sm dark:bg-slate-800">
+              Nenhum lembrete na Agenda ligado a esta pessoa.
+            </p>
           ) : (
-            <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
-              {detail.reminders.map(item => (
-                <li key={item.id} className="flex items-center gap-2">
-                  <span>{displayDate(item.effective_due_on)}:</span>
-                  <span className="font-medium text-slate-800 dark:text-slate-200">{item.title}</span>
-                  {item.completed_at && <span className="text-emerald-600 font-semibold">(concluído)</span>}
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-1.5">
+              {detail.reminders.map(item => {
+                const isCompleted = !!item.completed_at;
+                const isOverdue = !isCompleted && item.effective_due_on < today;
+                const isToday = !isCompleted && item.effective_due_on === today;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-2.5 text-xs transition ${
+                      isCompleted
+                        ? 'border-slate-200 bg-slate-50/60 opacity-70 dark:border-slate-800 dark:bg-slate-800/40'
+                        : isOverdue
+                          ? 'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20'
+                          : isToday
+                            ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20'
+                            : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onToggleReminder(item.id, item.version, !isCompleted)}
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${
+                          isCompleted
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700'
+                        }`}
+                        title={isCompleted ? 'Reabrir lembrete' : 'Marcar como concluído'}
+                      >
+                        {isCompleted && <Check size={12} strokeWidth={3} />}
+                      </button>
+
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-medium ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <span
+                            className={`inline-flex items-center gap-0.5 font-semibold ${
+                              isCompleted
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : isOverdue
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : isToday
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            {displayDate(item.effective_due_on)}
+                            {isCompleted && ' • Concluído'}
+                            {!isCompleted && isOverdue && ' • Vencido'}
+                            {!isCompleted && isToday && ' • Vence hoje'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {!isCompleted && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onSettleReminder(item)}
+                        className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 font-semibold text-brand-700 transition hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-900/60"
+                        title="Registrar pagamento ou recebimento desta parcela"
+                      >
+                        <HandCoins size={12} />
+                        <span>Dar baixa</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
