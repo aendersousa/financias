@@ -1,1 +1,5 @@
-{"financial_model":"ledger","source_commit":"a8b10e223c9cfd4b82ad30c7d2bdfcdfd07f22ee","version":"2.1.23","brand":"WalletUp"}
+{
+  "version": "2.1.23",
+  "financial_model": "ledger",
+  "brand": "WalletUp"
+}
