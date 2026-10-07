@@ -1,52 +1,22 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Eye, EyeOff, Menu, Moon, Sun } from 'lucide-react'
 import { App as CapacitorApp } from '@capacitor/app'
-import Sidebar, { type Page } from './components/Sidebar'
-import Brand from './components/Brand'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Accounts from './pages/Accounts'
-import Categories from './pages/Categories'
-import Transactions from './pages/Transactions'
-import CreditCards from './pages/CreditCards'
-import Bills from './pages/Bills'
-import Budget from './pages/Budget'
-import Goals from './pages/Goals'
-import Settings from './pages/Settings'
-import { useAppStore } from './store/useAppStore'
 import { supabase } from './lib/supabaseClient'
 import { handleOAuthCallbackUrl } from './lib/oauth'
-import { clearLocalData,localIdentityCheck } from './lib/offlineStorage'
-
+import { clearLocalData, localIdentityCheck } from './lib/offlineStorage'
 import { useVersionGate } from './lib/versionGate'
 import UpdateRequired from './components/UpdateRequired'
-import { getFirstEnabledModule, type ModuleKey } from './lib/modules'
 
 const LedgerWorkspace = lazy(() => import('./pages/LedgerWorkspace'))
 
 export default function App() {
-  const modules = useAppStore((s) => s.modules)
-  const [page, setPage] = useState<Page>(() => getFirstEnabledModule(modules, 'dashboard') as Page)
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const [localReady,setLocalReady]=useState(false)
-  const [localConflict,setLocalConflict]=useState<{ pending: number } | null>(null)
-  const [localError,setLocalError]=useState('')
-  const loadAll = useAppStore((s) => s.loadAll)
-  const reset = useAppStore((s) => s.reset)
-  const theme = useAppStore((s) => s.theme)
-  const toggleTheme = useAppStore((s) => s.toggleTheme)
-  const privacyMode = useAppStore((s) => s.privacyMode)
-  const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
+  const [localReady, setLocalReady] = useState(false)
+  const [localConflict, setLocalConflict] = useState<{ pending: number } | null>(null)
+  const [localError, setLocalError] = useState('')
   const blockingVersion = useVersionGate()
-
-  useEffect(() => {
-    if (page !== 'settings' && modules[page as ModuleKey] === false) {
-      setPage(getFirstEnabledModule(modules, 'dashboard') as Page)
-    }
-  }, [page, modules])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -60,24 +30,24 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (session && import.meta.env.VITE_FINANCIAL_MODEL !== 'ledger') {
-      loadAll()
-    } else {
-      reset()
-    }
-  }, [session, loadAll, reset])
+    let cancelled = false
+    setLocalReady(false)
+    setLocalConflict(null)
+    setLocalError('')
+    if (!session) return
 
-  useEffect(() => {
-    let cancelled=false
-    setLocalReady(false); setLocalConflict(null); setLocalError('')
-    if (!session || import.meta.env.VITE_FINANCIAL_MODEL!=='ledger') return
-    void localIdentityCheck(session.user.id).then(result => {
+    void localIdentityCheck(session.user.id).then((result) => {
       if (cancelled) return
-      if (result.changed) setLocalConflict({ pending:result.pending })
+      if (result.changed) setLocalConflict({ pending: result.pending })
       else setLocalReady(true)
-    }).catch(failure => { if (!cancelled) setLocalError(failure.message) })
-    return () => { cancelled=true }
-  },[session?.user.id])
+    }).catch((failure) => {
+      if (!cancelled) setLocalError(failure.message)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user.id])
 
   useEffect(() => {
     const removeElectronListener = window.api?.onOAuthCallback((url) => {
@@ -109,84 +79,47 @@ export default function App() {
     return <Login />
   }
 
-  if (import.meta.env.VITE_FINANCIAL_MODEL === 'ledger') {
-    if (localConflict) return <div className="mx-auto max-w-lg space-y-4 p-6"><p>Este aparelho guarda dados de outro usuário{localConflict.pending ? ` e ${localConflict.pending} lançamentos não enviados` : ''}. Para entrar com esta conta, apague os dados locais anteriores. Os registros do servidor serão preservados.</p><button onClick={() => { void clearLocalData(session.user.id).then(() => { setLocalConflict(null); setLocalReady(true) }).catch(failure => setLocalError(failure.message)) }} className="rounded-xl bg-brand-600 px-4 py-3 text-white">Apagar dados locais e continuar</button><button onClick={() => void supabase.auth.signOut()} className="ml-4">Voltar ao acesso</button>{localError && <p role="alert">{localError}</p>}</div>
-    if (!localReady) return <div className="p-6">{localError ? <p role="alert">Não foi possível abrir o armazenamento deste aparelho: {localError}</p> : 'Abrindo os dados deste aparelho…'}</div>
-    return <Suspense fallback={<div className="p-6">Carregando seu espaço…</div>}><LedgerWorkspace key={session.user.id} /></Suspense>
+  if (localConflict) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4 p-6">
+        <p>
+          Este aparelho guarda dados de outro usuário{localConflict.pending ? ` e ${localConflict.pending} lançamentos não enviados` : ''}.
+          Para entrar com esta conta, apague os dados locais anteriores. Os registros do servidor serão preservados.
+        </p>
+        <button
+          onClick={() => {
+            void clearLocalData(session.user.id).then(() => {
+              setLocalConflict(null)
+              setLocalReady(true)
+            }).catch((failure) => setLocalError(failure.message))
+          }}
+          className="rounded-xl bg-brand-600 px-4 py-3 text-white"
+        >
+          Apagar dados locais e continuar
+        </button>
+        <button onClick={() => void supabase.auth.signOut()} className="ml-4">
+          Voltar ao acesso
+        </button>
+        {localError && <p role="alert">{localError}</p>}
+      </div>
+    )
   }
 
-  function handleNavigate(next: Page) {
-    setPage(next)
-    setMobileNavOpen(false)
+  if (!localReady) {
+    return (
+      <div className="p-6">
+        {localError ? (
+          <p role="alert">Não foi possível abrir o armazenamento deste aparelho: {localError}</p>
+        ) : (
+          'Abrindo os dados deste aparelho…'
+        )}
+      </div>
+    )
   }
 
   return (
-    <div className="walletup-app flex h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <div className="hidden md:flex">
-        <Sidebar
-          active={page}
-          onNavigate={handleNavigate}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onLogout={() => supabase.auth.signOut()}
-        />
-      </div>
-
-      {mobileNavOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
-          <div className="absolute inset-y-0 left-0">
-            <Sidebar
-              active={page}
-              onNavigate={handleNavigate}
-              theme={theme}
-              onToggleTheme={toggleTheme}
-              onLogout={() => supabase.auth.signOut()}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="app-toolbar flex items-center gap-3 border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:justify-end">
-          <button
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Abrir menu"
-            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
-          >
-            <Menu size={22} />
-          </button>
-          <div className="flex-1 md:hidden"><Brand size="sm" /></div>
-          <button
-            onClick={togglePrivacyMode}
-            aria-label={privacyMode ? 'Mostrar valores' : 'Ocultar valores'}
-            aria-pressed={privacyMode}
-            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            {privacyMode ? <EyeOff size={19} /> : <Eye size={19} />}
-            <span className="hidden sm:inline">{privacyMode ? 'Mostrar valores' : 'Ocultar valores'}</span>
-          </button>
-          <button
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
-            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
-          >
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-        </div>
-
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {page === 'dashboard' && <Dashboard onNavigate={handleNavigate} />}
-          {page === 'accounts' && <Accounts />}
-          {page === 'categories' && <Categories />}
-          {page === 'transactions' && <Transactions />}
-          {page === 'creditCards' && <CreditCards />}
-          {page === 'bills' && <Bills />}
-          {page === 'budget' && <Budget />}
-          {page === 'goals' && <Goals />}
-          {page === 'settings' && <Settings />}
-        </main>
-      </div>
-    </div>
+    <Suspense fallback={<div className="p-6">Carregando seu espaço…</div>}>
+      <LedgerWorkspace key={session.user.id} />
+    </Suspense>
   )
 }
