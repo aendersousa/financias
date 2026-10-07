@@ -1,6 +1,6 @@
 {
-  "version": "2.1.9",
-  "source_commit": "081c41baa9c11db87bf4f7d8001b40d70055f195",
+  "version": "2.1.10",
+  "source_commit": "b6d374381abcdee5ac01b365820f5070fd2e8c89",
   "financial_model": "ledger",
   "brand": "WalletUp"
 }
