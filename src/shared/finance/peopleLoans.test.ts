@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonthsClamped, calculatePeopleLoan } from './peopleLoans';
+import { addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan } from './peopleLoans';
 
 describe('peopleLoans calculations', () => {
   it('correctly clamps dates across month and year boundaries', () => {
@@ -173,7 +173,16 @@ describe('peopleLoans calculations', () => {
     expect(result.schedule[0].dueDate).toBe('2026-11-07');
   });
 
-  it('calculates indefinite loan with monthly percentage interest starting today', () => {
+  it('calculates next monthly due date correctly based on loan start day', () => {
+    // Started on 11th of August, today is 7th of October -> next due date is 11th of October
+    expect(calculateNextMonthlyDueDate('2026-08-11', '2026-10-07')).toBe('2026-10-11');
+    // If today is past the 11th (e.g. 15th of October) -> next due date is 11th of November
+    expect(calculateNextMonthlyDueDate('2026-08-11', '2026-10-15')).toBe('2026-11-11');
+    // If loan starts today -> next due date is next month
+    expect(calculateNextMonthlyDueDate('2026-10-07', '2026-10-07')).toBe('2026-11-07');
+  });
+
+  it('calculates Regina scenario: borrowed 1500 on 11/08/2026, today 07/10/2026 at 5% monthly gives 2 months and due date 11/10/2026', () => {
     const result = calculatePeopleLoan({
       principalInput: '1500,00',
       interestType: 'percent',
@@ -181,20 +190,38 @@ describe('peopleLoans calculations', () => {
       interestFixedInput: '',
       interestPeriod: 'monthly',
       payMode: 'indefinite',
-      startDate: '2026-10-07',
-      firstDueDate: '2026-11-07',
+      startDate: '2026-08-11',
+      firstDueDate: '', // empty to let it calculate automatically
       today: '2026-10-07'
     });
 
     expect(result.principalCents).toBe(150000);
     expect(result.isIndefinite).toBe(true);
-    expect(result.elapsedMonths).toBe(0);
+    expect(result.elapsedMonths).toBe(2); // August to October = 2 months
     expect(result.monthlyInterestCents).toBe(7500); // 5% of 1500 = 75
-    expect(result.interestCents).toBe(0); // 0 elapsed months
-    expect(result.totalCents).toBe(150000);
-    expect(result.schedule).toHaveLength(1);
-    expect(result.schedule[0].amountCents).toBe(7500);
-    expect(result.schedule[0].dueDate).toBe('2026-11-07');
+    expect(result.interestCents).toBe(15000); // 2 * 75 = 150
+    expect(result.totalCents).toBe(165000); // 1500 + 150 = 1650
+    expect(result.nextDueDate).toBe('2026-10-11');
+    expect(result.schedule[0].dueDate).toBe('2026-10-11');
+  });
+
+  it('allows overriding elapsed months with customElapsedMonths', () => {
+    const result = calculatePeopleLoan({
+      principalInput: '1500,00',
+      interestType: 'percent',
+      interestRate: '5',
+      interestFixedInput: '',
+      interestPeriod: 'monthly',
+      payMode: 'indefinite',
+      startDate: '2026-08-11',
+      firstDueDate: '2026-10-11',
+      today: '2026-10-07',
+      customElapsedMonths: 1
+    });
+
+    expect(result.elapsedMonths).toBe(1);
+    expect(result.interestCents).toBe(7500); // 1 * 75 = 75
+    expect(result.totalCents).toBe(157500);
   });
 });
 

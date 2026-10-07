@@ -63,7 +63,7 @@ try {
     await next.addInitScript(session => localStorage.setItem('sb-127-auth-token', JSON.stringify(session)), user.session);
     await next.goto('http://127.0.0.1:4187/financias/');
     await expect(next.getByRole('heading', { name:'Visão geral', exact:true })).toBeVisible();
-    await next.getByRole('button', { name:'3. Cartões', exact:true }).click();
+    await next.getByRole('button', { name:'Cartões', exact:true }).click();
     await expect(next.getByRole('heading', { name:'Cartões', exact:true })).toBeVisible();
     await expect(next.getByRole('table', { name:'Cartões', exact:true })).toBeVisible();
     await expect(next.getByRole('alert')).toHaveCount(0);
@@ -147,7 +147,7 @@ try {
   await expect(details('Cartão novo')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name:'Visão geral', exact:true })).toBeVisible();
-  await page.getByRole('button', { name:'3. Cartões', exact:true }).click();
+  await page.getByRole('button', { name:'Cartões', exact:true }).click();
   await expect(cardRow('Cartão editado')).toContainText('R$ 120,00');
   await expect(cardRow('Cartão novo')).toContainText('R$ 1.234,56');
   await expect(page.getByRole('region', { name:'Gestão dos cartões', exact:true })).toHaveCount(0);
@@ -189,7 +189,7 @@ try {
   await page.route('**/rest/v1/**', route => route.abort('internetdisconnected'));
   await page.reload();
   await expect(page.getByRole('status').filter({ hasText:'Sem conexão' })).toBeVisible();
-  await page.getByRole('button', { name:'3. Cartões', exact:true }).click();
+  await page.getByRole('button', { name:'Cartões', exact:true }).click();
   await expect(table()).toContainText('Cartão editado');
   await expect(table()).toContainText('R$ 120,00');
   await expect(page.getByRole('form', { name:'Adicionar cartão', exact:true })).toHaveCount(0);

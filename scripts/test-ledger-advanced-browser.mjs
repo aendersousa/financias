@@ -137,14 +137,14 @@ try {
   assert.equal(agendaAfter.settlement_status, 'partial'); assert.equal(agendaAfter.remaining_cents, 17000);
 
   stage = 'Account/category editing'; console.log('Advanced browser: account and category management');
-  await navigate('1. Contas');
+  await navigate('Contas');
   await page.getByRole('button', { name: 'Editar conta Banco avançado', exact: true }).click();
   await page.getByLabel('Nome da conta', { exact: true }).fill('Banco avançado editado');
   await page.getByLabel('Instituição', { exact: true }).fill('Banco local de teste');
   await page.getByRole('button', { name: 'Salvar conta', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Alterações salvas');
   assert.equal((await snapshot()).accounts.find(item => item.id === bank).name, 'Banco avançado editado');
-  await navigate('2. Categorias');
+  await navigate('Categorias');
   const categoryPanel = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Editar categoria Mercado avançado', exact: true }) });
   await categoryPanel.getByRole('button', { name: 'Editar categoria Mercado avançado', exact: true }).click();
   await page.getByLabel('Nome da categoria', { exact: true }).fill('Mercado avançado editado');
@@ -286,7 +286,7 @@ try {
   await expect.poll(async () => (await rpc('budget_management_summary', { p_space: space, p_month: futureMonth(1) })).summary.find(item => item.id === budget).amount_cents).toBe(50000);
 
   stage = 'Account balance check then explicit adjustment'; console.log('Advanced browser: comparing balances does not create an adjustment');
-  await navigate('1. Contas');
+  await navigate('Contas');
   await page.getByRole('button', { name: 'Editar conta Banco avançado editado', exact: true }).click();
   const checkedAccount = page.getByRole('region', { name: 'Detalhes da conta Banco avançado editado', exact: true });
   const comparisonBalance = (await snapshot()).accounts.find(item => item.id === bank).balance_cents;
@@ -505,7 +505,7 @@ try {
   const priorCard = await cardSummary();
   const priorStatements = priorCard.statements.map(item => item.id).sort();
   await page.getByRole('button', { name: 'Atualizar', exact: true }).first().click();
-  await navigate('3. Cartões');
+  await navigate('Cartões');
   await page.getByRole('button', { name:'Editar cartão Cartão avançado', exact:true }).click();
   const management = page.getByRole('region', { name: 'Gestão dos cartões', exact: true });
   await management.getByLabel('Dia de fechamento', { exact: true }).fill('11');

@@ -30,7 +30,7 @@ import {
 import PeopleTable from '../components/PeopleTable';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
-import { addDays, addMonthsClamped, calculatePeopleLoan, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
+import { addDays, addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
 import CurrencyInput from '../components/CurrencyInput';
 
 const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -120,7 +120,9 @@ export default function LedgerPeople({
   const [loanInstallmentsCount, setLoanInstallmentsCount] = useState(1);
   const [loanMonths, setLoanMonths] = useState(1);
   const [loanPayMode, setLoanPayMode] = useState<PeopleLoanPayMode>('installments');
+  const [loanStartDate, setLoanStartDate] = useState(workspace.space.today);
   const [loanFirstDueDate, setLoanFirstDueDate] = useState(() => addMonthsClamped(workspace.space.today, 1));
+  const [loanElapsedMonthsOverride, setLoanElapsedMonthsOverride] = useState<number | null>(null);
   const [loanMoveCash, setLoanMoveCash] = useState(true);
   const [loanAccountId, setLoanAccountId] = useState('');
   const [loanCreateReminders, setLoanCreateReminders] = useState(true);
@@ -476,16 +478,27 @@ export default function LedgerPeople({
     if (personId) {
       setLoanPersonId(personId);
       const target = contacts.find(c => c.id === personId);
-      if (target && target.balance_cents !== 0) {
-        if (useExistingBalance || !loanPrincipal) {
-          const cents = Math.abs(target.balance_cents);
-          setLoanPrincipal((cents / 100).toFixed(2).replace('.', ','));
-          setLoanDirection(target.balance_cents > 0 ? 'lend' : 'borrow');
-          setLoanMoveCash(false);
+      if (target) {
+        if (target.balance_cents !== 0) {
+          if (useExistingBalance || !loanPrincipal) {
+            const cents = Math.abs(target.balance_cents);
+            setLoanPrincipal((cents / 100).toFixed(2).replace('.', ','));
+            setLoanDirection(target.balance_cents > 0 ? 'lend' : 'borrow');
+            setLoanMoveCash(false);
+          }
         }
+        const effectiveStartDate = target.opening_on || workspace.space.today;
+        setLoanStartDate(effectiveStartDate);
+        setLoanFirstDueDate(calculateNextMonthlyDueDate(effectiveStartDate, workspace.space.today));
+        setLoanElapsedMonthsOverride(null);
       }
     } else if (activeContacts.length > 0 && !loanPersonId) {
-      setLoanPersonId(activeContacts[0].id);
+      const first = activeContacts[0];
+      setLoanPersonId(first.id);
+      const effectiveStartDate = first.opening_on || workspace.space.today;
+      setLoanStartDate(effectiveStartDate);
+      setLoanFirstDueDate(calculateNextMonthlyDueDate(effectiveStartDate, workspace.space.today));
+      setLoanElapsedMonthsOverride(null);
     }
     setShowLoanForm(true);
     setShowAddPerson(false);
@@ -529,7 +542,6 @@ export default function LedgerPeople({
 
   // Calculate loan simulation in real-time
   const loanCalc = useMemo(() => {
-    const selectedContact = contacts.find(c => c.id === loanPersonId);
     return calculatePeopleLoan({
       principalInput: loanPrincipal,
       interestType: loanInterestType,
@@ -539,14 +551,13 @@ export default function LedgerPeople({
       installmentsCount: loanFrequency === 'monthly' ? loanMonths : loanInstallmentsCount,
       frequency: loanFrequency,
       payMode: loanPayMode,
-      startDate: selectedContact?.opening_on || workspace.space.today,
+      startDate: loanStartDate,
       firstDueDate: loanFirstDueDate,
-      today: workspace.space.today
+      today: workspace.space.today,
+      customElapsedMonths: loanElapsedMonthsOverride ?? undefined
     });
   }, [
     loanPrincipal,
-    loanPersonId,
-    contacts,
     loanInterestType,
     loanInterestRate,
     loanInterestFixed,
@@ -555,8 +566,10 @@ export default function LedgerPeople({
     loanInstallmentsCount,
     loanFrequency,
     loanPayMode,
+    loanStartDate,
     loanFirstDueDate,
-    workspace.space.today
+    workspace.space.today,
+    loanElapsedMonthsOverride
   ]);
 
   // Submit Loan with interest, schedule, and reminders
@@ -635,10 +648,10 @@ export default function LedgerPeople({
           : 'sem juros adicionais';
 
         const noteEntry = isIndefinite
-          ? `📌 [Empréstimo por Prazo Indefinido em ${displayDate(workspace.space.today)}] ${
+          ? `📌 [Empréstimo por Prazo Indefinido iniciado em ${displayDate(loanStartDate)}] ${
               loanDirection === 'lend' ? 'Emprestado para' : 'Pegou emprestado de'
             } ${targetPerson.nickname}: Principal ${money(loanCalc.principalCents)} (${interestDesc}) | ${conditionDesc}.`
-          : `📌 [Empréstimo em ${displayDate(workspace.space.today)}] ${
+          : `📌 [Empréstimo iniciado em ${displayDate(loanStartDate)}] ${
               loanDirection === 'lend' ? 'Emprestado para' : 'Pegou emprestado de'
             } ${targetPerson.nickname}: Principal ${money(loanCalc.principalCents)} (${interestDesc}) | Devolução em ${loanCalc.count} ${freqLabel} (${conditionDesc}).`;
 
@@ -666,7 +679,7 @@ export default function LedgerPeople({
               kind: 'reminder',
               person_id: targetPerson.id,
               title,
-              due_on: item.dueDate
+              due_on: loanPayMode === 'indefinite' ? (loanFirstDueDate || item.dueDate) : item.dueDate
             }
           });
         }
@@ -1292,7 +1305,13 @@ export default function LedgerPeople({
                   <input
                     type="date"
                     value={addPersonDebtDate}
-                    onChange={e => setAddPersonDebtDate(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setAddPersonDebtDate(val);
+                      if (addPersonLoanPayMode === 'indefinite') {
+                        setAddPersonLoanFirstDue(calculateNextMonthlyDueDate(val, workspace.space.today));
+                      }
+                    }}
                     max={workspace.space.today}
                     required
                     className={input}
@@ -1392,6 +1411,7 @@ export default function LedgerPeople({
                             onClick={() => {
                               setAddPersonLoanFrequency('monthly');
                               setAddPersonLoanPayMode('indefinite');
+                              setAddPersonLoanFirstDue(calculateNextMonthlyDueDate(addPersonDebtDate, workspace.space.today));
                             }}
                             className={`col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
                               addPersonLoanPayMode === 'indefinite'
@@ -1761,10 +1781,17 @@ export default function LedgerPeople({
                 id="loan-person-select"
                 value={loanPersonId}
                 onChange={e => {
-                  setLoanPersonId(e.target.value);
-                  const found = contacts.find(c => c.id === e.target.value);
-                  if (found && found.balance_cents !== 0) {
-                    setLoanDirection(found.balance_cents > 0 ? 'lend' : 'borrow');
+                  const selectedId = e.target.value;
+                  setLoanPersonId(selectedId);
+                  const found = contacts.find(c => c.id === selectedId);
+                  if (found) {
+                    if (found.balance_cents !== 0) {
+                      setLoanDirection(found.balance_cents > 0 ? 'lend' : 'borrow');
+                    }
+                    const sDate = found.opening_on || workspace.space.today;
+                    setLoanStartDate(sDate);
+                    setLoanFirstDueDate(calculateNextMonthlyDueDate(sDate, workspace.space.today));
+                    setLoanElapsedMonthsOverride(null);
                   }
                 }}
                 required
@@ -1835,6 +1862,10 @@ export default function LedgerPeople({
                       setLoanPrincipal((balanceAbs / 100).toFixed(2).replace('.', ','));
                       setLoanDirection(owesYou ? 'lend' : 'borrow');
                       setLoanMoveCash(false);
+                      const sDate = currentContact.opening_on || workspace.space.today;
+                      setLoanStartDate(sDate);
+                      setLoanFirstDueDate(calculateNextMonthlyDueDate(sDate, workspace.space.today));
+                      setLoanElapsedMonthsOverride(null);
                     }}
                     className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
                   >
@@ -1909,6 +1940,8 @@ export default function LedgerPeople({
                 onClick={() => {
                   setLoanFrequency('monthly');
                   setLoanPayMode('indefinite');
+                  setLoanFirstDueDate(calculateNextMonthlyDueDate(loanStartDate, workspace.space.today));
+                  setLoanElapsedMonthsOverride(null);
                 }}
                 className={`col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-bold transition ${
                   loanPayMode === 'indefinite'
@@ -2139,15 +2172,47 @@ export default function LedgerPeople({
           </div>
 
           {/* Repayment mode & Due Date */}
-          {loanPayMode === 'indefinite' ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5 text-sm">
+              <label htmlFor="loan-start-date" className="font-semibold text-slate-700 dark:text-slate-300">
+                Data do empréstimo (quando pegou o dinheiro) *
+              </label>
+              <input
+                id="loan-start-date"
+                type="date"
+                value={loanStartDate}
+                onChange={e => {
+                  const val = e.target.value;
+                  setLoanStartDate(val);
+                  if (loanPayMode === 'indefinite') {
+                    setLoanFirstDueDate(calculateNextMonthlyDueDate(val, workspace.space.today));
+                  }
+                  setLoanElapsedMonthsOverride(null);
+                }}
+                required
+                className={input}
+              />
+              {contacts.find(c => c.id === loanPersonId)?.opening_on && (
+                <p className="text-[11px] text-brand-600 dark:text-brand-400">
+                  Preenchido com a data informada no cadastro ({displayDate(contacts.find(c => c.id === loanPersonId)!.opening_on!)}).
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-1.5 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-1">
                 <label htmlFor="loan-due-date" className="font-semibold text-slate-700 dark:text-slate-300">
-                  Data do próximo vencimento do juro mensal *
+                  {loanPayMode === 'indefinite'
+                    ? 'Data do próximo vencimento do juro mensal *'
+                    : loanPayMode === 'single'
+                    ? 'Data do pagamento único *'
+                    : 'Data do 1º vencimento *'}
                 </label>
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 dark:bg-blue-950/80 dark:text-blue-300">
-                  Prazo indefinido • Juros correm todo mês
-                </span>
+                {loanPayMode === 'indefinite' && (
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 dark:bg-blue-950/80 dark:text-blue-300">
+                    Dia {loanStartDate ? Number(loanStartDate.split('-')[2]) : ''} de cada mês
+                  </span>
+                )}
               </div>
               <input
                 id="loan-due-date"
@@ -2158,55 +2223,46 @@ export default function LedgerPeople({
                 className={input}
               />
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                O empréstimo fica em aberto sem data final. A cada mês, o juro combinado é contabilizado até o acerto da dívida.
+                {loanPayMode === 'indefinite'
+                  ? 'Calculado para o próximo vencimento no mesmo dia do mês em que o empréstimo começou.'
+                  : 'Data prevista para a primeira parcela ou liquidação.'}
               </p>
             </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-1">
-                  <label className="font-medium text-slate-700 dark:text-slate-300">
-                    Forma de devolução / pagamento *
-                  </label>
-                  {loanPayMode === 'single' && (
-                    <button
-                      type="button"
-                      onClick={() => setLoanPayMode('indefinite')}
-                      className="text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
-                    >
-                      Mudar para Data Indefinida
-                    </button>
-                  )}
-                </div>
-                <select
-                  value={loanPayMode}
-                  onChange={e => setLoanPayMode(e.target.value as any)}
-                  className={input}
-                >
-                  <option value="installments">
-                    {loanFrequency === 'daily'
-                      ? `Parcelado dia a dia (em ${loanInstallmentsCount} parcelas diárias)`
-                      : loanFrequency === 'weekly'
-                      ? `Parcelado semana a semana (em ${loanInstallmentsCount} parcelas semanais)`
-                      : `Parcelado mês a mês (em ${loanMonths} parcelas mensais)`}
-                  </option>
-                  <option value="single">Tudo de uma vez no final do prazo (parcela única)</option>
-                </select>
-              </div>
+          </div>
 
-              <div className="grid gap-1.5 text-sm">
-                <label htmlFor="loan-due-date" className="font-medium text-slate-700 dark:text-slate-300">
-                  {loanPayMode === 'single' ? 'Data do vencimento único *' : 'Data do 1º vencimento *'}
+          {loanPayMode !== 'indefinite' && (
+            <div className="grid gap-1.5 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <label className="font-medium text-slate-700 dark:text-slate-300">
+                  Forma de devolução / parcelamento *
                 </label>
-                <input
-                  id="loan-due-date"
-                  type="date"
-                  value={loanFirstDueDate}
-                  onChange={e => setLoanFirstDueDate(e.target.value)}
-                  required
-                  className={input}
-                />
+                {loanPayMode === 'single' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoanPayMode('indefinite');
+                      setLoanFirstDueDate(calculateNextMonthlyDueDate(loanStartDate, workspace.space.today));
+                    }}
+                    className="text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    Mudar para Data Indefinida
+                  </button>
+                )}
               </div>
+              <select
+                value={loanPayMode}
+                onChange={e => setLoanPayMode(e.target.value as any)}
+                className={input}
+              >
+                <option value="installments">
+                  {loanFrequency === 'daily'
+                    ? `Parcelado dia a dia (em ${loanInstallmentsCount} parcelas diárias)`
+                    : loanFrequency === 'weekly'
+                    ? `Parcelado semana a semana (em ${loanInstallmentsCount} parcelas semanais)`
+                    : `Parcelado mês a mês (em ${loanMonths} parcelas mensais)`}
+                </option>
+                <option value="single">Tudo de uma vez no final do prazo (parcela única)</option>
+              </select>
             </div>
           )}
 
@@ -2214,15 +2270,34 @@ export default function LedgerPeople({
           {loanCalc.principalCents > 0 && (
             loanCalc.isIndefinite ? (
               <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/30 p-4 shadow-sm dark:border-blue-900/50 dark:from-blue-950/40 dark:via-slate-900 dark:to-blue-950/20">
-                <div className="flex items-center justify-between gap-2 border-b border-blue-100 pb-2.5 dark:border-blue-900/50">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-100 pb-2.5 dark:border-blue-900/50">
                   <span className="text-xs font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300">
                     Prazo indefinido • Juros mensais contínuos
                   </span>
-                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
-                    {(loanCalc.elapsedMonths || 0) > 0
-                      ? `${loanCalc.elapsedMonths} mês(es) decorridos`
-                      : 'Início recente'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">Meses decorridos:</span>
+                    <div className="inline-flex items-center rounded-lg border border-blue-200 bg-white shadow-2xs dark:border-blue-900/70 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setLoanElapsedMonthsOverride(Math.max(0, (loanCalc.elapsedMonths || 0) - 1))}
+                        className="px-2 py-0.5 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Diminuir 1 mês de juros acumulados"
+                      >
+                        -
+                      </button>
+                      <span className="px-2 text-xs font-bold text-blue-900 dark:text-blue-200">
+                        {loanCalc.elapsedMonths || 0} {loanCalc.elapsedMonths === 1 ? 'mês' : 'meses'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLoanElapsedMonthsOverride((loanCalc.elapsedMonths || 0) + 1)}
+                        className="px-2 py-0.5 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Aumentar 1 mês de juros acumulados"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">

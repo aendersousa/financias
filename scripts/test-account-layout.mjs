@@ -60,7 +60,7 @@ try {
     await next.addInitScript(session => localStorage.setItem('sb-127-auth-token', JSON.stringify(session)), user.session);
     await next.goto('http://127.0.0.1:4185/financias/');
     await expect(next.getByRole('heading', { name: 'Visão geral', exact: true })).toBeVisible();
-    await next.getByRole('button', { name: '1. Contas', exact: true }).click();
+    await next.getByRole('button', { name: 'Contas', exact: true }).click();
     await expect(next.getByRole('heading', { name: 'Contas', exact: true })).toBeVisible();
     await expect(next.getByRole('table', { name: 'Contas', exact: true })).toBeVisible();
     await expect(next.getByRole('alert')).toHaveCount(0);
@@ -111,7 +111,7 @@ try {
   await expect(accountRow(bank.name).locator('.account-color-dot')).toHaveCSS('background-color', rgb);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Visão geral', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '1. Contas', exact: true }).click();
+  await page.getByRole('button', { name: 'Contas', exact: true }).click();
   await expect(accountRow(bank.name)).toContainText('R$ 1.000,00');
   await expect(accountRow(bank.name).locator('.account-color-dot')).toHaveCSS('background-color', rgb);
 

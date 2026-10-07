@@ -5,7 +5,8 @@ import PeopleTable from '../components/PeopleTable';
 import CategoryPanels from '../components/CategoryPanels';
 import PageHeader from '../components/PageHeader';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Bell, CalendarDays, CreditCard, Eye, EyeOff, History, LayoutDashboard, LogOut, RefreshCw, Repeat, Settings, Tags, Users, Wallet } from 'lucide-react';
+import { Bell, Eye, EyeOff, LayoutDashboard, LogOut, RefreshCw, Settings } from 'lucide-react';
+import { ALL_APP_PAGES } from '../lib/modules';
 import { formatBrlCents } from '../../../shared/finance/money';
 import { ledgerRpc, loadLedgerWorkspace, selectFinancialSpace, type FinancialSpace, type LedgerWorkspace as Workspace, type UserSettings } from '../lib/ledgerRepository';
 import LedgerExtras, { type ExtraSection } from './LedgerExtras';
@@ -36,48 +37,10 @@ import { useAppStore } from '../store/useAppStore';
 
 type Section = 'dashboard' | 'accounts' | 'categories' | 'cards' | 'people' | 'transactions' | 'foreign_currency' | 'agenda' | 'forecast' | 'budgets' | 'reserves' | 'notifications' | 'portfolio' | 'closing' | 'reports' | 'health' | 'imports' | 'sharing' | ExtraSection;
 const navigation = [
-  { id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
-  { id: 'accounts', label: '1. Contas', icon: Wallet },
-  { id: 'categories', label: '2. Categorias', icon: Tags },
-  { id: 'cards', label: '3. Cartões', icon: CreditCard },
-  { id: 'people', label: 'Pessoas', icon: Users },
-  { id: 'sharing', label: 'Compartilhamento', icon: Users },
-  { id: 'transactions', label: 'Lançamentos', icon: ArrowLeftRight },
-  { id: 'foreign_currency', label: 'Compras internacionais', icon: ArrowLeftRight },
-  { id: 'imports', label: 'Importar extrato', icon: ArrowLeftRight },
-  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-  { id: 'forecast', label: 'Previsão de saldo', icon: CalendarDays },
-  { id: 'budgets', label: 'Orçamentos', icon: Wallet },
-  { id: 'reserves', label: 'Metas e provisões', icon: Wallet },
-  { id: 'recurrences', label: 'Recorrências', icon: Repeat },
-  { id: 'portfolio', label: 'Patrimônio', icon: Wallet },
-  { id: 'reports', label: 'Relatórios', icon: History },
-  { id: 'health', label: 'Saúde financeira', icon: Wallet },
-  { id: 'closing', label: 'Relatório mensal e fechamento', icon: History },
-  { id: 'tags', label: 'Tags', icon: Tags },
-  { id: 'settings', label: 'Configurações', icon: Settings }
-] as const;
+  ...ALL_APP_PAGES.map(page=>({...page,id:page.id as Section})),
+  { id:'settings' as const,label:'Configurações',icon:Settings,group:'Organização' }
+];
 const panelClass = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
-const itemGroupMap: Partial<Record<Section, string>> = {
-  accounts: 'Cadastre nesta ordem',
-  categories: 'Cadastre nesta ordem',
-  cards: 'Cadastre nesta ordem',
-  people: 'Cadastre nesta ordem',
-  sharing: 'Cadastre nesta ordem',
-  transactions: 'Movimentações',
-  foreign_currency: 'Movimentações',
-  imports: 'Movimentações',
-  agenda: 'Planejamento',
-  forecast: 'Planejamento',
-  budgets: 'Planejamento',
-  reserves: 'Planejamento',
-  recurrences: 'Planejamento',
-  portfolio: 'Planejamento',
-  reports: 'Acompanhamento',
-  health: 'Acompanhamento',
-  closing: 'Acompanhamento',
-  tags: 'Organização'
-};
 const planningSections: Section[] = ['agenda','forecast','budgets','reserves','recurrences','portfolio'];
 const sectionDescriptions: Partial<Record<Section,string>> = {
   categories:'Organize receitas e despesas por categoria', accounts:'Suas contas bancárias, carteiras e investimentos',
@@ -116,8 +79,8 @@ export default function LedgerWorkspace() {
   const groupFirstId = new Set<string>();
   const seenGroups = new Set<string>();
   for (const item of visibleNavigation) {
-    const grp = itemGroupMap[item.id];
-    if (grp && !seenGroups.has(grp)) {
+    const grp = item.group;
+    if (grp !== 'Principal' && !seenGroups.has(grp)) {
       groupFirstId.add(item.id);
       seenGroups.add(grp);
     }
@@ -254,7 +217,7 @@ export default function LedgerWorkspace() {
     {(!online || usingCache) && <div role="status" className="sticky top-0 z-20 bg-amber-100 px-5 py-3 text-sm text-amber-950">Sem conexão{cacheTime ? ` · atualizado em ${new Date(cacheTime).toLocaleString('pt-BR')}` : ''}. Os valores são os últimos recebidos do servidor.</div>}
     {logoutCount!==null && <div role="dialog" aria-label="Sair com lançamentos não enviados" className="mx-auto mt-4 max-w-3xl space-y-3 rounded-xl border border-amber-300 bg-white p-5 dark:bg-slate-900"><p>Você tem {logoutCount} lançamentos não enviados. Se sair agora, eles serão apagados deste aparelho.</p><div className="flex flex-wrap gap-4 text-sm font-semibold"><button disabled={!online} onClick={() => { void sendLocalQueue().then(async () => { setLogoutCount((await offlineQueue.list(await activeUserId())).length); }).catch(failure => setError(failure.message)); }}>Enviar antes de sair</button><button onClick={() => { void clearLocalData().then(() => supabase.auth.signOut()).catch(failure => setError(failure.message)); }}>Sair e apagar do aparelho</button><button onClick={() => setLogoutCount(null)}>Cancelar saída</button></div></div>}
     <div className="grid w-full gap-6 p-4 md:grid-cols-[210px_minmax(0,1fr)] md:p-6">
-      <nav className="flex gap-1 overflow-x-auto md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] md:flex-col md:self-start md:overflow-y-auto" aria-label="Navegação principal">{visibleNavigation.map(item => <Fragment key={item.id}>{groupFirstId.has(item.id) && itemGroupMap[item.id] && <p className="hidden px-4 pb-1 pt-3 text-xs font-medium text-slate-500 md:block">{itemGroupMap[item.id]}</p>}<button onClick={() => navigate(item.id)} aria-current={section === item.id ? 'page' : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium ${section === item.id ? 'nav-active' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}><item.icon size={18} className="shrink-0"/>{item.label}</button></Fragment>)}</nav>
+      <nav className="flex gap-1 overflow-x-auto md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] md:flex-col md:self-start md:overflow-y-auto" aria-label="Navegação principal">{visibleNavigation.map(item => <Fragment key={item.id}>{groupFirstId.has(item.id) && <p className="hidden px-4 pb-1 pt-3 text-xs font-medium text-slate-500 md:block">{item.group}</p>}<button onClick={() => navigate(item.id)} aria-current={section === item.id ? 'page' : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium ${section === item.id ? 'nav-active' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}><item.icon size={18} className="shrink-0"/>{item.label}</button></Fragment>)}</nav>
       <main className="min-w-0 space-y-5">
         <div className="workspace-header flex flex-wrap items-center justify-between gap-3"><PageHeader icon={navigation.find(n => n.id === section)?.icon ?? (section === 'notifications' ? Bell : LayoutDashboard)} title={navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'') ?? (section === 'notifications' ? 'Notificações' : 'WalletUp')} subtitle={sectionDescriptions[section]} /></div>
         {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</div>}

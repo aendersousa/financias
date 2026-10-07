@@ -16,6 +16,7 @@ export interface PeopleLoanCalculationInput {
   startDate?: string;
   firstDueDate: string;
   today: string;
+  customElapsedMonths?: number;
 }
 
 export interface PeopleLoanScheduleItem {
@@ -50,14 +51,38 @@ export function calculateMonthsElapsed(startDateIso: string, currentDateIso: str
   const partsStart = startDateIso.split('-').map(Number);
   const partsCur = currentDateIso.split('-').map(Number);
   if (partsStart.length !== 3 || partsCur.length !== 3 || partsStart.some(isNaN) || partsCur.some(isNaN)) return 0;
-  const [startY, startM, startD] = partsStart;
-  const [curY, curM, curD] = partsCur;
+  const [startY, startM] = partsStart;
+  const [curY, curM] = partsCur;
 
-  let months = (curY - startY) * 12 + (curM - startM);
-  if (curD < startD) {
-    months = Math.max(0, months - 1);
-  }
+  const months = (curY - startY) * 12 + (curM - startM);
+  if (months <= 0) return 0;
+
   return Math.max(0, months);
+}
+
+export function calculateNextMonthlyDueDate(startDateIso: string, todayIso: string): string {
+  if (!startDateIso) return todayIso ? addMonthsClamped(todayIso, 1) : '';
+  const partsStart = startDateIso.split('-').map(Number);
+  const partsCur = (todayIso || startDateIso).split('-').map(Number);
+  if (partsStart.length !== 3 || partsCur.length !== 3 || partsStart.some(isNaN) || partsCur.some(isNaN)) {
+    return addMonthsClamped(todayIso || startDateIso, 1);
+  }
+  const [startY, startM, startD] = partsStart;
+  const [curY, curM] = partsCur;
+
+  if (startDateIso >= todayIso) {
+    return addMonthsClamped(startDateIso, 1);
+  }
+
+  const maxDaysThisMonth = new Date(curY, curM, 0).getDate();
+  const clampedDayThisMonth = Math.min(startD, maxDaysThisMonth);
+  const thisMonthDue = `${curY}-${String(curM).padStart(2, '0')}-${String(clampedDayThisMonth).padStart(2, '0')}`;
+
+  if (thisMonthDue >= todayIso) {
+    return thisMonthDue;
+  }
+
+  return addMonthsClamped(thisMonthDue, 1);
 }
 
 export function calculateDaysElapsed(startDateIso: string, currentDateIso: string): number {
@@ -101,7 +126,10 @@ export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLo
 
   if (input.payMode === 'indefinite') {
     const startDate = input.startDate || input.today;
-    const elapsedMonths = calculateMonthsElapsed(startDate, input.today);
+    const defaultElapsedMonths = calculateMonthsElapsed(startDate, input.today);
+    const elapsedMonths = input.customElapsedMonths !== undefined
+      ? Math.max(0, input.customElapsedMonths)
+      : defaultElapsedMonths;
     const elapsedDays = calculateDaysElapsed(startDate, input.today);
 
     let monthlyInterestCents = 0;
@@ -136,7 +164,7 @@ export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLo
     const nextDueDate = input.firstDueDate || (
       isDaily
         ? addDays(input.today, 1)
-        : addMonthsClamped(startDate, Math.max(1, elapsedMonths + 1))
+        : calculateNextMonthlyDueDate(startDate, input.today)
     );
 
     const schedule: PeopleLoanScheduleItem[] = [];

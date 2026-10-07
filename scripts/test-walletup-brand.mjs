@@ -95,7 +95,7 @@ try {
     page = await openPage(theme, auth.session);
     await expect(page.getByRole('heading', { name: 'Visão geral', exact: true })).toBeVisible();
     await checkBrand(page);
-    await page.getByRole('button', { name: '1. Contas', exact: true }).click();
+    await page.getByRole('button', { name: 'Contas', exact: true }).click();
     await expect(page.getByRole('table', { name: 'Contas', exact: true })).toBeVisible();
     const accountRow = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Editar conta Conta azul preservada', exact: true }) });
     await expect(accountRow.locator('.account-color-dot')).toHaveCSS('background-color', 'rgb(14, 165, 233)');
@@ -105,7 +105,7 @@ try {
     await page.screenshot({ path: `out/walletup-brand-test/accounts-desktop-${theme}.png`, fullPage: true });
 
     stage = `${theme} category layout and saved colors`;
-    await page.getByRole('button', { name: '2. Categorias', exact: true }).click();
+    await page.getByRole('button', { name: 'Categorias', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Categorias', exact: true })).toBeVisible();
     const panel = name => page.locator('section').filter({ has: page.getByRole('heading', { name, exact: true }) });
     const categoryRow = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Editar categoria Categoria azul preservada', exact: true }) });
@@ -118,7 +118,7 @@ try {
     const phoneIncome = await panel('Receitas').boundingBox(), phoneExpense = await panel('Despesas').boundingBox();
     assert.ok(phoneIncome && phoneExpense && phoneExpense.y >= phoneIncome.y + phoneIncome.height);
     await page.screenshot({ path: `out/walletup-brand-test/categories-mobile-${theme}.png`, fullPage: true });
-    await page.getByRole('button', { name: '1. Contas', exact: true }).click();
+    await page.getByRole('button', { name: 'Contas', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Adicionar conta', exact: true })).toBeVisible();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.screenshot({ path: `out/walletup-brand-test/accounts-mobile-${theme}.png`, fullPage: true });
