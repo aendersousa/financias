@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Check, UserRound } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Calendar, Check, Clock } from 'lucide-react'
+import { getPersonLoanDates } from '../../../shared/finance/peopleLoans'
 
 export interface PersonItem {
   id: string
@@ -7,23 +8,37 @@ export interface PersonItem {
   balance_cents: number
   archived_at?: string | null
   notes?: string | null
+  opening_on?: string | null
+  reminders?: {
+    id: string
+    title: string
+    due_on: string
+    completed_at: string | null
+  }[]
 }
 
-export default function PeopleTable<T extends PersonItem>({ people, money, renderName, renderActions, renderEditor }: {
+const displayDate = (value: string) => value.split('-').reverse().join('/')
+
+export default function PeopleTable<T extends PersonItem>({ people, money, today, renderName, renderActions, renderEditor }: {
   people: T[]
   money: (cents: number) => string
+  today?: string
   renderName?: (person: T) => ReactNode
   renderActions?: (person: T) => ReactNode
   renderEditor?: (person: T) => ReactNode
 }) {
+  const effectiveToday = today || new Date().toISOString().split('T')[0]
+
   return <div className="table-shell">
     <table aria-label="Pessoas" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50">
         <tr>
-          <th scope="col" className="w-[42%] px-3 py-2.5 sm:w-[35%] sm:px-4">Pessoa</th>
-          <th scope="col" className="hidden px-4 py-2.5 sm:table-cell sm:w-[22%]">Situação</th>
-          <th scope="col" className="w-[30%] px-3 py-2.5 text-right sm:w-[23%] sm:px-4">Saldo</th>
-          <th scope="col" className="w-[28%] px-3 sm:w-[20%] sm:px-4"><span className="sr-only">Ações</span></th>
+          <th scope="col" className="w-[36%] px-3 py-2.5 sm:w-[26%] sm:px-4">Pessoa</th>
+          <th scope="col" className="hidden lg:table-cell lg:w-[13%] px-3 py-2.5">Início</th>
+          <th scope="col" className="hidden sm:table-cell sm:w-[18%] px-3 py-2.5">Próx. Pagamento</th>
+          <th scope="col" className="hidden md:table-cell md:w-[13%] px-3 py-2.5">Situação</th>
+          <th scope="col" className="w-[32%] px-3 py-2.5 text-right sm:w-[16%] sm:px-4">Saldo</th>
+          <th scope="col" className="w-[32%] px-3 text-right sm:w-[14%] sm:px-4"><span className="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -31,7 +46,9 @@ export default function PeopleTable<T extends PersonItem>({ people, money, rende
           const editor = renderEditor?.(person)
           const isReceivable = person.balance_cents > 0
           const isPayable = person.balance_cents < 0
+          const hasDebt = person.balance_cents !== 0
           const initial = (person.nickname.trim()[0] || 'P').toUpperCase()
+          const loanDates = getPersonLoanDates(person, effectiveToday)
 
           return <Fragment key={person.id}>
             <tr className="table-row-hover transition-[background-color]">
@@ -51,7 +68,9 @@ export default function PeopleTable<T extends PersonItem>({ people, money, rende
                       {renderName ? renderName(person) : <span>{person.nickname}</span>}
                     </div>
                     {person.archived_at && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Arquivada</p>}
-                    <div className="mt-1 sm:hidden">
+
+                    {/* Mobile: badges e datas resumidas */}
+                    <div className="mt-1 sm:hidden flex flex-wrap items-center gap-1.5">
                       {isReceivable ? (
                         <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <ArrowDownLeft size={11} className="shrink-0" />
@@ -68,11 +87,61 @@ export default function PeopleTable<T extends PersonItem>({ people, money, rende
                           Em dia
                         </span>
                       )}
+
+                      {(loanDates.startDate || (hasDebt && loanDates.nextDueDate)) && (
+                        <div className="w-full flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
+                          {loanDates.startDate && <span>Início: {displayDate(loanDates.startDate)}</span>}
+                          {loanDates.startDate && hasDebt && loanDates.nextDueDate && <span>•</span>}
+                          {hasDebt && loanDates.nextDueDate && (
+                            <span className={loanDates.isOverdue ? 'font-semibold text-rose-600 dark:text-rose-400' : loanDates.isToday ? 'font-semibold text-amber-600 dark:text-amber-400' : ''}>
+                              Próx: {displayDate(loanDates.nextDueDate)}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </td>
-              <td className="hidden px-4 py-3 sm:table-cell">
+
+              {/* Data inicial do empréstimo */}
+              <td className="hidden lg:table-cell px-3 py-3 text-xs text-slate-600 dark:text-slate-400">
+                {loanDates.startDate ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+                    <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
+                    <span>{displayDate(loanDates.startDate)}</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-300 dark:text-slate-600">—</span>
+                )}
+              </td>
+
+              {/* Data do próximo pagamento */}
+              <td className="hidden sm:table-cell px-3 py-3 text-xs">
+                {hasDebt && loanDates.nextDueDate ? (
+                  loanDates.isOverdue ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                      <Clock size={12} className="shrink-0" />
+                      <span>Venceu ({displayDate(loanDates.nextDueDate)})</span>
+                    </span>
+                  ) : loanDates.isToday ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                      <Clock size={12} className="shrink-0" />
+                      <span>Vence hoje ({displayDate(loanDates.nextDueDate)})</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+                      <Clock size={13} className="shrink-0 text-brand-600 dark:text-brand-400" />
+                      <span>{displayDate(loanDates.nextDueDate)}</span>
+                    </span>
+                  )
+                ) : (
+                  <span className="text-slate-300 dark:text-slate-600">—</span>
+                )}
+              </td>
+
+              {/* Situação */}
+              <td className="hidden md:table-cell px-3 py-3">
                 {isReceivable ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
                     <ArrowDownLeft size={13} className="shrink-0" />
@@ -90,6 +159,8 @@ export default function PeopleTable<T extends PersonItem>({ people, money, rende
                   </span>
                 )}
               </td>
+
+              {/* Saldo */}
               <td className="px-3 py-3 text-right font-medium sm:px-4">
                 <span className={`block font-semibold ${
                   isReceivable
@@ -101,14 +172,16 @@ export default function PeopleTable<T extends PersonItem>({ people, money, rende
                   {money(Math.abs(person.balance_cents))}
                 </span>
               </td>
+
+              {/* Ações */}
               <td className="px-3 py-3 text-right sm:px-4">
                 {renderActions?.(person)}
               </td>
             </tr>
-            {editor && <tr><td colSpan={4} className="p-3 sm:p-4">{editor}</td></tr>}
+            {editor && <tr><td colSpan={6} className="p-3 sm:p-4">{editor}</td></tr>}
           </Fragment>
         })}
-        {!people.length && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">Nenhuma pessoa encontrada com os filtros atuais.</td></tr>}
+        {!people.length && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">Nenhuma pessoa encontrada com os filtros atuais.</td></tr>}
       </tbody>
     </table>
   </div>

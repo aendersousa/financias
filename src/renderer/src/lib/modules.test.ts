@@ -66,9 +66,10 @@ describe('All App Pages and Modules management', () => {
     expect(isPageEnabled('settings', disabled)).toBe(true)
   })
 
-  it('keeps classification pages together under Organização', () => {
+  it('contains only tags under Organização group', () => {
     const orgPages = ALL_APP_PAGES.filter(p => p.group === 'Organização')
-    expect(orgPages.map(page => page.id)).toEqual(['categories', 'tags'])
+    expect(orgPages).toHaveLength(1)
+    expect(orgPages[0].id).toBe('tags')
     expect(ALL_APP_PAGES.some(p => p.id === 'notifications')).toBe(false)
     expect(ALL_APP_PAGES.some(p => p.id === 'audit')).toBe(false)
   })

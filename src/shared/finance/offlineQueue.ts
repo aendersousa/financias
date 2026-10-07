@@ -1,5 +1,6 @@
 import { assertCents } from './money';
 import { shiftDays } from './calendar';
+import { paymentNote, type PaymentMethod } from './paymentMethod';
 
 export interface QuickEntry {
   kind: 'expense' | 'income' | 'card_purchase';
@@ -11,6 +12,7 @@ export interface QuickEntry {
   accountId?: string;
   accountLedgerId?: string;
   cardId?: string;
+  paymentMethod?: PaymentMethod;
 }
 export interface QueueItem {
   clientUuid: string;
@@ -41,7 +43,7 @@ export function quickEntryRequest(item: QueueItem): { name: string; args: Record
   validateQuickEntry(value);
   if (value.kind==='card_purchase') return { name:'record_card_purchase',args:{ p_space:item.spaceId,p_card:value.cardId,p_category:value.categoryId,p_total_cents:value.amountCents,p_installments:1,p_on:value.occurredOn,p_description:value.description || 'Compra rápida',p_client_uuid:item.clientUuid } };
   const sign = value.kind==='income' ? -1 : 1;
-  return { name:'post_transaction',args:{ p_space:item.spaceId,p_payload:{ kind:value.kind,occurred_on:value.occurredOn,competence_month:`${value.occurredOn.slice(0,7)}-01`,description:value.description || (sign===1 ? 'Despesa rápida' : 'Receita rápida'),client_uuid:item.clientUuid,entries:[{ ledger_account_id:value.categoryLedgerId,amount_cents:sign*value.amountCents },{ ledger_account_id:value.accountLedgerId,amount_cents:-sign*value.amountCents }] } } };
+  return { name:'post_transaction',args:{ p_space:item.spaceId,p_payload:{ kind:value.kind,occurred_on:value.occurredOn,competence_month:`${value.occurredOn.slice(0,7)}-01`,description:value.description || (sign===1 ? 'Despesa rápida' : 'Receita rápida'),...(value.paymentMethod?{notes:paymentNote(value.paymentMethod)}:{}),client_uuid:item.clientUuid,entries:[{ ledger_account_id:value.categoryLedgerId,amount_cents:sign*value.amountCents },{ ledger_account_id:value.accountLedgerId,amount_cents:-sign*value.amountCents }] } } };
 }
 export function retryDelay(attempts: number): number {
   return Math.min(300_000,5_000*2**Math.min(Math.max(attempts-1,0),6));

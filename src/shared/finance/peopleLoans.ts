@@ -305,3 +305,62 @@ export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLo
     schedule
   };
 }
+
+export interface PersonLoanDates {
+  startDate: string | null;
+  nextDueDate: string | null;
+  isOverdue?: boolean;
+  isToday?: boolean;
+}
+
+export function getPersonLoanDates(
+  person: {
+    notes?: string | null;
+    opening_on?: string | null;
+    balance_cents: number;
+    reminders?: { id: string; title: string; due_on: string; completed_at: string | null }[];
+  },
+  todayIso: string
+): PersonLoanDates {
+  let startDate: string | null = person.opening_on || null;
+
+  if (!startDate && person.notes) {
+    const matchStart = person.notes.match(/(?:iniciado em|\[Empréstimo[^\]]*?\bem)\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+    if (matchStart) {
+      startDate = `${matchStart[3]}-${matchStart[2]}-${matchStart[1]}`;
+    }
+  }
+
+  let nextDueDate: string | null = null;
+
+  // 1. Pending reminder in Agenda linked to the person
+  if (person.reminders && person.reminders.length > 0) {
+    const pendingReminder = person.reminders.find(r => !r.completed_at);
+    if (pendingReminder) {
+      nextDueDate = pendingReminder.due_on;
+    }
+  }
+
+  // 2. Extracted from notes if no reminder found
+  if (!nextDueDate && person.notes) {
+    const matchDue = person.notes.match(/(?:próximo vencimento em|pagamento único[^.\n]*?em|devolução em[^.\n]*?em)\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+    if (matchDue) {
+      nextDueDate = `${matchDue[3]}-${matchDue[2]}-${matchDue[1]}`;
+    }
+  }
+
+  // 3. Fallback: if there is an active balance and known start date, calculate next monthly due date
+  if (!nextDueDate && startDate && person.balance_cents !== 0) {
+    nextDueDate = calculateNextMonthlyDueDate(startDate, todayIso);
+  }
+
+  const isOverdue = !!(nextDueDate && nextDueDate < todayIso && person.balance_cents !== 0);
+  const isToday = !!(nextDueDate && nextDueDate === todayIso && person.balance_cents !== 0);
+
+  return {
+    startDate,
+    nextDueDate,
+    isOverdue,
+    isToday
+  };
+}

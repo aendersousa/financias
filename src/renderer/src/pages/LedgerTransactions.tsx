@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { parseBrlCents } from '../../../shared/finance/money'
 import { todayInSpace } from '../../../shared/finance/calendar'
+import { paymentMethods, paymentNote, type PaymentMethod } from '../../../shared/finance/paymentMethod'
 import TransactionTable from '../components/TransactionTable'
 import CurrencyInput from '../components/CurrencyInput'
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository'
@@ -23,6 +24,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   onChanged:()=>Promise<void>
 }) {
   const [kind,setKind]=useState<Kind>('expense'),[nonce,setNonce]=useState(0)
+  const [paymentMethod,setPaymentMethod]=useState<PaymentMethod|''>('')
   const [selected,setSelected]=useState<string|null>(null),[search,setSearch]=useState(''),[status,setStatus]=useState('all')
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [page,setPage]=useState(1)
@@ -47,6 +49,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   function openDetails(id:string) {if(busy)return;setSelected(selected===id?null:id)}
   function useEntry(selection:EntrySelection) {
     if(pending.current||!writer)return
+    setPaymentMethod(selection.preset.paymentMethod??(selection.preset.kind==='card_purchase'?'credit_card':''))
     setEntrySelection(selection);setKind(selection.preset.kind??'expense');setNonce(value=>value+1);setError('');setNotice('');setSelected(null);setSuggestions([]);suggestionRequest.current++
     requestAnimationFrame(()=>{formRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'});formRef.current?.querySelector<HTMLInputElement>('input[name="name"]')?.focus({preventScroll:true})})
   }
@@ -59,7 +62,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   }
   function entryPreset(values:FormData):EntryPreset {
     const text=(key:string)=>String(values.get(key)??'').trim()
-    return {kind:kind as EntryPreset['kind'],description:text('name'),occurredOn:text('date'),
+    return {kind:kind as EntryPreset['kind'],description:text('name'),occurredOn:text('date'),paymentMethod:kind==='card_purchase'?'credit_card':paymentMethod||undefined,
       ...(text('amount')?{amountCents:parseBrlCents(text('amount'))}:{}),categoryId:text('category')||undefined,
       ...(kind==='card_purchase'?{cardId:text('card')||undefined,installments:Number(text('installments'))}:{accountId:text('account')||undefined}),reserveId:text('reserve')||undefined}
   }
@@ -88,7 +91,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       if(!online||entrySelection?.item) {
         if(!supportsPreferences||text('reserve')||kind==='card_purchase'&&Number(text('installments'))!==1)throw new Error('Sem conexão, registre despesas e receitas à vista ou compras no cartão em 1x, sem vínculo com metas. As outras operações precisam de internet.')
         if(kind!=='card_purchase'&&!['cash','benefit'].includes(account?.liquidity??''))throw new Error('Escolha uma conta à vista ou de benefícios para salvar no aparelho.')
-        const content={kind:kind as EntryPreset['kind'],amountCents:cents,description:text('name'),occurredOn:date,categoryId:category?.id??'',categoryLedgerId:category?.ledger_account_id??'',...(kind==='card_purchase'?{cardId:text('card')}:{accountId:account?.id,accountLedgerId:account?.ledger_account_id})}
+        const content={kind:kind as EntryPreset['kind'],amountCents:cents,description:text('name'),occurredOn:date,paymentMethod:kind==='card_purchase'?'credit_card' as const:paymentMethod||undefined,categoryId:category?.id??'',categoryLedgerId:category?.ledger_account_id??'',...(kind==='card_purchase'?{cardId:text('card')}:{accountId:account?.id,accountLedgerId:account?.ledger_account_id})}
         validateQuickEntry(content)
         const userId=await activeUserId()
         if(entrySelection?.item&&entrySelection.item.userId!==userId)throw new Error('O usuário mudou. Abra novamente o lançamento pendente.')
@@ -118,7 +121,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
         if(!category?.ledger_account_id||!account)throw new Error('Escolha uma conta e uma categoria final.')
         const sign=kind==='income'?-1:1
         name='post_transaction'
-        args={p_payload:{kind,occurred_on:date,competence_month:date.slice(0,7)+'-01',description:text('name'),
+        args={p_payload:{kind,occurred_on:date,competence_month:date.slice(0,7)+'-01',description:text('name'),notes:paymentNote(paymentMethod||undefined),
           entries:[{ledger_account_id:category.ledger_account_id,amount_cents:sign*cents,reserve_id:kind==='expense'?text('reserve')||null:null},{ledger_account_id:account.ledger_account_id,amount_cents:-sign*cents}]}}
       }
       const key=JSON.stringify({space:workspace.space.id,name,args})
@@ -150,6 +153,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
         {entrySelection&&<div className="flex w-full flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><span>{entrySelection.item?'Editando lançamento não enviado':entrySelection.draft?'Completando rascunho':'Modelo preenchido. Confira os campos antes de adicionar.'}</span><button type="button" onClick={resetEntry} className="font-semibold text-brand-700 dark:text-brand-300">Limpar formulário</button></div>}
         <label className={labelClass}><span className="field-label">Operação</span><select aria-label="Operação" value={kind} onChange={event=>{setKind(event.target.value as Kind);setSuggestions([]);suggestionRequest.current++}} className={input}><option value="expense">Despesa</option><option value="income">Receita</option><option value="transfer" disabled={!online||Boolean(entrySelection?.item)}>Transferência</option><option value="card_purchase">Compra no cartão</option><option value="card_payment" disabled={!online||Boolean(entrySelection?.item)}>Pagamento do cartão</option></select></label>
         {!['transfer','card_payment'].includes(kind)&&<label className="flex w-full flex-col gap-1 sm:w-60"><span className="field-label">Nome ou descrição</span><input name="name" required maxLength={100} defaultValue={preset?.description??''} onBlur={event=>void suggest(event.target.value)} placeholder="Ex: Mercado" className={input}/></label>}
+        {['expense','income','card_purchase'].includes(kind)&&<label className="flex w-full flex-col gap-1 sm:w-52"><span className="field-label">Forma de pagamento</span><select aria-label="Forma de pagamento" value={kind==='card_purchase'?'credit_card':paymentMethod==='credit_card'?'':paymentMethod} onChange={event=>{const method=event.target.value as PaymentMethod|'';setPaymentMethod(method);if(method==='credit_card')setKind('card_purchase');else if(kind==='card_purchase')setKind('expense')}} className={input}><option value="">Não informado</option>{Object.entries(paymentMethods).filter(([method])=>kind!=='income'||method!=='credit_card').map(([method,label])=><option key={method} value={method}>{label}</option>)}</select></label>}
         {kind!=='card_purchase'&&<label className={labelClass}><span className="field-label">Conta</span><select aria-label="Conta" key={'account-'+kind} name="account" required defaultValue={preset?.accountId??''} className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
         {kind==='transfer'&&<label className={labelClass}><span className="field-label">Conta de destino</span><select aria-label="Conta de destino" name="destination" required defaultValue="" className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
         {!['transfer','card_payment'].includes(kind)&&<label className={labelClass}><span className="field-label">Categoria</span><select aria-label="Categoria" key={'category-'+kind} name="category" required defaultValue={preset?.kind===kind?preset.categoryId??'':''} className={input}><option value="" disabled>Selecione uma categoria</option>{categories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}

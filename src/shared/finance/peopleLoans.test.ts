@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan } from './peopleLoans';
+import { addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates } from './peopleLoans';
 
 describe('peopleLoans calculations', () => {
   it('correctly clamps dates across month and year boundaries', () => {
@@ -222,6 +222,43 @@ describe('peopleLoans calculations', () => {
     expect(result.elapsedMonths).toBe(1);
     expect(result.interestCents).toBe(7500); // 1 * 75 = 75
     expect(result.totalCents).toBe(157500);
+  });
+
+  it('extracts loan start date and next payment date from opening_on and reminders', () => {
+    const dates = getPersonLoanDates({
+      opening_on: '2026-08-11',
+      balance_cents: 150000,
+      reminders: [
+        { id: 'rem-1', title: 'Cobrar juros', due_on: '2026-10-11', completed_at: null }
+      ]
+    }, '2026-10-07');
+
+    expect(dates.startDate).toBe('2026-08-11');
+    expect(dates.nextDueDate).toBe('2026-10-11');
+    expect(dates.isOverdue).toBe(false);
+    expect(dates.isToday).toBe(false);
+  });
+
+  it('extracts loan dates from notes when no reminders are present', () => {
+    const dates = getPersonLoanDates({
+      opening_on: null,
+      notes: '📌 [Empréstimo iniciado em 15/09/2026] Emprestado para João: Principal R$ 300,00 | próximo vencimento em 15/10/2026',
+      balance_cents: 30000
+    }, '2026-10-07');
+
+    expect(dates.startDate).toBe('2026-09-15');
+    expect(dates.nextDueDate).toBe('2026-10-15');
+  });
+
+  it('calculates next monthly due date automatically if active balance has start date but no reminders', () => {
+    const dates = getPersonLoanDates({
+      opening_on: '2026-08-11',
+      balance_cents: 150000,
+      reminders: []
+    }, '2026-10-07');
+
+    expect(dates.startDate).toBe('2026-08-11');
+    expect(dates.nextDueDate).toBe('2026-10-11');
   });
 });
 

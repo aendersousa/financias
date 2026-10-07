@@ -72,7 +72,7 @@ try {
     await next.addInitScript(session => localStorage.setItem('sb-127-auth-token', JSON.stringify(session)), user.session);
     await next.goto('http://127.0.0.1:4184/financias/');
     await expect(next.getByRole('heading', { name: 'Visão geral', exact: true })).toBeVisible();
-    await next.getByRole('button', { name: 'Categorias', exact: true }).click();
+    await next.getByRole('button', { name: '2. Categorias', exact: true }).click();
     await expect(next.getByRole('heading', { name: 'Categorias', exact: true })).toBeVisible();
     await expect(next.getByRole('heading', { name: 'Receitas', exact: true })).toBeVisible();
     await expect(next.getByRole('heading', { name: 'Despesas', exact: true })).toBeVisible();
@@ -115,7 +115,7 @@ try {
     await expect(categoryRow(name).locator('.category-color-dot')).toHaveCSS('background-color', rgb);
   }
   await page.reload();
-  await page.getByRole('button', { name: 'Categorias', exact: true }).click();
+  await page.getByRole('button', { name: '2. Categorias', exact: true }).click();
   await expect(categoryRow('Despesa criada no formulário')).toBeVisible();
   await expect(categoryRow('Receita criada no formulário')).toBeVisible();
 

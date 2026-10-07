@@ -5,7 +5,7 @@ export interface LedgerCategory { id: string; name: string; kind: 'income' | 'ex
 export interface LedgerCard { id: string; name: string; granted_cents: number; used_cents: number; free_cents: number }
 export interface LedgerCommitment { id: string; title: string; direction: 'inflow' | 'outflow' | null; effective_due_on: string; remaining_cents: number | null; settlement_status: string; kind: string; version: number }
 export interface LedgerTransactionEntry { account_name: string; owner_type: string; account_class: string; amount_cents: number }
-export interface LedgerTransaction { id: string; description: string; occurred_on: string; kind: string; status: string; version: number; amount_cents?: number; entries?: LedgerTransactionEntry[] }
+export interface LedgerTransaction { id: string; description: string; occurred_on: string; kind: string; status: string; version: number; amount_cents?: number; entries?: LedgerTransactionEntry[]; notes?: string | null }
 export interface LedgerBudget { id: string; category_id: string; amount_cents: number; consumed_cents: number; predicted_cents: number; remaining_cents: number }
 export interface LedgerWorkspace {
   totals: { cash_cents: number; benefit_cents: number; investment_cents: number; property_cents: number; card_used_cents: number; commitment_outflows_cents: number };

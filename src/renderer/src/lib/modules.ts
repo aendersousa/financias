@@ -39,6 +39,7 @@ export const PAGE_ALIASES: Record<string, string[]> = {
 }
 
 export const ALL_APP_PAGES: AppNavPage[] = [
+  // Principal
   {
     id: 'dashboard',
     label: 'Visão geral',
@@ -46,19 +47,49 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     icon: LayoutDashboard,
     description: 'Painel principal com visão geral, saldos e gráficos consolidados.'
   },
+  // Cadastre nesta ordem
+  {
+    id: 'accounts',
+    label: '1. Contas',
+    group: 'Cadastre nesta ordem',
+    icon: Wallet,
+    description: 'Contas bancárias, carteiras físicas, benefícios e investimentos.'
+  },
+  {
+    id: 'categories',
+    label: '2. Categorias',
+    group: 'Cadastre nesta ordem',
+    icon: Tags,
+    description: 'Classificação organizada de receitas e despesas por categoria.'
+  },
+  {
+    id: 'cards',
+    label: '3. Cartões',
+    group: 'Cadastre nesta ordem',
+    icon: CreditCard,
+    description: 'Cartões de crédito, limites, faturas e compras parceladas.'
+  },
+  {
+    id: 'people',
+    label: 'Pessoas',
+    group: 'Cadastre nesta ordem',
+    icon: Users,
+    description: 'Contatos, acertos de contas, valores a receber e a pagar com terceiros.'
+  },
+  {
+    id: 'sharing',
+    label: 'Compartilhamento',
+    group: 'Cadastre nesta ordem',
+    icon: Users,
+    description: 'Gestão de membros convidados e divisão de despesas do espaço.'
+  },
+  // Movimentações
   {
     id: 'transactions',
     label: 'Lançamentos',
     group: 'Movimentações',
     icon: ArrowLeftRight,
     description: 'Registro e extrato de receitas, despesas e transferências financeiras.'
-  },
-  {
-    id: 'imports',
-    label: 'Importar extrato',
-    group: 'Movimentações',
-    icon: ArrowLeftRight,
-    description: 'Importação e conciliação de extratos bancários em arquivos OFX.'
   },
   {
     id: 'foreign_currency',
@@ -68,6 +99,14 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     description: 'Compras no exterior em moeda estrangeira e conversão em reais.'
   },
   {
+    id: 'imports',
+    label: 'Importar extrato',
+    group: 'Movimentações',
+    icon: ArrowLeftRight,
+    description: 'Importação e conciliação de extratos bancários em arquivos OFX.'
+  },
+  // Planejamento
+  {
     id: 'agenda',
     label: 'Agenda',
     group: 'Planejamento',
@@ -75,11 +114,11 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     description: 'Contas a pagar e a receber com vencimentos e compromissos futuros.'
   },
   {
-    id: 'recurrences',
-    label: 'Recorrências',
+    id: 'forecast',
+    label: 'Previsão de saldo',
     group: 'Planejamento',
-    icon: Repeat,
-    description: 'Despesas periódicas, assinaturas e receitas com repetição automática.'
+    icon: CalendarDays,
+    description: 'Projeção do fluxo de caixa e saldo estimado para os próximos meses.'
   },
   {
     id: 'budgets',
@@ -96,75 +135,42 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     description: 'Objetivos financeiros, reservas de emergência e sonhos.'
   },
   {
-    id: 'forecast',
-    label: 'Previsão de saldo',
+    id: 'recurrences',
+    label: 'Recorrências',
     group: 'Planejamento',
-    icon: CalendarDays,
-    description: 'Projeção do fluxo de caixa e saldo estimado para os próximos meses.'
-  },
-  {
-    id: 'accounts',
-    label: 'Contas',
-    group: 'Contas e patrimônio',
-    icon: Wallet,
-    description: 'Contas bancárias, carteiras físicas, benefícios e investimentos.'
-  },
-  {
-    id: 'cards',
-    label: 'Cartões',
-    group: 'Contas e patrimônio',
-    icon: CreditCard,
-    description: 'Cartões de crédito, limites, faturas e compras parceladas.'
+    icon: Repeat,
+    description: 'Despesas periódicas, assinaturas e receitas com repetição automática.'
   },
   {
     id: 'portfolio',
     label: 'Patrimônio',
-    group: 'Contas e patrimônio',
+    group: 'Planejamento',
     icon: Wallet,
     description: 'Acompanhamento do patrimônio líquido, bens e investimentos.'
   },
-  {
-    id: 'people',
-    label: 'Pessoas',
-    group: 'Pessoas e compartilhamento',
-    icon: Users,
-    description: 'Contatos, acertos de contas, valores a receber e a pagar com terceiros.'
-  },
-  {
-    id: 'sharing',
-    label: 'Compartilhamento',
-    group: 'Pessoas e compartilhamento',
-    icon: Users,
-    description: 'Gestão de membros convidados e divisão de despesas do espaço.'
-  },
+  // Acompanhamento
   {
     id: 'reports',
     label: 'Relatórios',
-    group: 'Análises',
+    group: 'Acompanhamento',
     icon: History,
     description: 'Relatórios analíticos, gráficos e comparativos de evolução.'
   },
   {
-    id: 'closing',
-    label: 'Relatório mensal e fechamento',
-    group: 'Análises',
-    icon: History,
-    description: 'Fechamento de meses e retratos consolidados dos períodos.'
-  },
-  {
     id: 'health',
     label: 'Saúde financeira',
-    group: 'Análises',
+    group: 'Acompanhamento',
     icon: Wallet,
     description: 'Indicadores de sustentabilidade financeira e taxa de poupança.'
   },
   {
-    id: 'categories',
-    label: 'Categorias',
-    group: 'Organização',
-    icon: Tags,
-    description: 'Classificação organizada de receitas e despesas por categoria.'
+    id: 'closing',
+    label: 'Relatório mensal e fechamento',
+    group: 'Acompanhamento',
+    icon: History,
+    description: 'Fechamento de meses e retratos consolidados dos períodos.'
   },
+  // Organização
   {
     id: 'tags',
     label: 'Tags',
@@ -173,6 +179,7 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     description: 'Etiquetas para classificar lançamentos por viagens ou projetos.'
   }
 ]
+
 export function readDisabledPages(): string[] {
   try {
     const raw = localStorage.getItem(DISABLED_PAGES_STORAGE_KEY)

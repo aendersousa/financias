@@ -73,6 +73,10 @@ try {
   const form=page.getByRole('form',{name:'Adicionar lançamento',exact:true});
   const management=page.getByRole('region',{name:'Modelos, rascunhos e envio pendente',exact:true});
   await expect(form).toHaveCount(1);
+  await form.getByRole('combobox',{name:'Forma de pagamento',exact:true}).selectOption('credit_card');
+  await expect(form.getByRole('combobox',{name:'Cartão',exact:true})).toBeVisible();
+  await form.getByRole('combobox',{name:'Forma de pagamento',exact:true}).selectOption('pix');
+  await expect(form.getByRole('combobox',{name:'Conta',exact:true})).toBeVisible();
   await expect(form).toHaveCSS('display','flex');
   await expect(form.locator('label').first()).toHaveCSS('width','176px');
   await page.getByText('Modelos, rascunhos e envio pendente',{exact:true}).click();
@@ -95,6 +99,7 @@ try {
   await expect.poll(cash).toBe(98766);
   await expect.poll(async()=> (await prefs()).drafts.length).toBe(0);
   await expect.poll(async()=> (await prefs()).models.length).toBe(1);
+  if(mock)assert.equal((await prefs()).models[0]?.payload.paymentMethod,'pix');
   await management.getByRole('button',{name:'Modelo unificado',exact:true}).click();
   await expect(form.locator('input[name="amount"]')).toHaveValue('12,34');
   await expect(form.getByRole('combobox',{name:'Conta',exact:true})).toHaveValue(bank);

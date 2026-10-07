@@ -1,7 +1,8 @@
 import { activeUserId, cachedPersonalPreferences, cachePersonalPreferences } from './offlineStorage';
 import { ledgerRpc } from './ledgerRepository';
+import type { PaymentMethod } from '../../../shared/finance/paymentMethod';
 
-export interface EntryPreset { kind: 'expense' | 'income' | 'card_purchase'; description?: string; amountCents?: number; categoryId?: string; accountId?: string; cardId?: string; occurredOn?: string; installments?: number; reserveId?: string }
+export interface EntryPreset { kind: 'expense' | 'income' | 'card_purchase'; description?: string; amountCents?: number; categoryId?: string; accountId?: string; cardId?: string; occurredOn?: string; installments?: number; reserveId?: string; paymentMethod?: PaymentMethod }
 export interface EntryPreferences { models: { id: string; name: string; version: number; payload: EntryPreset }[]; drafts: { id: string; title: string; version: number; payload: EntryPreset }[] }
 export async function loadEntryPreferences(space: string): Promise<EntryPreferences> {
   const userId = await activeUserId();

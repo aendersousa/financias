@@ -61,6 +61,7 @@ export default function TransactionTable<T extends LedgerTransaction>({transacti
                 <ArrowLeftRight aria-hidden="true" size={14} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400"/>
                 <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   {renderName?renderName(transaction):transaction.description}
+                  {(transaction.kind==='card_purchase'||transaction.notes?.startsWith('Forma de pagamento: '))&&<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{transaction.kind==='card_purchase'?'Cartão de crédito':transaction.notes?.split('\n')[0]}</p>}
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{kind}<span className="lg:hidden"> · {date}</span></p>
                   {accountNames&&<div className="mt-2 text-xs text-slate-500 dark:text-slate-400 lg:hidden">{accountDetails}</div>}
                   {categories&&<p className="mt-1 text-xs text-slate-500 dark:text-slate-400 lg:hidden">{categories}</p>}

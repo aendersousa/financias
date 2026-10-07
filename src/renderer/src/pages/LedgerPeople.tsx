@@ -30,7 +30,7 @@ import {
 import PeopleTable from '../components/PeopleTable';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
-import { addDays, addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
+import { addDays, addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
 import CurrencyInput from '../components/CurrencyInput';
 
 const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -3165,6 +3165,7 @@ export default function LedgerPeople({
         <PeopleTable
           people={visibleContacts}
           money={money}
+          today={workspace.space.today}
           renderName={item => (
             <button
               type="button"
@@ -3289,6 +3290,15 @@ function PersonDetailPanel({
   const [editingTxDesc, setEditingTxDesc] = useState('');
 
   const pendingRemindersCount = detail?.reminders.filter(r => !r.completed_at).length ?? 0;
+  const loanDates = useMemo(() => {
+    return getPersonLoanDates(
+      {
+        ...person,
+        reminders: detail?.reminders ?? (person as any).reminders
+      },
+      today
+    );
+  }, [person, detail?.reminders, today]);
 
   return (
     <section
@@ -3346,6 +3356,37 @@ function PersonDetailPanel({
                     ? `Você deve ${money(Math.abs(person.balance_cents))}`
                     : 'Contas em dia'}
               </span>
+              {loanDates.startDate && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar size={12} className="text-slate-400" />
+                    Início: <strong className="font-semibold text-slate-700 dark:text-slate-200">{displayDate(loanDates.startDate)}</strong>
+                  </span>
+                </>
+              )}
+              {loanDates.nextDueDate && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Clock size={12} className={loanDates.isOverdue ? 'text-rose-500' : loanDates.isToday ? 'text-amber-500' : 'text-blue-500'} />
+                    Próx. pagamento:{' '}
+                    <strong className={`font-semibold ${loanDates.isOverdue ? 'text-rose-600 dark:text-rose-400' : loanDates.isToday ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                      {displayDate(loanDates.nextDueDate)}
+                    </strong>
+                    {loanDates.isOverdue && (
+                      <span className="ml-0.5 rounded-full bg-rose-100 px-1.5 py-0.2 text-[9px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                        Venceu
+                      </span>
+                    )}
+                    {loanDates.isToday && (
+                      <span className="ml-0.5 rounded-full bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                        Hoje
+                      </span>
+                    )}
+                  </span>
+                </>
+              )}
               {person.scheduled_balance_cents !== 0 && (
                 <>
                   <span>•</span>
@@ -3414,7 +3455,10 @@ function PersonDetailPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-semibold text-blue-950 dark:text-blue-200">
               <Clock size={15} className="shrink-0 text-blue-600 dark:text-blue-400" />
-              <span>Empréstimo por prazo indefinido • Juros mensais contínuos</span>
+              <span>
+                Empréstimo por prazo indefinido • Juros mensais contínuos
+                {loanDates.nextDueDate ? ` (Próximo vencimento: ${displayDate(loanDates.nextDueDate)})` : ''}
+              </span>
             </div>
             <button
               type="button"
