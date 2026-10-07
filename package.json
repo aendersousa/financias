@@ -25,7 +25,8 @@
     "release": "electron-vite build && electron-builder --win --publish always",
     "build:pwa": "vite build --config vite.pwa.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "test:browser:sharing": "node scripts/test-sharing-layout.mjs"
+    "test:browser:sharing": "node scripts/test-sharing-layout.mjs",
+    "deploy:gh-pages": "node scripts/deploy-ghpages.mjs"
   },
   "keywords": [],
   "author": "",
