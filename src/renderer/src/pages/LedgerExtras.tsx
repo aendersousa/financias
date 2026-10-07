@@ -2,12 +2,17 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ledgerRpc, type LedgerWorkspace, type UserSettings, type WorkspaceMetadata } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { useAppStore } from '../store/useAppStore';
+import LedgerRecurrences from './LedgerRecurrences';
 
 export type ExtraSection = 'tags' | 'recurrences' | 'settings' | 'audit';
 interface PlanningSettings { minimum_safety_reserve_cents: number; fallback_cycle_day: number; version: number; categories: { id: string; name: string; version: number; benefit_financial_account_id: string | null }[] }
 const input = 'w-full field-input px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800';
 const panel = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
-export default function LedgerExtras({ section, workspace, money, onChanged }: { section: ExtraSection; workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void> }) {
+type ExtrasProps = { section: ExtraSection; workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void> };
+export default function LedgerExtras(props: ExtrasProps) {
+  return props.section === 'recurrences' ? <LedgerRecurrences workspace={props.workspace} money={props.money} onChanged={props.onChanged}/> : <LedgerExtraTools {...props}/>;
+}
+function LedgerExtraTools({ section, workspace, money, onChanged }: ExtrasProps) {
   const [metadata,setMetadata] = useState<WorkspaceMetadata | null>(null);
   const [settings,setSettings] = useState<UserSettings | null>(null);
   const [planning,setPlanning] = useState<PlanningSettings | null>(null),[benefitCategory,setBenefitCategory] = useState('');
@@ -16,9 +21,6 @@ export default function LedgerExtras({ section, workspace, money, onChanged }: {
   const [busy,setBusy] = useState(false);
   const [transaction,setTransaction] = useState('');
   const [selectedTags,setSelectedTags] = useState<string[]>([]);
-  const [editingRule,setEditingRule] = useState<string | null>(null);
-  const [direction,setDirection] = useState('outflow');
-  const [unit,setUnit] = useState('month');
   const canWrite = workspace.role !== 'viewer';
   const canManage = ['owner','admin'].includes(workspace.role);
   async function load() {
@@ -55,22 +57,6 @@ export default function LedgerExtras({ section, workspace, money, onChanged }: {
     try { const data=new FormData(event.currentTarget); await run('update_planning_settings',{ p_version:planning.version,p_safety_cents:parseBrlCents(String(data.get('safety'))),p_cycle_day:Number(data.get('cycle')) }); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Verifique a reserva mínima.'); }
   }
-  async function saveRecurrence(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const data = new FormData(event.currentTarget),text = (key: string) => String(data.get(key) ?? '');
-    try {
-      const amount = parseBrlCents(text('amount'));
-      if (amount <= 0) throw new Error('Informe um valor maior que zero.');
-      const [year,month,day] = text('date').split('-').map(Number);
-      const weekday = new Date(Date.UTC(year,month-1,day,12)).getUTCDay() || 7;
-      const payload = { title:text('name'),direction,unit,amount_cents:amount,starts_on:text('date'),category_id:text('category'),payment_method:'account',payment_financial_account_id:text('account'),
-        certainty:text('certainty'),day_of_month:unit === 'week' ? null : day,month_of_year:unit === 'year' ? month : null,weekday:unit === 'week' ? weekday : null,
-        is_main_income:direction === 'inflow' && data.get('main_income') === 'on',is_subscription:data.get('subscription') === 'on' };
-      const rule = metadata?.recurrences.find(r => r.id === editingRule);
-      const saved = rule ? await run('change_recurrence_rule',{ p_rule:rule.id,p_version:rule.version,p_from_period:text('date'),p_scope:text('scope'),p_changes:{ amount_cents:amount,category_id:text('category'),payment_financial_account_id:text('account'),certainty:text('certainty'),day_of_month:payload.day_of_month,weekday:payload.weekday,month_of_year:payload.month_of_year } }) : await run('create_recurrence_rule',{ p_payload:payload });
-      if (saved) setEditingRule(null);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Verifique os campos.'); }
-  }
-  const rule = metadata?.recurrences.find(r => r.id === editingRule);
   const label = (name: string,id: string) => <label htmlFor={id} className="text-sm font-medium">{name}</label>;
   return <div className="space-y-5">
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
@@ -98,22 +84,6 @@ export default function LedgerExtras({ section, workspace, money, onChanged }: {
       {canWrite && <div className={`${panel} space-y-4`}><h2 className="font-semibold">Marcar um lançamento</h2>{label('Lançamento','tag-transaction')}<select id="tag-transaction" value={transaction} onChange={event => setTransaction(event.target.value)} className={input}><option value="">Selecione</option>{workspace.transactions.map(t => <option key={t.id} value={t.id}>{t.occurred_on} · {t.description}</option>)}</select>
         {transaction && <><div className="flex flex-wrap gap-4">{metadata.tags.filter(t => !t.archived_at || selectedTags.includes(t.id)).map(tag => <label key={tag.id} className="flex gap-2"><input type="checkbox" checked={selectedTags.includes(tag.id)} onChange={event => setSelectedTags(event.target.checked ? [...selectedTags,tag.id] : selectedTags.filter(id => id !== tag.id))}/>{tag.name}</label>)}</div><button disabled={busy} onClick={() => void run('set_transaction_tags',{ p_transaction:transaction,p_tags:selectedTags,p_expected_tags:metadata.transaction_tags.filter(t => t.ledger_transaction_id === transaction).map(t => t.tag_id) })} className="btn-primary px-4 py-2.5 font-semibold text-white">Salvar tags do lançamento</button></>}
       </div>}
-    </>}
-    {section === 'recurrences' && metadata && <>
-      {canWrite && <form onSubmit={saveRecurrence} key={editingRule ?? 'new'} className={`${panel} grid gap-4 sm:grid-cols-2`}>
-        <h2 className="font-semibold sm:col-span-2">{rule ? `Editar: ${rule.title}` : 'Nova recorrência'}</h2>
-        {!rule && <><div className="grid gap-2">{label('Descrição','recurrence-name')}<input id="recurrence-name" name="name" maxLength={100} required className={input}/></div><div className="grid gap-2">{label('Direção','recurrence-direction')}<select id="recurrence-direction" value={direction} onChange={event => setDirection(event.target.value)} className={input}><option value="outflow">A pagar</option><option value="inflow">A receber</option></select></div></>}
-        <div className="grid gap-2">{label('Frequência','recurrence-unit')}<select id="recurrence-unit" value={unit} disabled={!!rule} onChange={event => setUnit(event.target.value)} className={input}><option value="month">Mensal</option><option value="week">Semanal</option><option value="year">Anual</option></select></div>
-        <div className="grid gap-2">{label(rule ? 'A partir de' : 'Primeiro vencimento','recurrence-date')}<input id="recurrence-date" type="date" name="date" defaultValue={workspace.space.today} required className={input}/></div>
-        <div className="grid gap-2">{label('Valor (R$)','recurrence-amount')}<input id="recurrence-amount" name="amount" inputMode="decimal" required defaultValue={rule ? `${Math.floor(rule.current_version.amount_cents/100)},${String(rule.current_version.amount_cents%100).padStart(2,'0')}` : undefined} className={input}/></div>
-        <div className="grid gap-2">{label('Certeza','recurrence-certainty')}<select id="recurrence-certainty" name="certainty" defaultValue={rule?.current_version.certainty ?? 'confirmed'} className={input}><option value="confirmed">Confirmado</option><option value="estimated">Estimado</option>{direction === 'inflow' && <option value="conditional">Condicional</option>}</select></div>
-        <div className="grid gap-2">{label('Categoria','recurrence-category')}<select id="recurrence-category" name="category" required defaultValue={rule?.current_version.category_id ?? ''} className={input}><option value="">Selecione</option>{workspace.categories.filter(c => c.ledger_account_id && c.kind === (direction === 'inflow' ? 'income' : 'expense')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-        <div className="grid gap-2">{label('Conta','recurrence-account')}<select id="recurrence-account" name="account" required defaultValue={rule?.current_version.payment_financial_account_id ?? ''} className={input}><option value="">Selecione</option>{workspace.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-        {!rule && <><label className="flex gap-2"><input type="checkbox" name="main_income" disabled={direction !== 'inflow'}/>Esta é minha renda principal</label><label className="flex gap-2"><input type="checkbox" name="subscription"/>É uma assinatura</label></>}
-        {rule && <div className="grid gap-2">{label('Aplicar alteração','recurrence-scope')}<select id="recurrence-scope" name="scope" className={input}><option value="this_and_following">Esta e as próximas</option><option value="entire_series">Toda a série em aberto</option></select></div>}
-        <div className="flex gap-3 sm:col-span-2"><button disabled={busy} className="btn-primary px-4 py-2.5 font-semibold text-white">Salvar recorrência</button>{rule && <button type="button" onClick={() => { setEditingRule(null); setDirection('outflow'); setUnit('month'); }}>Cancelar edição</button>}</div>
-      </form>}
-      <div className={`${panel} space-y-4`}>{metadata.recurrences.length === 0 && <p className="text-sm text-slate-500">Nenhuma recorrência cadastrada.</p>}{metadata.recurrences.map(r => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-medium">{r.title}</p><p className="text-sm text-slate-500">{money(r.current_version.amount_cents)} · {r.ends_on ? `Encerrada em ${r.ends_on}` : r.unit === 'month' ? 'Mensal' : r.unit === 'week' ? 'Semanal' : 'Anual'}</p></div>{canWrite && !r.ends_on && <div className="flex gap-3"><button disabled={busy} onClick={() => { setEditingRule(r.id); setDirection(r.direction); setUnit(r.unit); }} className="text-sm text-brand-600">Editar série</button><button disabled={busy} onClick={() => void run('end_recurrence_rule',{ p_rule:r.id,p_version:r.version,p_ends_on:workspace.space.today })} className="text-sm text-red-600">Encerrar hoje</button></div>}</div>)}</div>
     </>}
     {section === 'audit' && metadata && <div className={`${panel} space-y-4`}><p className="text-sm text-slate-500">Últimas 200 alterações do espaço. Os registros são preservados.</p>{metadata.audit.map(a => <div key={a.id} className="grid gap-1 border-b border-slate-100 pb-3 dark:border-slate-800"><p className="text-sm font-medium">{({ created:'Cadastro criado',edited:'Lançamento editado',cancelled:'Cancelamento',tags_changed:'Tags alteradas',rename:'Tag renomeada',merge:'Tags mescladas',archive:'Arquivamento',restore:'Restauração',delete:'Tag excluída',charges_confirmed:'Encargos confirmados',version_created:'Recorrência atualizada',ended:'Recorrência encerrada',updated:'Atualização',cycle_changed:'Ciclo de fatura atualizado' } as Record<string,string>)[a.action] ?? 'Alteração registrada'}</p><p className="text-xs text-slate-500">{new Date(a.created_at).toLocaleString('pt-BR')} · {a.actor_id ? 'Membro do espaço' : 'Sistema'}</p></div>)}</div>}
   </div>;

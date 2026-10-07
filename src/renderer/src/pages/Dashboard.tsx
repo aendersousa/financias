@@ -79,6 +79,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => 
   const bills = useAppStore((s) => s.bills)
   const goals = useAppStore((s) => s.goals)
   const theme = useAppStore((s) => s.theme)
+  const modules = useAppStore((s) => s.modules)
   const palette = theme === 'dark' ? categoricalPaletteDark : categoricalPaletteLight
   const tickColor = theme === 'dark' ? '#94a3b8' : '#64748b'
   const tooltipContentStyle = {
@@ -350,122 +351,131 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: Page) => 
         )}
       </section>
 
-      <section className="dashboard-planning" aria-label="Planejamento">
-        <div className="card dashboard-panel">
-          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <Receipt size={15} className="text-slate-400" />
-            Próximos vencimentos
-          </h2>
-          <ul className="flex flex-col gap-3">
-            {proximasContas.map((b) => {
-              const urgency = billUrgency(b.vencimento)
-              return (
-                <li key={b.id} className="flex items-center justify-between gap-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-800 dark:text-slate-100">{b.descricao}</p>
-                    <p className="text-xs" style={{ color: urgency.color }}>
-                      {urgency.label}
-                    </p>
-                  </div>
-                  <span
-                    className="shrink-0 font-medium"
-                    style={{ color: b.tipo === 'receber' ? statusGood : undefined }}
-                  >
-                    {b.tipo === 'receber' ? '+' : ''}
-                    {formatCurrency(b.valor)}
-                  </span>
-                </li>
-              )
-            })}
-            {proximasContas.length === 0 && <li className="dashboard-small-empty">Tudo em dia. Nenhuma conta pendente.</li>}
-            <li><button className="dashboard-link" onClick={() => onNavigate('bills')}>Gerenciar vencimentos <ArrowRight size={14} /></button></li>
-          </ul>
-        </div>
+      {(modules.bills || modules.creditCards || modules.goals) && (
+        <section className="dashboard-planning" aria-label="Planejamento">
+          {modules.bills && (
+            <div className="card dashboard-panel">
+              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <Receipt size={15} className="text-slate-400" />
+                Próximos vencimentos
+              </h2>
+              <ul className="flex flex-col gap-3">
+                {proximasContas.map((b) => {
+                  const urgency = billUrgency(b.vencimento)
+                  return (
+                    <li key={b.id} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-800 dark:text-slate-100">{b.descricao}</p>
+                        <p className="text-xs" style={{ color: urgency.color }}>
+                          {urgency.label}
+                        </p>
+                      </div>
+                      <span
+                        className="shrink-0 font-medium"
+                        style={{ color: b.tipo === 'receber' ? statusGood : undefined }}
+                      >
+                        {b.tipo === 'receber' ? '+' : ''}
+                        {formatCurrency(b.valor)}
+                      </span>
+                    </li>
+                  )
+                })}
+                {proximasContas.length === 0 && <li className="dashboard-small-empty">Tudo em dia. Nenhuma conta pendente.</li>}
+                <li><button className="dashboard-link" onClick={() => onNavigate('bills')}>Gerenciar vencimentos <ArrowRight size={14} /></button></li>
+              </ul>
+            </div>
+          )}
 
-        <div className="card dashboard-panel">
-          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <CreditCard size={15} className="text-slate-400" />
-            Cartões de crédito
-          </h2>
-          <ul className="flex flex-col gap-3.5">
-            {cardsWithUsage.map((c) => (
-              <li key={c.id}>
-                <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                  <span className="truncate font-medium text-slate-800 dark:text-slate-100">{c.nome}</span>
-                  <span className="shrink-0 text-xs text-slate-400">
-                    {formatCurrency(c.fatura_atual)} / {formatCurrency(c.limite)}
-                  </span>
+          {modules.creditCards && (
+            <div className="card dashboard-panel">
+              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <CreditCard size={15} className="text-slate-400" />
+                Cartões de crédito
+              </h2>
+              <ul className="flex flex-col gap-3.5">
+                {cardsWithUsage.map((c) => (
+                  <li key={c.id}>
+                    <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate font-medium text-slate-800 dark:text-slate-100">{c.nome}</span>
+                      <span className="shrink-0 text-xs text-slate-400">
+                        {formatCurrency(c.fatura_atual)} / {formatCurrency(c.limite)}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div
+                        className="h-2 rounded-full transition-[width]"
+                        style={{ width: `${c.pct}%`, backgroundColor: meterColor(c.pct) }}
+                      />
+                    </div>
+                  </li>
+                ))}
+                <li><button className="dashboard-link" onClick={() => onNavigate('creditCards')}>Gerenciar cartões <ArrowRight size={14} /></button></li>
+                {cardsWithUsage.length === 0 && <li className="dashboard-small-empty">Acompanhe suas faturas e limites em um só lugar.</li>}
+              </ul>
+            </div>
+          )}
+
+          {modules.goals && (
+            <div className="card dashboard-panel">
+              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <GoalIcon size={15} className="text-slate-400" />
+                Metas
+              </h2>
+              <ul className="flex flex-col gap-3.5">
+                {goals.slice(0, 4).map((g) => {
+                  const pct = g.valor_alvo > 0 ? Math.min(100, (g.valor_atual / g.valor_alvo) * 100) : 0
+                  return (
+                    <li key={g.id}>
+                      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate font-medium text-slate-800 dark:text-slate-100">{g.nome}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{pct.toFixed(0)}%</span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div
+                          className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
+                <li><button className="dashboard-link" onClick={() => onNavigate('goals')}>Gerenciar metas <ArrowRight size={14} /></button></li>
+                {goals.length === 0 && <li className="dashboard-small-empty">Defina um objetivo e acompanhe cada conquista.</li>}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
+      {modules.transactions && (
+        <section className="card dashboard-panel dashboard-transactions">
+          <div className="dashboard-section-heading"><div><h2>Últimos lançamentos</h2><p className="dashboard-caption">Suas movimentações mais recentes</p></div><button className="dashboard-link" onClick={() => onNavigate('transactions')}>Ver todas <ArrowRight size={15} /></button></div>
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {transactions.slice(0, 6).map((t) => (
+              <li key={t.id} className="flex items-center gap-3 py-2.5 text-sm">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: colorForKey(t.category_id, palette) }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-slate-800 dark:text-slate-100">
+                    {t.descricao || t.categoria_nome}
+                  </p>
+                  <p className="truncate text-xs text-slate-400">
+                    {formatDate(t.data)} · {t.conta_nome}
+                    {t.cartao_nome ? ` · ${t.cartao_nome}` : ''}
+                  </p>
                 </div>
-                <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
-                  <div
-                    className="h-2 rounded-full transition-[width]"
-                    style={{ width: `${c.pct}%`, backgroundColor: meterColor(c.pct) }}
-                  />
-                </div>
+                <span className="shrink-0 font-medium" style={{ color: t.tipo === 'receita' ? statusGood : statusCritical }}>
+                  {t.tipo === 'receita' ? '+' : '-'}
+                  {formatCurrency(t.valor)}
+                </span>
               </li>
             ))}
-            <li><button className="dashboard-link" onClick={() => onNavigate('creditCards')}>Gerenciar cartões <ArrowRight size={14} /></button></li>
-            {cardsWithUsage.length === 0 && <li className="dashboard-small-empty">Acompanhe suas faturas e limites em um só lugar.</li>}
+            {transactions.length === 0 && <li><EmptyState icon={Receipt} title="Tudo pronto para o primeiro lançamento" description="Comece registrando uma receita ou despesa para organizar sua vida financeira." action="Registrar transação" onClick={() => onNavigate('transactions')} /></li>}
           </ul>
-        </div>
-
-        <div className="card dashboard-panel">
-          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <GoalIcon size={15} className="text-slate-400" />
-            Metas
-          </h2>
-          <ul className="flex flex-col gap-3.5">
-            {goals.slice(0, 4).map((g) => {
-              const pct = g.valor_alvo > 0 ? Math.min(100, (g.valor_atual / g.valor_alvo) * 100) : 0
-              return (
-                <li key={g.id}>
-                  <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate font-medium text-slate-800 dark:text-slate-100">{g.nome}</span>
-                    <span className="shrink-0 text-xs text-slate-400">{pct.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div
-                      className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </li>
-              )
-            })}
-            <li><button className="dashboard-link" onClick={() => onNavigate('goals')}>Gerenciar metas <ArrowRight size={14} /></button></li>
-            {goals.length === 0 && <li className="dashboard-small-empty">Defina um objetivo e acompanhe cada conquista.</li>}
-            <li><button className="dashboard-link" onClick={() => onNavigate('goals')}>Gerenciar metas <ArrowRight size={14} /></button></li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="card dashboard-panel dashboard-transactions">
-        <div className="dashboard-section-heading"><div><h2>Últimos lançamentos</h2><p className="dashboard-caption">Suas movimentações mais recentes</p></div><button className="dashboard-link" onClick={() => onNavigate('transactions')}>Ver todas <ArrowRight size={15} /></button></div>
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {transactions.slice(0, 6).map((t) => (
-            <li key={t.id} className="flex items-center gap-3 py-2.5 text-sm">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: colorForKey(t.category_id, palette) }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-slate-800 dark:text-slate-100">
-                  {t.descricao || t.categoria_nome}
-                </p>
-                <p className="truncate text-xs text-slate-400">
-                  {formatDate(t.data)} · {t.conta_nome}
-                  {t.cartao_nome ? ` · ${t.cartao_nome}` : ''}
-                </p>
-              </div>
-              <span className="shrink-0 font-medium" style={{ color: t.tipo === 'receita' ? statusGood : statusCritical }}>
-                {t.tipo === 'receita' ? '+' : '-'}
-                {formatCurrency(t.valor)}
-              </span>
-            </li>
-          ))}
-          {transactions.length === 0 && <li><EmptyState icon={Receipt} title="Tudo pronto para o primeiro lançamento" description="Comece registrando uma receita ou despesa para organizar sua vida financeira." action="Registrar transação" onClick={() => onNavigate('transactions')} /></li>}
-        </ul>
-      </section>
+        </section>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ledgerRpc, type LedgerWorkspace, type UserSettings } from '../lib/ledgerRepository';
+import ForecastEventTable, { type ForecastEvent } from '../components/ForecastEventTable';
 
 type Horizon='month'|'30_days'|'90_days'|'6_months'|'custom';
 type Choice={horizon:Horizon;until:string};
@@ -9,10 +10,10 @@ interface Forecast {
   today:string;until:string;horizon:Horizon;cashBalanceCents:number;series:Day[];
   conservative:{minimumCents:number;minimumOn:string;firstNegativeOn:string|null};
   expected:{minimumCents:number;minimumOn:string};nextMainIncomeOn:string|null;
-  events:{id:string;label:string;kind:string;on:string;conservativeCents:number;expectedCents:number;projected?:boolean;estimatedChargesCents?:number;occurrences?:{label:string;projected?:boolean}[]}[];
+  events:ForecastEvent[];
 }
-const panel='card p-5 dark:border-slate-800 dark:bg-slate-900';
-const input='field-input px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800';
+const panel='card min-w-0 p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
+const input='field-input w-full min-w-0';
 const horizons:{value:Horizon;label:string}[]=[{value:'month',label:'Fim do mês'},{value:'30_days',label:'30 dias'},{value:'90_days',label:'90 dias'},{value:'6_months',label:'6 meses'},{value:'custom',label:'Data personalizada'}];
 const date=(value:string)=>value.slice(0,10).split('-').reverse().join('/');
 const shortDate=(value:string)=>date(value).slice(0,5);
@@ -21,6 +22,7 @@ export default function LedgerCashForecast({workspace,money,privacy}:{workspace:
   const [choice,setChoice]=useState<Choice>({horizon:'month',until:workspace.space.today});
   const [active,setActive]=useState<Choice|null>(null),[forecast,setForecast]=useState<Forecast|null>(null);
   const [selectedOn,setSelectedOn]=useState(workspace.space.today);
+  const [expandedEvent,setExpandedEvent]=useState<string|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const pending=useRef(false);
   useEffect(()=>{
@@ -56,13 +58,14 @@ export default function LedgerCashForecast({workspace,money,privacy}:{workspace:
   }
   const selected=forecast?.series.find(item=>item.on===selectedOn);
   const events=forecast?.events.filter(item=>item.on===selectedOn)??[];
-  return <div className="space-y-5">
+  useEffect(()=>{setExpandedEvent(null);},[selectedOn,forecast]);
+  return <div className="min-w-0 space-y-6">
     <section className={`${panel} space-y-4`}>
       <div><h2 className="font-semibold">Quanto haverá nas contas em cada dia</h2><p className="mt-1 max-w-prose text-sm text-slate-500">Acompanhe as entradas e os pagamentos previstos, inclusive o vencimento das faturas. A projeção de hoje já considera o que ainda está previsto para hoje.</p></div>
-      <form onSubmit={selectHorizon} className="flex flex-wrap items-end gap-3">
-        <label className="grid gap-1.5 text-sm">Período da previsão<select aria-label="Período da previsão" value={choice.horizon} disabled={busy} onChange={event=>setChoice(previous=>({...previous,horizon:event.target.value as Horizon}))} className={input}>{horizons.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        {choice.horizon==='custom'&&<label className="grid gap-1.5 text-sm">Até a data<input aria-label="Data final da previsão" type="date" min={workspace.space.today} value={choice.until} disabled={busy} required onChange={event=>setChoice(previous=>({...previous,until:event.target.value}))} className={input}/></label>}
-        <button disabled={busy||!active} className="rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy?'Carregando…':'Atualizar previsão'}</button>
+      <form aria-label="Período da previsão" onSubmit={selectHorizon} className="flex flex-wrap items-end gap-3">
+        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-56"><label htmlFor="forecast-horizon" className="field-label">Período da previsão</label><select id="forecast-horizon" aria-label="Período da previsão" value={choice.horizon} disabled={busy} onChange={event=>setChoice(previous=>({...previous,horizon:event.target.value as Horizon}))} className={input}>{horizons.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
+        {choice.horizon==='custom'&&<div className="flex w-full min-w-0 flex-col gap-1 sm:w-44"><label htmlFor="forecast-until" className="field-label">Até a data</label><input id="forecast-until" aria-label="Data final da previsão" type="date" min={workspace.space.today} value={choice.until} disabled={busy} required onChange={event=>setChoice(previous=>({...previous,until:event.target.value}))} className={input}/></div>}
+        <button disabled={busy||!active} className="btn-primary disabled:opacity-50">{busy?'Carregando…':'Atualizar previsão'}</button>
       </form>
       <p className="max-w-prose text-xs text-slate-500">Metas, provisões, orçamentos e a reserva mínima organizam seu dinheiro sem alterar essa curva. Benefícios e investimentos são acompanhados separadamente. Para decidir quanto consumir, consulte o Livre para gastar.</p>
       {notice&&<p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
@@ -87,10 +90,20 @@ export default function LedgerCashForecast({workspace,money,privacy}:{workspace:
         </div>}
         <dl className="grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-800"><div><dt className="text-sm text-slate-500">Menor saldo conservador</dt><dd className="mt-1 text-xl font-semibold">{money(forecast.conservative.minimumCents)}</dd><dd className="mt-1 text-xs text-slate-500">Em {date(forecast.conservative.minimumOn)}</dd></div><div><dt className="text-sm text-slate-500">Menor saldo se as receitas entrarem</dt><dd className="mt-1 text-xl font-semibold">{money(forecast.expected.minimumCents)}</dd><dd className="mt-1 text-xs text-slate-500">Em {date(forecast.expected.minimumOn)}</dd></div></dl>
       </section>
-      <section className={`${panel} space-y-4`} aria-label="Detalhes de um dia da previsão">
-        <div className="flex flex-wrap items-end justify-between gap-3"><h2 className="font-semibold">Confira um dia</h2><label className="grid gap-1.5 text-sm">Data a consultar<input aria-label="Dia da previsão" type="date" min={forecast.today} max={forecast.until} value={selectedOn} onChange={event=>setSelectedOn(event.target.value)} className={input}/></label></div>
-        {selected&&<p className="text-sm">Conservador: <strong>{money(selected.conservativeCents)}</strong><span className="block text-slate-500 sm:ml-4 sm:inline">Se as receitas entrarem: <strong>{money(selected.expectedCents)}</strong></span></p>}
-        {events.length===0?<p className="text-sm text-slate-500">Nenhuma entrada ou pagamento previsto para este dia.</p>:<div className="space-y-3">{events.map(item=><article key={`${item.kind}-${item.id}`} className="flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-3 text-sm dark:border-slate-800"><div className="min-w-0"><h3 className="font-medium">{item.label}</h3>{item.projected&&<p className="mt-1 text-xs text-slate-500">Projeção da recorrência. Ainda não foi criada na Agenda.</p>}{Boolean(item.estimatedChargesCents)&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Inclui {money(item.estimatedChargesCents!)} de encargos estimados, ainda não confirmados.</p>}{item.occurrences?.map((occurrence,index)=><p key={index} className="mt-1 text-xs text-slate-500">Inclui: {occurrence.label}{occurrence.projected?' · recorrência projetada':''}</p>)}</div><div className="text-right"><p>{money(item.conservativeCents)}</p>{item.expectedCents!==item.conservativeCents&&<p className="mt-1 text-xs text-slate-500">Se entrar: {money(item.expectedCents)}</p>}</div></article>)}</div>}
+      <section className="min-w-0 space-y-4" aria-label="Detalhes de um dia da previsão">
+        <div className={`${panel} space-y-4`}>
+          <div className="flex flex-wrap items-end justify-between gap-3"><h2 className="font-semibold">Confira um dia</h2><div className="flex w-full min-w-0 flex-col gap-1 sm:w-44"><label htmlFor="forecast-day" className="field-label">Data a consultar</label><input id="forecast-day" aria-label="Dia da previsão" type="date" min={forecast.today} max={forecast.until} value={selectedOn} onChange={event=>setSelectedOn(event.target.value)} className={input}/></div></div>
+          {selected&&<p className="text-sm">Conservador: <strong>{money(selected.conservativeCents)}</strong><span className="block text-slate-500 dark:text-slate-400 sm:ml-4 sm:inline">Se as receitas entrarem: <strong>{money(selected.expectedCents)}</strong></span></p>}
+        </div>
+        <ForecastEventTable events={events} money={money}
+          renderActions={item=><button type="button" onClick={()=>setExpandedEvent(expandedEvent===`${item.kind}-${item.id}`?null:`${item.kind}-${item.id}`)} aria-label={`Detalhes do evento ${item.label}`} aria-expanded={expandedEvent===`${item.kind}-${item.id}`} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>}
+          renderEditor={item=>expandedEvent===`${item.kind}-${item.id}`?<section aria-label={`Detalhes do evento ${item.label}`} className={`${panel} space-y-3`}>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0 [overflow-wrap:anywhere]"><h3 className="font-semibold">{item.label}</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{date(item.on)}</p></div><button type="button" onClick={()=>setExpandedEvent(null)} className="text-sm text-slate-500 dark:text-slate-400">Fechar</button></div>
+            <dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="field-label">Conservador</dt><dd className="mt-1 font-medium">{money(item.conservativeCents)}</dd></div><div><dt className="field-label">Se as receitas entrarem</dt><dd className="mt-1 font-medium">{money(item.expectedCents)}</dd></div></dl>
+            {item.projected&&<p className="text-sm text-slate-500 dark:text-slate-400">Projeção da recorrência. Ainda não foi criada na Agenda.</p>}
+            {Boolean(item.estimatedChargesCents)&&<p className="text-sm text-amber-700 dark:text-amber-300">Inclui {money(item.estimatedChargesCents!)} de encargos estimados, ainda não confirmados.</p>}
+            {Boolean(item.occurrences?.length)&&<div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800"><h4 className="text-sm font-medium">Itens incluídos</h4>{item.occurrences?.map((occurrence,index)=><p key={index} className="text-sm text-slate-500 [overflow-wrap:anywhere] dark:text-slate-400">Inclui: {occurrence.label}{occurrence.projected?' · recorrência projetada':''}</p>)}</div>}
+          </section>:null}/>
       </section>
     </>}
   </div>;

@@ -21,11 +21,13 @@ import { clearLocalData,localIdentityCheck } from './lib/offlineStorage'
 
 import { useVersionGate } from './lib/versionGate'
 import UpdateRequired from './components/UpdateRequired'
+import { getFirstEnabledModule, type ModuleKey } from './lib/modules'
 
 const LedgerWorkspace = lazy(() => import('./pages/LedgerWorkspace'))
 
 export default function App() {
-  const [page, setPage] = useState<Page>('dashboard')
+  const modules = useAppStore((s) => s.modules)
+  const [page, setPage] = useState<Page>(() => getFirstEnabledModule(modules, 'dashboard') as Page)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -39,6 +41,12 @@ export default function App() {
   const privacyMode = useAppStore((s) => s.privacyMode)
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const blockingVersion = useVersionGate()
+
+  useEffect(() => {
+    if (page !== 'settings' && modules[page as ModuleKey] === false) {
+      setPage(getFirstEnabledModule(modules, 'dashboard') as Page)
+    }
+  }, [page, modules])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

@@ -1,8 +1,11 @@
 import { cloneElement, isValidElement, useEffect, useState, type ReactElement, type FormEvent, type ReactNode } from 'react';
 import { accountDisplayColor, saveAccountDisplayColor, ledgerRpc, selectFinancialSpace, type FinancialSpace, type LedgerWorkspace, type UserSettings } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
-import CategoryPanels from '../components/CategoryPanels';
 import AccountTable, { accountKindLabels } from '../components/AccountTable';
+import CategoryPanels from '../components/CategoryPanels';
+import { ALL_APP_PAGES } from '../lib/modules';
+import { useAppStore } from '../store/useAppStore';
+import { Boxes, CheckCircle2, RotateCcw, Info, Sliders } from 'lucide-react';
 
 interface ManagedAccount { id: string; name: string; kind: string; color?: string | null; institution_name: string | null; liquidity: string; is_emergency_reserve: boolean; archived_at: string | null; version: number }
 interface ManagedCategory { id: string; name: string; kind: string; parent_id: string | null; icon: string | null; color: string | null; is_essential: boolean; fixity: string | null; income_class: string | null; is_tax_deductible: boolean; archived_at: string | null; system_role: string | null; version: number }
@@ -20,6 +23,11 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   const [categoryName, setCategoryName] = useState(''), [categoryKind, setCategoryKind] = useState('expense'), [categoryColor, setCategoryColor] = useState('#64748b');
   const [categoryParent, setCategoryParent] = useState('');
   const [accountName, setAccountName] = useState(''), [accountKind, setAccountKind] = useState('checking'), [accountOpening, setAccountOpening] = useState('0'), [accountColor, setAccountColor] = useState('#0ea5e9');
+  const [settingsTab, setSettingsTab] = useState<'modules' | 'space'>('modules');
+  const disabledPages = useAppStore(s => s.disabledPages);
+  const togglePage = useAppStore(s => s.togglePage);
+  const enableAllPages = useAppStore(s => s.enableAllPages);
+  const resetPages = useAppStore(s => s.resetPages);
   const canManage = ['owner', 'admin'].includes(workspace.role), canWrite = workspace.role !== 'viewer';
   async function load() {
     const next = await ledgerRpc<Management>('management_data', { p_space: workspace.space.id });
@@ -95,7 +103,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   return <div className="space-y-4">
     {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    {!data && <p className={panel}>Carregando cadastros…</p>}
+    {!data && section !== 'settings' && <p className={panel}>Carregando cadastros…</p>}
     {section === 'accounts' && <>
       {canManage && <form aria-label="Adicionar conta" onSubmit={createAccount} className="card flex flex-wrap items-end gap-3 p-4">
         <div className="flex w-full flex-col gap-1 sm:w-auto">
@@ -169,10 +177,191 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
       {data?.categories.some(category => category.archived_at) && <details className="text-sm text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Categorias excluídas</summary><label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />Mostrar categorias excluídas para restaurar</label></details>}
       {canManage && data && <details className="text-sm text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Organizar em grupos</summary><div className="mt-3 max-w-sm">{field('Grupo da nova categoria', <select value={categoryParent} onChange={event => setCategoryParent(event.target.value)} className="field-input w-full"><option value="">Categoria principal</option>{data.categories.filter(category => category.kind === categoryKind && !category.archived_at).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>)}</div></details>}
     </>}
-    {section === 'settings' && data && <>
-      {canManage && <form key={data.space.version} onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('update_space', { p_version: data.space.version, p_name: String(form.get('name')), p_timezone: String(form.get('timezone')) }); }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Seu espaço financeiro</h2>{field('Nome do espaço', <input name="name" defaultValue={data.space.name} required maxLength={100} className={input}/>)}{field('Fuso horário', <input name="timezone" defaultValue={data.space.timezone} placeholder="America/Sao_Paulo" required className={input}/>)}<div><button disabled={busy} className={primary}>Salvar espaço</button></div></form>}
-      <form onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError(''); try { const id = await ledgerRpc<string>('create_space', { p_name: String(form.get('name')), p_kind: String(form.get('kind')), p_timezone: String(form.get('timezone')) }); await selectFinancialSpace(id); await onChanged(); } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); } }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Criar outro espaço</h2><p className="text-sm text-slate-500 sm:col-span-2">Cada espaço tem suas próprias contas, categorias, saldos e histórico.</p>{field('Nome do novo espaço', <input name="name" required maxLength={100} className={input}/>)}{field('Tipo do espaço', <select name="kind" className={input}><option value="personal">Pessoal</option><option value="shared">Compartilhado</option></select>)}{field('Fuso horário do novo espaço', <input name="timezone" defaultValue={data.space.timezone} required className={input}/>)}<div className="sm:col-span-2"><button disabled={busy} className={primary}>Criar e abrir espaço</button></div></form>
-      {canManage && <div className={`${panel} space-y-4`}><h2 className="font-semibold">Feriados locais</h2><p className="text-sm text-slate-500">Feriados da sua cidade usados no cálculo do vencimento bancário.</p><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('manage_local_holiday', { p_on: String(form.get('date')), p_name: String(form.get('name')) }); }} className="flex flex-wrap items-end gap-3">{field('Data do feriado', <input name="date" type="date" required className={input}/>)}{field('Nome do feriado', <input name="name" required maxLength={100} className={input}/>)}<button disabled={busy} className={primary}>Salvar feriado</button></form>{data.holidays.map(holiday => <div key={holiday.id} className="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{holiday.holiday_on} · {holiday.name}</span><button disabled={busy} onClick={() => void run('manage_local_holiday', { p_on: holiday.holiday_on, p_name: '', p_remove: true })} className="text-red-600">Remover feriado</button></div>)}</div>}
-    </>}
+    {section === 'settings' && (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={settingsTab === 'modules'}
+            onClick={() => setSettingsTab('modules')}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              settingsTab === 'modules'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <Boxes size={17} />
+            Páginas e Módulos
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                settingsTab === 'modules'
+                  ? 'bg-brand-100 text-brand-800 dark:bg-brand-950/60 dark:text-brand-300'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+              }`}
+            >
+              {ALL_APP_PAGES.filter(p => !disabledPages.includes(p.id)).length}/{ALL_APP_PAGES.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={settingsTab === 'space'}
+            onClick={() => setSettingsTab('space')}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              settingsTab === 'space'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <Sliders size={17} />
+            Espaço e Feriados
+          </button>
+        </div>
+
+        {settingsTab === 'modules' && (
+          <div className="space-y-6">
+            <div className="card p-5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                    Habilitar ou Desabilitar Páginas no App
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Ligue ou desligue as páginas que deseja exibir no menu do aplicativo. Por exemplo, desative <strong>Orçamentos</strong> se você não o utiliza no momento. Suas informações salvas permanecem protegidas e intactas.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      enableAllPages();
+                      setNotice('Todas as páginas foram ativadas no menu lateral.');
+                      setTimeout(() => setNotice(''), 3000);
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    <CheckCircle2 size={14} />
+                    Ativar todas
+                  </button>
+                  <span className="text-slate-300 dark:text-slate-700">·</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetPages();
+                      setNotice('Configuração padrão de páginas restaurada.');
+                      setTimeout(() => setNotice(''), 3000);
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:underline dark:text-slate-400"
+                  >
+                    <RotateCcw size={14} />
+                    Restaurar padrão
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {Array.from(new Set(ALL_APP_PAGES.map(p => p.group))).map(groupName => {
+              const groupPages = ALL_APP_PAGES.filter(p => p.group === groupName);
+              return (
+                <section key={groupName} aria-label={`Páginas do grupo ${groupName}`} className="space-y-3">
+                  <h3 className="px-1 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {groupName}
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {groupPages.map(page => {
+                      const Icon = page.icon;
+                      const isEnabled = !disabledPages.includes(page.id);
+                      return (
+                        <div
+                          key={page.id}
+                          className={`card flex flex-col justify-between p-4 transition-all ${
+                            isEnabled
+                              ? 'border-slate-200 dark:border-slate-800 dark:bg-slate-900'
+                              : 'border-slate-200/60 bg-slate-50/60 opacity-60 dark:border-slate-800/60 dark:bg-slate-900/40'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                                  isEnabled
+                                    ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400'
+                                    : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                                }`}
+                              >
+                                <Icon size={18} />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                    {page.label}
+                                  </h4>
+                                  <span
+                                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                      isEnabled
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                        : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                    }`}
+                                  >
+                                    {isEnabled ? 'Visível' : 'Oculta'}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                                  {page.description}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex shrink-0 items-center">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isEnabled}
+                                aria-label={`${isEnabled ? 'Desativar página' : 'Ativar página'} ${page.label}`}
+                                onClick={() => togglePage(page.id)}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-2 focus-visible:outline-brand-500 ${
+                                  isEnabled ? 'bg-brand-600 dark:bg-brand-500' : 'bg-slate-300 dark:bg-slate-700'
+                                }`}
+                              >
+                                <span
+                                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                    isEnabled ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+
+            <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
+              <Info size={16} className="mt-0.5 shrink-0 text-brand-500" />
+              <span>
+                A página de <strong>Configurações</strong> permanece sempre visível no menu para você poder gerenciar e reativar suas páginas a qualquer momento. Suas transações e dados financeiros nunca são apagados ao desativar uma página.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {settingsTab === 'space' && (
+          data ? (
+            <div className="space-y-4">
+              {canManage && <form key={data.space.version} onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('update_space', { p_version: data.space.version, p_name: String(form.get('name')), p_timezone: String(form.get('timezone')) }); }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Seu espaço financeiro</h2>{field('Nome do espaço', <input name="name" defaultValue={data.space.name} required maxLength={100} className={input}/>)}{field('Fuso horário', <input name="timezone" defaultValue={data.space.timezone} placeholder="America/Sao_Paulo" required className={input}/>)}<div><button disabled={busy} className={primary}>Salvar espaço</button></div></form>}
+              <form onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError(''); try { const id = await ledgerRpc<string>('create_space', { p_name: String(form.get('name')), p_kind: String(form.get('kind')), p_timezone: String(form.get('timezone')) }); await selectFinancialSpace(id); await onChanged(); } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); } }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Criar outro espaço</h2><p className="text-sm text-slate-500 sm:col-span-2">Cada espaço tem suas próprias contas, categorias, saldos e histórico.</p>{field('Nome do novo espaço', <input name="name" required maxLength={100} className={input}/>)}{field('Tipo do espaço', <select name="kind" className={input}><option value="personal">Pessoal</option><option value="shared">Compartilhado</option></select>)}{field('Fuso horário do novo espaço', <input name="timezone" defaultValue={data.space.timezone} required className={input}/>)}<div className="sm:col-span-2"><button disabled={busy} className={primary}>Criar e abrir espaço</button></div></form>
+              {canManage && <div className={`${panel} space-y-4`}><h2 className="font-semibold">Feriados locais</h2><p className="text-sm text-slate-500">Feriados da sua cidade usados no cálculo do vencimento bancário.</p><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('manage_local_holiday', { p_on: String(form.get('date')), p_name: String(form.get('name')) }); }} className="flex flex-wrap items-end gap-3">{field('Data do feriado', <input name="date" type="date" required className={input}/>)}{field('Nome do feriado', <input name="name" required maxLength={100} className={input}/>)}<button disabled={busy} className={primary}>Salvar feriado</button></form>{data.holidays.map(holiday => <div key={holiday.id} className="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{holiday.holiday_on} · {holiday.name}</span><button disabled={busy} onClick={() => void run('manage_local_holiday', { p_on: holiday.holiday_on, p_name: '', p_remove: true })} className="text-red-600">Remover feriado</button></div>)}</div>}
+            </div>
+          ) : (
+            <p className={panel}>Carregando configurações do espaço…</p>
+          )
+        )}
+      </div>
+    )}
   </div>;
 }
