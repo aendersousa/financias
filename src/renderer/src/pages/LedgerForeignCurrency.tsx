@@ -61,7 +61,7 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
   const [details,setDetails]=useState<string | null>(null),[createRevision,setCreateRevision]=useState(0);
   const [filter,setFilter]=useState('pending');
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
-  const pending=useRef(false),request=useRef<{ key:string; id:string } | null>(null);
+  const pending=useRef(false),requests=useRef(new Map<string,string>());
   const activeSpace=useRef(workspace.space.id); activeSpace.current=workspace.space.id;
   const writer=workspace.role!=='viewer',administrator=['owner','admin'].includes(workspace.role);
   const selected=action ? summary?.purchases.find(item => item.id===action.purchase) : undefined;
@@ -70,12 +70,12 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
     void ledgerRpc<ForeignSummary>('foreign_currency_summary',{p_space:workspace.space.id}).then(result => {if(!cancelled) setSummary(result);}).catch(() => {if(!cancelled) setError('Não foi possível carregar as compras em moeda estrangeira.');});
     return () => {cancelled=true;};
   },[workspace]);
-  useEffect(() => {setAction(null);setDetails(null);request.current=null;},[workspace.space.id]);
+  useEffect(() => {setAction(null);setDetails(null);},[workspace.space.id]);
   function choose(next:Exclude<Action,{kind:'create'}>) {
-    setDetails(next.purchase);setAction(next);setError('');setNotice('');request.current=null;
+    setDetails(next.purchase);setAction(next);setError('');setNotice('');
   }
   function showDetails(id:string) {
-    setDetails(current => current===id ? null : id);setAction(null);setError('');request.current=null;
+    setDetails(current => current===id ? null : id);setAction(null);setError('');
   }
   async function refresh() {
     if(pending.current) return;
@@ -88,11 +88,12 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
     if(pending.current || !writer) return;
     pending.current=true;setBusy(true);setError('');setNotice('');
     const space=workspace.space.id,key=JSON.stringify({name,space,...args});
-    if(request.current?.key!==key) request.current={key,id:crypto.randomUUID()};
+    if(withNonce&&!requests.current.has(key)) requests.current.set(key,crypto.randomUUID());
     try {
-      await ledgerRpc(name,{p_space:space,...args,...(withNonce ? {p_client_uuid:request.current.id} : {})});
+      await ledgerRpc(name,{p_space:space,...args,...(withNonce ? {p_client_uuid:requests.current.get(key)} : {})});
+      requests.current.delete(key);
       if(activeSpace.current!==space) return;
-      setAction(null);request.current=null;
+      setAction(null);
       if(name==='record_foreign_purchase') setCreateRevision(current => current+1);
       const result=await ledgerRpc<ForeignSummary>('foreign_currency_summary',{p_space:space});
       if(activeSpace.current!==space) return;
@@ -109,7 +110,7 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
   const visible=summary?.purchases.filter(item => filter==='pending' ? item.transaction_status==='posted' && item.conversion_status==='estimated' : filter==='confirmed' ? item.transaction_status==='posted' && item.conversion_status==='confirmed' : true) ?? [];
   const originalAmount=(purchase:ForeignPurchase) => privacy ? '••••' : decimalLabel(purchase.original_amount,purchase.minor_unit);
   return <div className="space-y-6">
-    {writer && <ForeignPurchaseForm key={workspace.space.id+'-create-'+createRevision} action={createAction} summary={summary} workspace={workspace} money={money} privacy={privacy} busy={busy} mutate={mutate} onError={setError} onCancel={() => {setCreateRevision(current => current+1);setError('');request.current=null;}}/>}
+    {writer && <ForeignPurchaseForm key={workspace.space.id+'-create-'+createRevision} action={createAction} summary={summary} workspace={workspace} money={money} privacy={privacy} busy={busy} mutate={mutate} onError={setError} onCancel={() => {setCreateRevision(current => current+1);setError('');}}/>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-brand-600 dark:text-brand-400">{notice}</p>}
     <div className="flex flex-wrap items-end justify-between gap-3">
@@ -117,7 +118,7 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
       <button type="button" disabled={busy} onClick={() => void refresh()} className="text-sm font-semibold text-brand-600 disabled:opacity-50 dark:text-brand-400">Atualizar compras</button>
     </div>
     {!summary && !error ? <p className="text-sm text-slate-500 dark:text-slate-400">Carregando compras…</p> : summary && <ForeignPurchaseTable purchases={visible} money={money} originalAmount={originalAmount}
-      renderActions={purchase => <button type="button" disabled={busy} aria-label={'Ver detalhes da compra '+purchase.description} aria-expanded={details===purchase.id} onClick={() => showDetails(purchase.id)} className="text-sm font-semibold text-brand-600 disabled:opacity-50 dark:text-brand-400">Detalhes</button>}
+      renderActions={purchase => <button type="button" disabled={busy} aria-label={'Ver detalhes da compra '+purchase.description} aria-expanded={details===purchase.id} onClick={() => showDetails(purchase.id)} className="text-xs font-semibold text-brand-600 disabled:opacity-50 dark:text-brand-400">Detalhes</button>}
       renderEditor={purchase => details===purchase.id && <section aria-label={'Detalhes da compra '+purchase.description} className={panel+' min-w-0 space-y-4'}>
         <div className="flex items-start justify-between gap-3"><div className="min-w-0 [overflow-wrap:anywhere]"><h2 className="font-semibold">{purchase.description}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{foreignPurchaseStatus(purchase)}</p></div><button type="button" disabled={busy} onClick={() => showDetails(purchase.id)} className="shrink-0 text-sm text-slate-500 dark:text-slate-400">Fechar</button></div>
         <p className="text-xs text-slate-500 dark:text-slate-400">{day(purchase.on)} · {workspace.cards.find(item => item.id===purchase.card_id)?.name ?? workspace.accounts.find(item => item.id===purchase.account_id)?.name ?? (purchase.card_id ? 'Cartão' : 'Conta')}{purchase.installments>1 ? ` · ${purchase.installments} parcelas` : ''}</p>
@@ -131,7 +132,7 @@ export default function LedgerForeignCurrency({ workspace,money,onChanged }: { w
         {purchase.changed_after_conversion && <p className="text-xs text-slate-500 dark:text-slate-400">O valor em reais foi corrigido depois da conversão. Consulte o histórico para ver o valor e a taxa registrados naquele momento.</p>}
         {purchase.transaction_status==='cancelled' && purchase.iof_cents>0 && <p className="text-xs text-slate-500 dark:text-slate-400">A compra foi cancelada. A cobrança de IOF continua registrada separadamente.</p>}
         {writer && purchase.transaction_status==='posted' && purchase.conversion_status==='estimated' && <div className="flex flex-wrap gap-4 text-sm font-semibold text-brand-600 dark:text-brand-400"><button type="button" disabled={busy} onClick={() => choose({kind:'confirm',purchase:purchase.id})}>Confirmar conversão</button>{purchase.can_reestimate && <button type="button" disabled={busy} onClick={() => choose({kind:'reestimate',purchase:purchase.id})}>Atualizar taxa estimada</button>}</div>}
-        {writer && action && selected?.id===purchase.id && <ForeignPurchaseForm key={action.kind+'-'+selected.id} action={action} selected={selected} summary={summary} workspace={workspace} money={money} privacy={privacy} busy={busy} mutate={mutate} onError={setError} onCancel={() => {setAction(null);request.current=null;}}/>}
+        {writer && action && selected?.id===purchase.id && <ForeignPurchaseForm key={action.kind+'-'+selected.id} action={action} selected={selected} summary={summary} workspace={workspace} money={money} privacy={privacy} busy={busy} mutate={mutate} onError={setError} onCancel={() => {setAction(null);}}/>}
         <details className="text-xs text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Histórico da conversão</summary>{(purchase.changed_after_conversion || purchase.transaction_status==='cancelled') && purchase.recorded_brl_cents!==undefined && <p className="mt-2">Valor registrado na conversão: {money(purchase.recorded_brl_cents)}. A taxa registrada foi preservada; o valor atual em reais acompanha as correções e cancelamentos do lançamento.</p>}<ul className="mt-2 space-y-1">{purchase.events.map((item,index) => <li key={item.at+'-'+index}>{day(item.at)} · {eventLabels[item.action] ?? 'Conversão atualizada'}</li>)}</ul></details>
       </section>}/>}
     {administrator && summary && <details className={panel}><summary className="cursor-pointer text-sm font-semibold">Sugestão de IOF deste espaço</summary><form key={summary.settings_version} onSubmit={saveIof} className="mt-4 grid min-w-0 items-end gap-4 sm:grid-cols-[1fr_auto]"><label htmlFor="fx-iof-percent" className="grid min-w-0 gap-1.5 text-sm">Percentual sugerido de IOF (%)<input id="fx-iof-percent" name="percent" inputMode="decimal" defaultValue={privacy || summary.iof_percent===null ? '' : String(summary.iof_percent).replace('.',',')} className={input}/></label><button disabled={busy} className={button}>Salvar percentual</button><p className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">Informe o percentual que deseja usar nas sugestões. Deixe vazio para desativar. O valor cobrado deve ser confirmado no extrato ou na fatura.</p></form></details>}
@@ -198,7 +199,6 @@ function ForeignPurchaseForm({action,selected,summary,workspace,money,privacy,bu
         {field(`Valor original (${currency})`,'fx-original',<input id="fx-original" value={original} onChange={event => setOriginal(event.target.value)} inputMode="decimal" required className={input}/>)}
         {field('Pagamento','fx-method',<select id="fx-method" aria-label="Pagamento" value={method} onChange={event => setMethod(event.target.value as 'card' | 'cash')} className={input}><option value="card">Cartão de crédito</option><option value="cash">Conta à vista</option></select>)}
         {method==='card' ? <>{field('Cartão','fx-card',<select id="fx-card" aria-label="Cartão" name="card" required className={input}><option value="">Selecione</option>{workspace.cards.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>)}{field('Parcelas','fx-installments',<input id="fx-installments" name="installments" type="number" min={1} max={600} step={1} defaultValue={1} required className={input}/>)}</> : field('Conta à vista','fx-account',<select id="fx-account" aria-label="Conta à vista" name="account" required className={input}><option value="">Selecione</option>{workspace.accounts.filter(item => item.liquidity==='cash').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>)}
-        <label className="flex items-center gap-2 text-sm sm:col-span-2 xl:col-span-4"><input type="checkbox" checked={split} onChange={event => {setSplit(event.target.checked);if(event.target.checked && parts.length===0) setParts([crypto.randomUUID(),crypto.randomUUID()]);}}/>Dividir entre categorias pelo valor na moeda estrangeira</label>
         {!split ? field('Categoria','fx-category',<select id="fx-category" aria-label="Categoria" name="category" required className={input}><option value="">Selecione</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>) : <div className="space-y-3 sm:col-span-2 xl:col-span-4">{parts.map((id,index) => <div key={id} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">{field(`Categoria ${index+1}`,`fx-category-${id}`,<select id={`fx-category-${id}`} aria-label={`Categoria ${index+1}`} name={`category-${id}`} required className={input}><option value="">Selecione</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>)}{field(`Valor ${index+1} (${currency})`,`fx-part-${id}`,<input id={`fx-part-${id}`} name={`part-${id}`} inputMode="decimal" required className={input}/>)}<button type="button" disabled={busy || parts.length<=1} onClick={() => setParts(current => current.filter(item => item!==id))} className="py-2 text-sm">Remover categoria {index+1}</button></div>)}<button type="button" disabled={busy || parts.length>=100} onClick={() => setParts(current => [...current,crypto.randomUUID()])} className="text-sm font-semibold text-brand-600 dark:text-brand-400">Adicionar categoria</button><p className="text-xs text-slate-500 dark:text-slate-400">Os valores por categoria devem somar o valor original. A divisão em reais mantém o total cobrado.</p></div>}
       </>}
       {field(action.kind==='create' ? 'Data da compra' : 'Data da confirmação / atualização','fx-date',<input id="fx-date" name="date" type="date" defaultValue={workspace.space.today} min={selected?.on} required className={input}/>)}

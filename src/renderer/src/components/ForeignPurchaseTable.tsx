@@ -37,12 +37,12 @@ export default function ForeignPurchaseTable<T extends ForeignPurchaseItem>({ pu
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50">
         <tr>
           <th scope="col" className="hidden w-[12%] px-4 py-2.5 lg:table-cell">Data</th>
-          <th scope="col" className="w-[46%] px-3 py-2.5 sm:w-[48%] lg:w-[25%] sm:px-4">Descrição</th>
+          <th scope="col" className="w-[44%] px-3 py-2.5 sm:w-[48%] lg:w-[25%] sm:px-4">Descrição</th>
           <th scope="col" className="hidden w-[9%] px-4 py-2.5 lg:table-cell">Moeda</th>
           <th scope="col" className="hidden w-[14%] px-4 py-2.5 text-right lg:table-cell">Valor original</th>
           <th scope="col" className="w-[32%] px-3 py-2.5 text-right sm:w-[24%] lg:w-[16%] sm:px-4">Valor em reais</th>
           <th scope="col" className="hidden px-4 py-2.5 sm:table-cell">Situação</th>
-          <th scope="col" className="w-[22%] px-3 sm:w-24 sm:px-4"><span className="sr-only">Ações</span></th>
+          <th scope="col" className="w-[24%] px-3 sm:w-24 sm:px-4"><span className="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
