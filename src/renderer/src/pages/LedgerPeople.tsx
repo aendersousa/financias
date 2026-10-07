@@ -520,7 +520,9 @@ export default function LedgerPeople({
           : `${loanCalc.count} parcelas mensais de ~${money(loanCalc.baseInstallmentCents)} (total ${money(loanCalc.totalCents)})`;
 
         const interestDesc = loanCalc.interestCents > 0
-          ? `+ Juros: ${money(loanCalc.interestCents)} (${loanCalc.effectiveRate.toFixed(1)}%)`
+          ? loanInterestType === 'percent'
+            ? `+ Juros: ${money(loanCalc.interestCents)} (${loanInterestRate}% ${loanInterestPeriod === 'monthly' ? 'ao mês' : 'total'})`
+            : `+ Juros: ${money(loanCalc.interestCents)} (${money(parseBrlCents(loanInterestFixed || '0'))} ${loanInterestPeriod === 'monthly' ? '/mês' : 'total'})`
           : 'sem juros adicionais';
 
         const noteEntry = `📌 [Empréstimo em ${displayDate(workspace.space.today)}] ${
@@ -1315,16 +1317,33 @@ export default function LedgerPeople({
             )}
 
             {loanInterestType === 'fixed' && (
-              <div className="pt-2 sm:w-1/2">
-                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Valor adicional de juros (R$) *
-                </label>
-                <CurrencyInput
-                  value={loanInterestFixed}
-                  onChange={e => setLoanInterestFixed(e.target.value)}
-                  placeholder="0,00"
-                  className={input}
-                />
+              <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                <div className="grid gap-1 text-xs">
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    Valor fixo de juros (R$) *
+                  </label>
+                  <CurrencyInput
+                    value={loanInterestFixed}
+                    onChange={e => setLoanInterestFixed(e.target.value)}
+                    placeholder="0,00"
+                    className={input}
+                  />
+                </div>
+                <div className="grid gap-1 text-xs">
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    Período do valor fixo
+                  </label>
+                  <select
+                    value={loanInterestPeriod}
+                    onChange={e => setLoanInterestPeriod(e.target.value as 'total' | 'monthly')}
+                    className={input}
+                  >
+                    <option value="total">No total de todo o período (R$ único)</option>
+                    <option value="monthly">
+                      Por mês ({loanMonths} {loanMonths === 1 ? 'mês' : 'meses'} = {money(parseBrlCents(loanInterestFixed || '0') * loanMonths)} no total)
+                    </option>
+                  </select>
+                </div>
               </div>
             )}
           </div>

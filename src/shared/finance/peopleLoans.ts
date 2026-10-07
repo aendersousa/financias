@@ -51,7 +51,12 @@ export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLo
   let interestCents = 0;
 
   if (input.interestType === 'fixed') {
-    interestCents = parseBrlCents(input.interestFixedInput || '0');
+    const fixedCents = parseBrlCents(input.interestFixedInput || '0');
+    if (input.interestPeriod === 'monthly') {
+      interestCents = fixedCents * months;
+    } else {
+      interestCents = fixedCents;
+    }
   } else if (input.interestType === 'percent') {
     const rate = parseFloat(input.interestRate.replace(',', '.')) || 0;
     if (input.interestPeriod === 'monthly') {

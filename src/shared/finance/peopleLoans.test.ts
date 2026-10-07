@@ -82,6 +82,28 @@ describe('peopleLoans calculations', () => {
     expect(result.schedule[1].amountCents).toBe(27500);
   });
 
+  it('calculates fixed interest per month (e.g. R$ 50,00 per month for 3 months = R$ 150,00 total)', () => {
+    const result = calculatePeopleLoan({
+      principalInput: '300,00',
+      interestType: 'fixed',
+      interestRate: '',
+      interestFixedInput: '50,00',
+      interestPeriod: 'monthly',
+      months: 3,
+      payMode: 'installments',
+      firstDueDate: '2026-11-01',
+      today: '2026-10-01'
+    });
+
+    expect(result.principalCents).toBe(30000);
+    expect(result.interestCents).toBe(15000); // 50 * 3 = 150
+    expect(result.totalCents).toBe(45000);
+    expect(result.schedule).toHaveLength(3);
+    expect(result.schedule[0].amountCents).toBe(15000);
+    expect(result.schedule[1].amountCents).toBe(15000);
+    expect(result.schedule[2].amountCents).toBe(15000);
+  });
+
   it('handles single lump sum payment at the end of the term', () => {
     const result = calculatePeopleLoan({
       principalInput: '2000,00',
