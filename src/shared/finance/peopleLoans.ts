@@ -97,3 +97,4 @@ export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLo
     schedule
   };
 }
+

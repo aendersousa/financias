@@ -101,3 +101,4 @@ describe('peopleLoans calculations', () => {
     expect(result.schedule[0].dueDate).toBe('2027-04-15');
   });
 });
+

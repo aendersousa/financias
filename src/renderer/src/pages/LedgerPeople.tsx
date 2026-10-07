@@ -16,6 +16,7 @@ import {
   Percent,
   Plus,
   Receipt,
+  RefreshCw,
   Scale,
   Search,
   Trash2,
@@ -670,17 +671,125 @@ export default function LedgerPeople({
 
   return (
     <div className="space-y-6">
+      {/* Header section with page title, description, and primary action buttons */}
+      <section className="card p-5 sm:p-6 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+              <Users className="text-brand-600 dark:text-brand-400" size={26} />
+              Pessoas e Empréstimos
+            </h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+              Gerencie contatos, quem deve para quem, empréstimos com juros e prazos, e divisão de contas.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {canWrite && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddPerson(!showAddPerson);
+                    setShowSharedExpense(false);
+                    setShowLoanForm(false);
+                    setMovementPersonId(null);
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl bg-brand-600 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-700 transition-colors ${
+                    showAddPerson ? 'ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-slate-900' : ''
+                  }`}
+                >
+                  <UserPlus size={15} />
+                  <span>Nova pessoa</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showLoanForm) {
+                      setShowLoanForm(false);
+                    } else {
+                      openLoanForPerson();
+                    }
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl border border-brand-300 bg-brand-50/70 px-3.5 py-2 text-xs sm:text-sm font-semibold text-brand-800 shadow-xs hover:bg-brand-100 transition-colors dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60 ${
+                    showLoanForm ? 'border-brand-500 ring-2 ring-brand-500/30' : ''
+                  }`}
+                >
+                  <Coins size={15} className="text-brand-600 dark:text-brand-400" />
+                  <span>Empréstimo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeContacts.length === 0) {
+                      setError('Cadastre pelo menos uma pessoa antes de registrar acertos.');
+                      return;
+                    }
+                    if (movementPersonId) {
+                      setMovementPersonId(null);
+                    } else {
+                      openMovementForPerson(activeContacts[0].id);
+                    }
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 ${
+                    movementPersonId ? 'border-brand-500 ring-2 ring-brand-500/20' : ''
+                  }`}
+                >
+                  <HandCoins size={15} className="text-brand-600 dark:text-brand-400" />
+                  <span>Acerto simples</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeContacts.length === 0) {
+                      setError('Cadastre pessoas para poder dividir despesas.');
+                      return;
+                    }
+                    setShowSharedExpense(!showSharedExpense);
+                    setShowAddPerson(false);
+                    setShowLoanForm(false);
+                    setMovementPersonId(null);
+                    setSharedSelectedPeople(activeContacts.map(c => c.id));
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 ${
+                    showSharedExpense ? 'border-brand-500 ring-2 ring-brand-500/20' : ''
+                  }`}
+                >
+                  <Receipt size={15} className="text-brand-600 dark:text-brand-400" />
+                  <span>Dividir despesa</span>
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void loadContacts()}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <RefreshCw size={15} className={busy ? 'animate-spin' : ''} />
+              <span>Atualizar</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Notifications */}
       {error && (
-        <div role="alert" className="flex items-start gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs sm:text-sm font-medium text-rose-800 dark:border-rose-900/60 dark:bg-rose-950 dark:text-rose-200">
+          <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
           <p className="flex-1">{error}</p>
-          <button type="button" onClick={() => setError('')} className="text-red-600 hover:opacity-80">
+          <button type="button" onClick={() => setError('')} className="text-rose-600 hover:opacity-80">
             <X size={16} />
           </button>
         </div>
       )}
       {notice && (
-        <div role="status" className="flex items-start gap-3 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+        <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs sm:text-sm font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950 dark:text-emerald-200">
+          <CheckCircle2 size={18} className="shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
           <p className="flex-1 font-medium">{notice}</p>
           <button type="button" onClick={() => setNotice('')} className="text-emerald-600 hover:opacity-80">
             <X size={16} />
@@ -689,17 +798,17 @@ export default function LedgerPeople({
       )}
 
       {/* 1. Summary Cards */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-white p-4.5 shadow-sm dark:border-emerald-900/50 dark:from-emerald-950/30 dark:to-slate-900">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="card p-5 transition-all hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               A receber de pessoas
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-              <ArrowDownLeft size={16} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <ArrowDownLeft size={20} />
             </div>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-emerald-900 dark:text-emerald-200">
+          <p className="mt-3 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
             {money(totalReceivable)}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -709,16 +818,16 @@ export default function LedgerPeople({
           </p>
         </div>
 
-        <div className="rounded-2xl border border-rose-200/70 bg-gradient-to-br from-rose-50/80 to-white p-4.5 shadow-sm dark:border-rose-900/50 dark:from-rose-950/30 dark:to-slate-900">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-400">
+        <div className="card p-5 transition-all hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               A pagar para pessoas
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
-              <ArrowUpRight size={16} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
+              <ArrowUpRight size={20} />
             </div>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-rose-900 dark:text-rose-200">
+          <p className="mt-3 text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400">
             {money(totalPayable)}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -728,25 +837,25 @@ export default function LedgerPeople({
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+        <div className="card p-5 transition-all hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Balanço com pessoas
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <Scale size={16} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-400">
+              <Scale size={20} />
             </div>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+          <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             {money(Math.abs(netBalance))}
           </p>
           <div className="mt-1">
             {netBalance > 0 ? (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                 <Check size={13} /> Saldo a seu favor
               </span>
             ) : netBalance < 0 ? (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 dark:text-rose-400">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
                 Saldo devedor total
               </span>
             ) : (
@@ -755,89 +864,6 @@ export default function LedgerPeople({
           </div>
         </div>
       </div>
-
-      {/* 2. Quick Action Bar */}
-      {canWrite && (
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => {
-              setShowAddPerson(!showAddPerson);
-              setShowSharedExpense(false);
-              setShowLoanForm(false);
-              setMovementPersonId(null);
-            }}
-            className={`btn-primary flex items-center gap-2 px-4 py-2 text-sm font-semibold transition ${
-              showAddPerson ? 'ring-2 ring-brand-500 ring-offset-2' : ''
-            }`}
-          >
-            <UserPlus size={16} />
-            <span>Nova pessoa</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (showLoanForm) {
-                setShowLoanForm(false);
-              } else {
-                openLoanForPerson();
-              }
-            }}
-            className={`flex items-center gap-2 rounded-xl border border-brand-300 bg-brand-50/70 px-4 py-2 text-sm font-semibold text-brand-800 shadow-sm transition hover:bg-brand-100 hover:text-brand-900 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60 ${
-              showLoanForm ? 'border-brand-500 ring-2 ring-brand-500/30' : ''
-            }`}
-          >
-            <Coins size={16} className="text-brand-600 dark:text-brand-400" />
-            <span>Empréstimo com juros & prazos</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (activeContacts.length === 0) {
-                setError('Cadastre pelo menos uma pessoa antes de registrar movimentações.');
-                return;
-              }
-              if (movementPersonId) {
-                setMovementPersonId(null);
-              } else {
-                openMovementForPerson(activeContacts[0].id);
-              }
-            }}
-            className={`flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
-              movementPersonId ? 'border-brand-500 ring-2 ring-brand-500/20' : ''
-            }`}
-          >
-            <HandCoins size={16} className="text-brand-600 dark:text-brand-400" />
-            <span>Registrar acerto simples</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (activeContacts.length === 0) {
-                setError('Cadastre pessoas para poder dividir despesas.');
-                return;
-              }
-              setShowSharedExpense(!showSharedExpense);
-              setShowAddPerson(false);
-              setShowLoanForm(false);
-              setMovementPersonId(null);
-              setSharedSelectedPeople(activeContacts.map(c => c.id));
-            }}
-            className={`flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
-              showSharedExpense ? 'border-brand-500 ring-2 ring-brand-500/20' : ''
-            }`}
-          >
-            <Receipt size={16} className="text-brand-600 dark:text-brand-400" />
-            <span>Dividir uma despesa</span>
-            <span className="hidden rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 md:inline">
-              Conta compartilhada
-            </span>
-          </button>
-        </div>
-      )}
 
       {/* 3. Add Person Form (com opção de quem deve para quem) */}
       {canWrite && showAddPerson && (
@@ -1955,109 +1981,181 @@ export default function LedgerPeople({
         </form>
       )}
 
-      {/* 6. Search and Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nome..."
-            className="field-input w-full !pl-9 text-sm"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5" role="tablist">
-          <button
-            type="button"
-            onClick={() => setFilterTab('all')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              filterTab === 'all'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
-            }`}
-          >
-            Todas ({contacts.filter(c => includeArchived || !c.archived_at).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterTab('receivable')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              filterTab === 'receivable'
-                ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
-                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300'
-            }`}
-          >
-            A receber ({contacts.filter(c => (includeArchived || !c.archived_at) && c.balance_cents > 0).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterTab('payable')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              filterTab === 'payable'
-                ? 'bg-rose-700 text-white dark:bg-rose-500 dark:text-slate-950'
-                : 'bg-rose-50 text-rose-800 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300'
-            }`}
-          >
-            A pagar ({contacts.filter(c => (includeArchived || !c.archived_at) && c.balance_cents < 0).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterTab('settled')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              filterTab === 'settled'
-                ? 'bg-slate-700 text-white dark:bg-slate-300 dark:text-slate-950'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
-            }`}
-          >
-            Em dia ({contacts.filter(c => (includeArchived || !c.archived_at) && c.balance_cents === 0).length})
-          </button>
-        </div>
-      </div>
-
-      {/* 7. People Table with Actions */}
-      <PeopleTable
-        people={visibleContacts}
-        money={money}
-        renderName={item => (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setSelectedPersonId(selectedPersonId === item.id ? null : item.id);
-              setDetailMode('view');
-            }}
-            aria-label={'Editar pessoa ' + item.nickname}
-            aria-expanded={selectedPersonId === item.id}
-            className="block max-w-full text-left font-semibold text-slate-900 hover:underline [overflow-wrap:anywhere] dark:text-slate-100"
-          >
-            {item.nickname}
-          </button>
-        )}
-        renderActions={item => (
-          <div className="flex items-center justify-end gap-1.5">
-            {canWrite && !item.archived_at && (
+      {/* Search and Filters Card */}
+      <section className="card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Buscar por nome ou notas…"
+              className="field-input w-full !pl-9 text-xs sm:text-sm"
+            />
+            {searchQuery && (
               <button
                 type="button"
-                disabled={busy}
-                onClick={() => openMovementForPerson(item.id)}
-                className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-900/60"
-                title="Registrar acerto com esta pessoa"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
               >
-                <HandCoins size={13} className="shrink-0" />
-                <span>Acertar</span>
+                <X size={14} />
               </button>
             )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5" role="tablist">
+              <button
+                type="button"
+                onClick={() => setFilterTab('all')}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${
+                  filterTab === 'all'
+                    ? 'bg-brand-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span>Todas</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    filterTab === 'all'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {contacts.filter(c => includeArchived || !c.archived_at).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('receivable')}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${
+                  filterTab === 'receivable'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60'
+                }`}
+              >
+                <span>A receber</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    filterTab === 'receivable'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
+                  }`}
+                >
+                  {contacts.filter(c => (includeArchived || !c.archived_at) && c.balance_cents > 0).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('payable')}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${
+                  filterTab === 'payable'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-rose-50 text-rose-800 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60'
+                }`}
+              >
+                <span>A pagar</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    filterTab === 'payable'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-300'
+                  }`}
+                >
+                  {contacts.filter(c => (includeArchived || !c.archived_at) && c.balance_cents < 0).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab('settled')}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${
+                  filterTab === 'settled'
+                    ? 'bg-slate-700 text-white shadow-xs dark:bg-slate-200 dark:text-slate-900'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span>Em dia</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    filterTab === 'settled'
+                      ? 'bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900'
+                      : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {contacts.filter(c => (includeArchived || !c.archived_at) && c.balance_cents === 0).length}
+                </span>
+              </button>
+            </div>
+
+            {contacts.some(item => item.archived_at) && (
+              <label className="ml-auto sm:ml-2 inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={busy}
+                  checked={includeArchived}
+                  onChange={event => setIncludeArchived(event.target.checked)}
+                  className="rounded text-brand-600 focus:ring-brand-500"
+                />
+                <span>Arquivadas ({contacts.filter(c => c.archived_at).length})</span>
+              </label>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* People Table or Empty State Card */}
+      {contacts.length === 0 ? (
+        <section className="card p-10 text-center dark:border-slate-800 dark:bg-slate-900">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 mb-3">
+            <UserRound size={28} />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Nenhuma pessoa cadastrada</h3>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+            Cadastre contatos para acompanhar quem te deve, quem você deve, empréstimos com juros ou dividir despesas compartilhadas.
+          </p>
+          {canWrite && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => setShowAddPerson(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-brand-700 transition-colors"
+              >
+                <UserPlus size={16} />
+                <span>Cadastrar primeira pessoa</span>
+              </button>
+            </div>
+          )}
+        </section>
+      ) : visibleContacts.length === 0 ? (
+        <section className="card p-8 sm:p-10 text-center dark:border-slate-800 dark:bg-slate-900">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 mb-3">
+            <Search size={22} />
+          </div>
+          <h3 className="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100">
+            Nenhuma pessoa encontrada com os filtros atuais
+          </h3>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            Tente limpar o termo de busca ou selecionar outra aba de situação.
+          </p>
+          <div className="mt-3.5">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setFilterTab('all');
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        </section>
+      ) : (
+        <PeopleTable
+          people={visibleContacts}
+          money={money}
+          renderName={item => (
             <button
               type="button"
               disabled={busy}
@@ -2065,60 +2163,68 @@ export default function LedgerPeople({
                 setSelectedPersonId(selectedPersonId === item.id ? null : item.id);
                 setDetailMode('view');
               }}
-              aria-label={'Ver detalhes da pessoa ' + item.nickname}
+              aria-label={'Editar pessoa ' + item.nickname}
               aria-expanded={selectedPersonId === item.id}
-              className={`rounded-lg px-2 py-1 text-xs font-semibold transition ${
-                selectedPersonId === item.id
-                  ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800'
-              }`}
+              className="block max-w-full text-left font-semibold text-slate-900 hover:underline [overflow-wrap:anywhere] dark:text-slate-100"
             >
-              {selectedPersonId === item.id ? 'Fechar' : 'Detalhes'}
+              {item.nickname}
             </button>
-          </div>
-        )}
-        renderEditor={item =>
-          selectedPersonId === item.id ? (
-            <PersonDetailPanel
-              person={item}
-              detail={detail}
-              mode={detailMode}
-              setMode={setDetailMode}
-              money={money}
-              onAgenda={onAgenda}
-              onMovement={() => openMovementForPerson(item.id)}
-              onOpenLoan={() => openLoanForPerson(item.id)}
-              onClose={() => setSelectedPersonId(null)}
-              onManage={(action, changes) => managePerson(action, changes, item)}
-              onToggleReminder={toggleReminder}
-              onAddReminder={addPersonReminder}
-              onSettleReminder={handleSettleReminder}
-              busy={busy}
-              today={workspace.space.today}
-            />
-          ) : null
-        }
-      />
-
-      {/* 8. Archived section toggle */}
-      {contacts.some(item => item.archived_at) && (
-        <details className="text-sm text-slate-500 dark:text-slate-400">
-          <summary className="cursor-pointer font-medium hover:text-slate-800 dark:hover:text-slate-200">
-            Pessoas arquivadas ({contacts.filter(c => c.archived_at).length})
-          </summary>
-          <div className="mt-3">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
+          )}
+          renderActions={item => (
+            <div className="flex items-center justify-end gap-1.5">
+              {canWrite && !item.archived_at && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => openMovementForPerson(item.id)}
+                  className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-900/60"
+                  title="Registrar acerto com esta pessoa"
+                >
+                  <HandCoins size={13} className="shrink-0" />
+                  <span>Acertar</span>
+                </button>
+              )}
+              <button
+                type="button"
                 disabled={busy}
-                checked={includeArchived}
-                onChange={event => setIncludeArchived(event.target.checked)}
-                className="rounded text-brand-600 focus:ring-brand-500"
+                onClick={() => {
+                  setSelectedPersonId(selectedPersonId === item.id ? null : item.id);
+                  setDetailMode('view');
+                }}
+                aria-label={'Ver detalhes da pessoa ' + item.nickname}
+                aria-expanded={selectedPersonId === item.id}
+                className={`rounded-lg px-2 py-1 text-xs font-semibold transition ${
+                  selectedPersonId === item.id
+                    ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800'
+                }`}
+              >
+                {selectedPersonId === item.id ? 'Fechar' : 'Detalhes'}
+              </button>
+            </div>
+          )}
+          renderEditor={item =>
+            selectedPersonId === item.id ? (
+              <PersonDetailPanel
+                person={item}
+                detail={detail}
+                mode={detailMode}
+                setMode={setDetailMode}
+                money={money}
+                onAgenda={onAgenda}
+                onMovement={() => openMovementForPerson(item.id)}
+                onOpenLoan={() => openLoanForPerson(item.id)}
+                onClose={() => setSelectedPersonId(null)}
+                onManage={(action, changes) => managePerson(action, changes, item)}
+                onToggleReminder={toggleReminder}
+                onAddReminder={addPersonReminder}
+                onSettleReminder={handleSettleReminder}
+                busy={busy}
+                today={workspace.space.today}
               />
-              Mostrar pessoas arquivadas na listagem
-            </label>
-          </div>
-        </details>
+            ) : null
+          }
+        />
       )}
     </div>
   );
