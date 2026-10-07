@@ -5,8 +5,33 @@ import AccountTable, { accountKindLabels } from '../components/AccountTable';
 import CategoryPanels from '../components/CategoryPanels';
 import { ALL_APP_PAGES } from '../lib/modules';
 import { useAppStore } from '../store/useAppStore';
-import { Boxes, CheckCircle2, RotateCcw, Info, Sliders, Building2, History } from 'lucide-react';
+import {
+  Boxes,
+  CheckCircle2,
+  RotateCcw,
+  Info,
+  Sliders,
+  Building2,
+  History,
+  FolderPlus,
+  Save,
+  Plus,
+  Trash2,
+  Calendar,
+  CalendarDays
+} from 'lucide-react';
 import LedgerExtras from './LedgerExtras';
+
+function formatHolidayDate(dateStr: string) {
+  try {
+    const [year, month, day] = dateStr.split('-');
+    if (!year || !month || !day) return dateStr;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
 
 interface ManagedAccount { id: string; name: string; kind: string; color?: string | null; institution_name: string | null; liquidity: string; is_emergency_reserve: boolean; archived_at: string | null; version: number }
 interface ManagedCategory { id: string; name: string; kind: string; parent_id: string | null; icon: string | null; color: string | null; is_essential: boolean; fixity: string | null; income_class: string | null; is_tax_deductible: boolean; archived_at: string | null; system_role: string | null; version: number }
@@ -387,10 +412,346 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
 
         {settingsTab === 'space' && (
           data ? (
-            <div className="space-y-4">
-              {canManage && <form key={data.space.version} onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('update_space', { p_version: data.space.version, p_name: String(form.get('name')), p_timezone: String(form.get('timezone')) }); }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Seu espaço financeiro</h2>{field('Nome do espaço', <input name="name" defaultValue={data.space.name} required maxLength={100} className={input}/>)}{field('Fuso horário', <input name="timezone" defaultValue={data.space.timezone} placeholder="America/Sao_Paulo" required className={input}/>)}<div><button disabled={busy} className={primary}>Salvar espaço</button></div></form>}
-              <form onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError(''); try { const id = await ledgerRpc<string>('create_space', { p_name: String(form.get('name')), p_kind: String(form.get('kind')), p_timezone: String(form.get('timezone')) }); await selectFinancialSpace(id); await onChanged(); } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); } }} className={`${panel} grid gap-4 sm:grid-cols-2`}><h2 className="font-semibold sm:col-span-2">Criar outro espaço</h2><p className="text-sm text-slate-500 sm:col-span-2">Cada espaço tem suas próprias contas, categorias, saldos e histórico.</p>{field('Nome do novo espaço', <input name="name" required maxLength={100} className={input}/>)}{field('Tipo do espaço', <select name="kind" className={input}><option value="personal">Pessoal</option><option value="shared">Compartilhado</option></select>)}{field('Fuso horário do novo espaço', <input name="timezone" defaultValue={data.space.timezone} required className={input}/>)}<div className="sm:col-span-2"><button disabled={busy} className={primary}>Criar e abrir espaço</button></div></form>
-              {canManage && <div className={`${panel} space-y-4`}><h2 className="font-semibold">Feriados locais</h2><p className="text-sm text-slate-500">Feriados da sua cidade usados no cálculo do vencimento bancário.</p><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void run('manage_local_holiday', { p_on: String(form.get('date')), p_name: String(form.get('name')) }); }} className="flex flex-wrap items-end gap-3">{field('Data do feriado', <input name="date" type="date" required className={input}/>)}{field('Nome do feriado', <input name="name" required maxLength={100} className={input}/>)}<button disabled={busy} className={primary}>Salvar feriado</button></form>{data.holidays.map(holiday => <div key={holiday.id} className="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{holiday.holiday_on} · {holiday.name}</span><button disabled={busy} onClick={() => void run('manage_local_holiday', { p_on: holiday.holiday_on, p_name: '', p_remove: true })} className="text-red-600">Remover feriado</button></div>)}</div>}
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Espaço Ativo */}
+                <div className={`${panel} flex flex-col justify-between gap-5`}>
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
+                          <Building2 size={18} />
+                        </div>
+                        <div>
+                          <h2 className="font-semibold text-slate-800 dark:text-slate-100">Espaço financeiro ativo</h2>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Identificação e fuso horário do ambiente atual</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {data.space.kind === 'shared' ? 'Compartilhado' : 'Pessoal'}
+                        </span>
+                        <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                          {workspace.role === 'owner' ? 'Proprietário' : workspace.role === 'admin' ? 'Administrador' : 'Membro'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {canManage ? (
+                      <form
+                        key={data.space.version}
+                        onSubmit={event => {
+                          event.preventDefault();
+                          const form = new FormData(event.currentTarget);
+                          void run('update_space', {
+                            p_version: data.space.version,
+                            p_name: String(form.get('name')).trim(),
+                            p_timezone: String(form.get('timezone')).trim()
+                          });
+                        }}
+                        className="space-y-4"
+                      >
+                        <div className="grid gap-1.5">
+                          <label htmlFor="space-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Nome do espaço
+                          </label>
+                          <input
+                            id="space-name"
+                            name="name"
+                            defaultValue={data.space.name}
+                            required
+                            maxLength={100}
+                            className={input}
+                            placeholder="Ex: Finanças Pessoais"
+                          />
+                        </div>
+
+                        <div className="grid gap-1.5">
+                          <label htmlFor="space-timezone" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Fuso horário (Timezone)
+                          </label>
+                          <input
+                            id="space-timezone"
+                            name="timezone"
+                            defaultValue={data.space.timezone}
+                            list="timezones-list"
+                            required
+                            className={input}
+                            placeholder="America/Sao_Paulo"
+                          />
+                          <datalist id="timezones-list">
+                            <option value="America/Sao_Paulo">Brasília (America/Sao_Paulo)</option>
+                            <option value="America/Manaus">Manaus (America/Manaus)</option>
+                            <option value="America/Cuiaba">Cuiabá (America/Cuiaba)</option>
+                            <option value="America/Fortaleza">Fortaleza (America/Fortaleza)</option>
+                            <option value="America/Belem">Belém (America/Belem)</option>
+                            <option value="America/Recife">Recife (America/Recife)</option>
+                            <option value="America/Porto_Velho">Porto Velho (America/Porto_Velho)</option>
+                            <option value="America/Boa_Vista">Boa Vista (America/Boa_Vista)</option>
+                            <option value="America/Rio_Branco">Rio Branco (America/Rio_Branco)</option>
+                            <option value="UTC">UTC Universal</option>
+                          </datalist>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Usado para definir a data de hoje, horários de vencimento e alertas.
+                          </p>
+                        </div>
+
+                        <div className="pt-2">
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className="btn-primary flex w-full items-center justify-center gap-2 py-2.5 font-semibold text-white disabled:opacity-50"
+                          >
+                            <Save size={16} />
+                            <span>Salvar alterações do espaço</span>
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
+                        <p><strong>Nome:</strong> {data.space.name}</p>
+                        <p><strong>Fuso horário:</strong> {data.space.timezone}</p>
+                        <p className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/60">
+                          Apenas administradores e o proprietário podem alterar as configurações deste espaço.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Criar Outro Espaço */}
+                <div className={`${panel} flex flex-col justify-between gap-5`}>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3 dark:border-slate-800">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+                        <FolderPlus size={18} />
+                      </div>
+                      <div>
+                        <h2 className="font-semibold text-slate-800 dark:text-slate-100">Criar outro espaço</h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Ambientes totalmente independentes para suas finanças</p>
+                      </div>
+                    </div>
+
+                    <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                      Cada espaço financeiro possui seu próprio saldo, contas bancárias, cartões e lançamentos 100% isolados.
+                    </p>
+
+                    <form
+                      onSubmit={async event => {
+                        event.preventDefault();
+                        const form = new FormData(event.currentTarget);
+                        setBusy(true);
+                        setError('');
+                        try {
+                          const id = await ledgerRpc<string>('create_space', {
+                            p_name: String(form.get('name')).trim(),
+                            p_kind: String(form.get('kind')),
+                            p_timezone: String(form.get('timezone')).trim()
+                          });
+                          await selectFinancialSpace(id);
+                          await onChanged();
+                          setNotice('Novo espaço criado com sucesso!');
+                        } catch (failure) {
+                          setError((failure as Error).message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className="space-y-4"
+                    >
+                      <div className="grid gap-1.5">
+                        <label htmlFor="new-space-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Nome do novo espaço
+                        </label>
+                        <input
+                          id="new-space-name"
+                          name="name"
+                          required
+                          maxLength={100}
+                          className={input}
+                          placeholder="Ex: Empresa, Família ou Casa de Praia"
+                        />
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-1.5">
+                          <label htmlFor="new-space-kind" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Tipo do espaço
+                          </label>
+                          <select id="new-space-kind" name="kind" defaultValue="personal" className={input}>
+                            <option value="personal">Pessoal (Individual)</option>
+                            <option value="shared">Compartilhado</option>
+                          </select>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                          <label htmlFor="new-space-timezone" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Fuso horário
+                          </label>
+                          <input
+                            id="new-space-timezone"
+                            name="timezone"
+                            defaultValue={data.space.timezone}
+                            list="timezones-list"
+                            required
+                            className={input}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="btn-primary flex w-full items-center justify-center gap-2 py-2.5 font-semibold text-white disabled:opacity-50"
+                        >
+                          <Plus size={16} />
+                          <span>Criar e abrir este espaço</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feriados Locais */}
+              <div className={`${panel} space-y-5`}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                      <CalendarDays size={18} />
+                    </div>
+                    <div>
+                      <h2 className="font-semibold text-slate-800 dark:text-slate-100">Feriados municipais e regionais</h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Feriados da sua localidade usados no cálculo automático de vencimentos e dias úteis
+                      </p>
+                    </div>
+                  </div>
+                  <span className="self-start sm:self-auto rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {data.holidays.length} {data.holidays.length === 1 ? 'feriado cadastrado' : 'feriados cadastrados'}
+                  </span>
+                </div>
+
+                {canManage && (
+                  <form
+                    onSubmit={async event => {
+                      event.preventDefault();
+                      const form = new FormData(event.currentTarget);
+                      const date = String(form.get('date')).trim();
+                      const name = String(form.get('name')).trim();
+                      if (!date || !name) return;
+                      const ok = await run('manage_local_holiday', { p_on: date, p_name: name });
+                      if (ok) event.currentTarget.reset();
+                    }}
+                    className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/30"
+                  >
+                    <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                      Adicionar feriado local
+                    </h3>
+                    <div className="grid gap-3 sm:grid-cols-[180px_1fr_auto] items-end">
+                      <div className="grid gap-1.5">
+                        <label htmlFor="holiday-date" className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                          Data do feriado
+                        </label>
+                        <input
+                          id="holiday-date"
+                          name="date"
+                          type="date"
+                          required
+                          className={input}
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <label htmlFor="holiday-name" className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                          Nome ou celebração
+                        </label>
+                        <input
+                          id="holiday-name"
+                          name="name"
+                          required
+                          maxLength={100}
+                          placeholder="Ex: Aniversário da Cidade, Padroeira, Consciência Negra"
+                          className={input}
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="btn-primary flex items-center justify-center gap-1.5 px-4 py-2.5 font-semibold text-white disabled:opacity-50"
+                      >
+                        <Plus size={16} />
+                        <span>Adicionar</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="space-y-3">
+                  {data.holidays.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                        <Calendar size={24} />
+                      </div>
+                      <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Nenhum feriado municipal ou regional cadastrado
+                      </p>
+                      <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
+                        Os feriados nacionais comuns já são calculados pelo calendário bancário. Adicione aqui feriados específicos da sua cidade ou estado.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      {[...data.holidays]
+                        .sort((a, b) => a.holiday_on.localeCompare(b.holiday_on))
+                        .map(holiday => (
+                          <div
+                            key={holiday.id}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 transition hover:border-slate-300 hover:bg-slate-100/60 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:border-slate-700 dark:hover:bg-slate-800/70"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-indigo-50 font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                                <span className="text-[9px] font-semibold uppercase leading-none">
+                                  {new Date(holiday.holiday_on + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
+                                </span>
+                                <span className="text-sm font-extrabold leading-none mt-0.5">
+                                  {holiday.holiday_on.split('-')[2]}
+                                </span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={holiday.name}>
+                                  {holiday.name}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  {formatHolidayDate(holiday.holiday_on)}
+                                </p>
+                              </div>
+                            </div>
+                            {canManage && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                title={`Remover feriado ${holiday.name}`}
+                                aria-label={`Remover feriado ${holiday.name}`}
+                                onClick={() => void run('manage_local_holiday', { p_on: holiday.holiday_on, p_name: '', p_remove: true })}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400">
+                  <Info size={16} className="mt-0.5 shrink-0 text-brand-500" />
+                  <span>
+                    Quando uma conta ou compromisso com vencimento bancário cai em um final de semana ou feriado registrado aqui, o vencimento é postergado automaticamente para o próximo dia útil.
+                  </span>
+                </div>
+              </div>
             </div>
           ) : (
             <p className={panel}>Carregando configurações do espaço…</p>
