@@ -11,6 +11,7 @@ import {
   Clock,
   Coins,
   Edit3,
+  FileText,
   HandCoins,
   History,
   Percent,
@@ -2291,486 +2292,675 @@ function PersonDetailPanel({
   busy: boolean;
   today: string;
 }) {
+  const [activeTab, setActiveTab] = useState<'movements' | 'reminders' | 'notes'>('movements');
   const [showAddReminder, setShowAddReminder] = useState(false);
+
+  const pendingRemindersCount = detail?.reminders.filter(r => !r.completed_at).length ?? 0;
+
   return (
     <section
       aria-label={'Detalhes da pessoa ' + person.nickname}
-      className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/60"
+      className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900/95"
     >
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{person.nickname}</h3>
-            {person.archived_at && (
-              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                Arquivada
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            {person.kind === 'member'
-              ? 'Membro do espaço compartilhado'
-              : person.kind === 'former_member'
-                ? 'Ex-membro do espaço'
-                : person.kind === 'space'
-                  ? 'Espaço financeiro'
-                  : 'Contato particular'}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg p-1 text-xs font-semibold text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800"
-        >
-          Fechar
-        </button>
-      </div>
-
-      {/* Balance Highlight */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm dark:bg-slate-800">
-        <div>
-          <span className="text-xs text-slate-500 dark:text-slate-400">Saldo atual</span>
-          <p
-            className={`text-lg font-bold ${
+      {/* 1. Profile Header */}
+      <div className="flex flex-col gap-3.5 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 dark:border-slate-800">
+        <div className="flex items-center gap-3.5">
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold shadow-xs ${
               person.balance_cents > 0
-                ? 'text-emerald-700 dark:text-emerald-400'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
                 : person.balance_cents < 0
-                  ? 'text-rose-700 dark:text-rose-400'
-                  : 'text-slate-600 dark:text-slate-300'
+                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
+                  : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
             }`}
           >
-            {person.balance_cents > 0
-              ? `${person.nickname} te deve ${money(person.balance_cents)}`
-              : person.balance_cents < 0
-                ? `Você deve ${money(Math.abs(person.balance_cents))} a ${person.nickname}`
-                : 'Contas em dia'}
-          </p>
-        </div>
-
-        {person.scheduled_balance_cents !== 0 && (
-          <div className="text-right">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Movimentos futuros</span>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {money(person.scheduled_balance_cents)}
-            </p>
+            {(person.nickname.trim()[0] || 'P').toUpperCase()}
           </div>
-        )}
-      </div>
-
-      {/* Notes */}
-      {person.notes && (
-        <div className="rounded-lg bg-white p-3 text-sm text-slate-700 shadow-sm dark:bg-slate-800 dark:text-slate-300">
-          <span className="text-xs font-medium text-slate-400">Observações:</span>
-          <p className="mt-1 whitespace-pre-wrap">{person.notes}</p>
-        </div>
-      )}
-
-      {/* Actions toolbar */}
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        {!person.archived_at ? (
-          <>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onMovement}
-              className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
-            >
-              <HandCoins size={14} />
-              <span>Registrar acerto / pagamento</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onOpenLoan}
-              className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 dark:border-brand-900/60 dark:bg-brand-950/40 dark:text-brand-300 dark:hover:bg-brand-900/60"
-            >
-              <Coins size={13} />
-              <span>Novo empréstimo com juros</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setMode(mode === 'edit' ? 'view' : 'edit')}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-            >
-              <Edit3 size={13} />
-              <span>Editar apelido</span>
-            </button>
-
-            {person.kind === 'contact' && person.opening_on === null && detail?.movements.length === 0 && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setMode(mode === 'opening' ? 'view' : 'opening')}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                {person.nickname}
+              </h3>
+              {person.archived_at && (
+                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  Arquivada
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-medium">
+                {person.kind === 'member'
+                  ? 'Membro compartilhado'
+                  : person.kind === 'former_member'
+                    ? 'Ex-membro'
+                    : person.kind === 'space'
+                      ? 'Espaço financeiro'
+                      : 'Contato particular'}
+              </span>
+              <span>•</span>
+              <span
+                className={`font-semibold ${
+                  person.balance_cents > 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : person.balance_cents < 0
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-slate-500 dark:text-slate-400'
+                }`}
               >
-                <span>Informar saldo inicial</span>
-              </button>
-            )}
-
-            {person.kind !== 'member' && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onManage('archive')}
-                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-              >
-                Arquivar
-              </button>
-            )}
-          </>
-        ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void onManage('restore')}
-            className="rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300"
-          >
-            Desarquivar pessoa
-          </button>
-        )}
-
-        {person.kind === 'contact' && detail?.movements.length === 0 && detail?.reminders.length === 0 && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void onManage('delete')}
-            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-          >
-            <Trash2 size={13} />
-            <span>Excluir contato</span>
-          </button>
-        )}
-      </div>
-
-      {/* Edit Form */}
-      {mode === 'edit' && !person.archived_at && (
-        <form
-          aria-label="Editar pessoa"
-          onSubmit={async event => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            await onManage('update', {
-              nickname: String(form.get('nickname') ?? '').trim(),
-              notes: String(form.get('notes') ?? '').trim() || null
-            });
-          }}
-          className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3.5 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800"
-        >
-          <div className="grid gap-1 text-sm">
-            <label className="font-medium">Apelido</label>
-            <input
-              aria-label="Apelido da pessoa"
-              name="nickname"
-              required
-              maxLength={100}
-              defaultValue={person.nickname}
-              className={input}
-            />
-          </div>
-          <div className="grid gap-1 text-sm">
-            <label className="font-medium">Observações</label>
-            <textarea
-              aria-label="Observações da pessoa"
-              name="notes"
-              maxLength={2000}
-              rows={2}
-              defaultValue={person.notes ?? ''}
-              className={input}
-            />
-          </div>
-          <div className="flex gap-2 sm:col-span-2">
-            <button disabled={busy} className="btn-primary px-4 py-2 text-xs font-semibold">
-              Salvar alterações
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('view')}
-              className="px-3 py-2 text-xs font-medium text-slate-600 hover:underline"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Opening Balance Form */}
-      {mode === 'opening' && !person.archived_at && (
-        <form
-          onSubmit={async event => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            const amount = parseBrlCents(String(form.get('amount') ?? ''));
-            if (amount <= 0) return;
-            await onManage('opening', {
-              balance_cents: form.get('direction') === 'pay' ? -amount : amount,
-              on: String(form.get('date'))
-            });
-          }}
-          className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3.5 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800"
-        >
-          <div className="grid gap-1 text-sm">
-            <label className="font-medium">Quem deve no início?</label>
-            <select
-              aria-label="Direção do saldo inicial da pessoa"
-              name="direction"
-              className={input}
-            >
-              <option value="receive">A pessoa me deve</option>
-              <option value="pay">Eu devo à pessoa</option>
-            </select>
-          </div>
-          <div className="grid gap-1 text-sm">
-            <label className="font-medium">Saldo inicial</label>
-            <CurrencyInput
-              aria-label="Saldo inicial da pessoa"
-              name="amount"
-              required
-              placeholder="0,00"
-              className={input}
-            />
-          </div>
-          <div className="grid gap-1 text-sm sm:col-span-2">
-            <label className="font-medium">Data do início</label>
-            <input
-              aria-label="Data do saldo inicial da pessoa"
-              name="date"
-              type="date"
-              required
-              defaultValue={today}
-              max={today}
-              className={input}
-            />
-          </div>
-          <p className="text-xs text-slate-500 sm:col-span-2">
-            Esse valor representa uma dívida antiga que já existia. Fica fora de receitas e despesas atuais.
-          </p>
-          <div className="flex gap-2 sm:col-span-2">
-            <button disabled={busy} className="btn-primary px-4 py-2 text-xs font-semibold">
-              Registrar saldo inicial
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('view')}
-              className="px-3 py-2 text-xs font-medium text-slate-600 hover:underline"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Movements list */}
-      <div className="space-y-2 pt-2">
-        <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-          <History size={15} />
-          <span>Histórico de movimentos</span>
-        </h4>
-        {!detail ? (
-          <p className="text-xs text-slate-500">Carregando histórico…</p>
-        ) : detail.movements.length === 0 ? (
-          <p className="rounded-lg bg-white p-3 text-xs text-slate-500 shadow-sm dark:bg-slate-800">
-            Nenhum movimento registrado com esta pessoa.
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {detail.movements.map(item => {
-              const isPositive = item.person_amount_cents > 0;
-              return (
-                <div
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white p-3 text-sm shadow-sm dark:bg-slate-800"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-900 dark:text-slate-100">
-                      {item.description}
-                      {item.status === 'cancelled' && <span className="ml-2 text-xs text-red-500">(cancelado)</span>}
-                      {item.occurred_on > today && <span className="ml-2 text-xs text-amber-500">(agendado)</span>}
-                    </p>
-                    <p className="text-xs text-slate-400">{displayDate(item.occurred_on)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-semibold ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {isPositive ? '+' : ''}{money(item.person_amount_cents)}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Saldo após: {money(item.running_balance_cents)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Agenda reminders */}
-      {detail && (
-        <div className="space-y-2.5 border-t border-slate-200 pt-3 dark:border-slate-800">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-              <Calendar size={15} />
-              <span>Lembretes na Agenda ({detail.reminders.length})</span>
-            </h4>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowAddReminder(!showAddReminder)}
-                className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
-              >
-                <Plus size={13} />
-                <span>Novo lembrete</span>
-              </button>
-              <button
-                type="button"
-                onClick={onAgenda}
-                className="text-xs font-semibold text-slate-500 hover:underline dark:text-slate-400"
-              >
-                Abrir Agenda
-              </button>
+                {person.balance_cents > 0
+                  ? `Te deve ${money(person.balance_cents)}`
+                  : person.balance_cents < 0
+                    ? `Você deve ${money(Math.abs(person.balance_cents))}`
+                    : 'Contas em dia'}
+              </span>
+              {person.scheduled_balance_cents !== 0 && (
+                <>
+                  <span>•</span>
+                  <span>Agendado: {money(person.scheduled_balance_cents)}</span>
+                </>
+              )}
             </div>
           </div>
+        </div>
 
-          {/* Quick inline add reminder */}
-          {showAddReminder && (
-            <form
-              onSubmit={async e => {
-                e.preventDefault();
-                const form = new FormData(e.currentTarget);
-                const title = String(form.get('title') ?? '').trim();
-                const dueOn = String(form.get('due_on') ?? '').trim();
-                if (title && dueOn) {
-                  await onAddReminder(title, dueOn);
-                  setShowAddReminder(false);
-                }
-              }}
-              className="grid gap-2 rounded-xl border border-brand-200 bg-brand-50/40 p-3 sm:grid-cols-3 dark:border-brand-900/40 dark:bg-brand-950/20"
-            >
-              <div className="sm:col-span-2">
-                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Título do lembrete *
-                </label>
-                <input
-                  name="title"
-                  required
-                  placeholder={`Ex: Cobrar parcela de ${person.nickname}...`}
-                  className="field-input w-full text-xs"
-                />
+        {/* Action buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {!person.archived_at && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onMovement}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-700 transition-colors"
+                title="Registrar pagamento ou acerto"
+              >
+                <HandCoins size={14} />
+                <span>Acertar</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onOpenLoan}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-brand-300 bg-brand-50/70 px-3.5 py-1.5 text-xs font-semibold text-brand-800 shadow-xs hover:bg-brand-100 transition-colors dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60"
+                title="Simular e registrar novo empréstimo"
+              >
+                <Coins size={14} className="text-brand-600 dark:text-brand-400" />
+                <span>Empréstimo</span>
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:border-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+            title="Fechar detalhes"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Clean Navigation Tabs */}
+      <div className="flex items-center border-b border-slate-100 px-4 sm:px-5 dark:border-slate-800">
+        <div className="flex gap-1 -mb-px">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('movements');
+              setMode('view');
+            }}
+            className={`inline-flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+              activeTab === 'movements'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <History size={15} />
+            <span>Histórico</span>
+            {detail?.movements && detail.movements.length > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                  activeTab === 'movements'
+                    ? 'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                }`}
+              >
+                {detail.movements.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('reminders');
+              setMode('view');
+            }}
+            className={`inline-flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+              activeTab === 'reminders'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <Calendar size={15} />
+            <span>Lembretes na Agenda</span>
+            {detail?.reminders && detail.reminders.length > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                  activeTab === 'reminders'
+                    ? 'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                }`}
+              >
+                {pendingRemindersCount > 0 ? `${pendingRemindersCount} pendentes` : detail.reminders.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('notes')}
+            className={`inline-flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+              activeTab === 'notes'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <FileText size={15} />
+            <span>Notas e Cadastro</span>
+            {person.notes && (
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Tab Contents */}
+      <div className="p-4 sm:p-5">
+        {/* TAB 1: MOVEMENTS */}
+        {activeTab === 'movements' && (
+          <div className="space-y-3">
+            {!detail ? (
+              <p className="text-xs text-slate-400 py-3 text-center">Carregando histórico…</p>
+            ) : detail.movements.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center dark:border-slate-800">
+                <History size={20} className="mx-auto text-slate-400 mb-1.5" />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Nenhum movimento registrado com esta pessoa ainda.
+                </p>
+                {!person.archived_at && (
+                  <button
+                    type="button"
+                    onClick={onMovement}
+                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    <HandCoins size={13} />
+                    <span>Registrar primeiro acerto</span>
+                  </button>
+                )}
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Data de vencimento *
-                </label>
-                <input
-                  name="due_on"
-                  type="date"
-                  required
-                  defaultValue={today}
-                  className="field-input w-full text-xs"
-                />
+            ) : (
+              <div className="space-y-1.5">
+                {detail.movements.map(item => {
+                  const isPositive = item.person_amount_cents > 0;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-xs sm:text-sm transition-colors hover:bg-slate-100/70 dark:border-slate-800/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                            {item.description}
+                          </span>
+                          {item.status === 'cancelled' && (
+                            <span className="rounded-full bg-red-100 px-1.5 py-0.2 text-[10px] font-bold text-red-700 dark:bg-red-950 dark:text-red-300 shrink-0">
+                              Cancelado
+                            </span>
+                          )}
+                          {item.occurred_on > today && (
+                            <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0">
+                              Agendado
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {displayDate(item.occurred_on)}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p
+                          className={`font-bold ${
+                            isPositive
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {isPositive ? '+' : ''}{money(item.person_amount_cents)}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Saldo após: {money(item.running_balance_cents)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex gap-2 sm:col-span-3 pt-1">
-                <button disabled={busy} className="btn-primary px-3 py-1 text-xs font-semibold">
-                  {busy ? 'Salvando…' : 'Salvar lembrete'}
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: REMINDERS IN AGENDA */}
+        {activeTab === 'reminders' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Lembretes integrados ao calendário da Agenda
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddReminder(!showAddReminder)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  <Plus size={13} />
+                  <span>{showAddReminder ? 'Fechar formulário' : 'Novo lembrete'}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddReminder(false)}
-                  className="px-2 py-1 text-xs font-medium text-slate-500 hover:underline"
+                  onClick={onAgenda}
+                  className="text-xs font-medium text-slate-500 hover:underline dark:text-slate-400"
                 >
-                  Cancelar
+                  Ver Agenda completa
                 </button>
               </div>
-            </form>
-          )}
+            </div>
 
-          {detail.reminders.length === 0 ? (
-            <p className="rounded-lg bg-white p-3 text-xs text-slate-500 shadow-sm dark:bg-slate-800">
-              Nenhum lembrete na Agenda ligado a esta pessoa.
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {detail.reminders.map(item => {
-                const isCompleted = !!item.completed_at;
-                const isOverdue = !isCompleted && item.effective_due_on < today;
-                const isToday = !isCompleted && item.effective_due_on === today;
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-2.5 text-xs transition ${
-                      isCompleted
-                        ? 'border-slate-200 bg-slate-50/60 opacity-70 dark:border-slate-800 dark:bg-slate-800/40'
-                        : isOverdue
-                          ? 'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20'
-                          : isToday
-                            ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20'
-                            : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800'
-                    }`}
+            {showAddReminder && (
+              <form
+                onSubmit={async e => {
+                  e.preventDefault();
+                  const form = new FormData(e.currentTarget);
+                  const title = String(form.get('title') ?? '').trim();
+                  const dueOn = String(form.get('due_on') ?? '').trim();
+                  if (title && dueOn) {
+                    await onAddReminder(title, dueOn);
+                    setShowAddReminder(false);
+                  }
+                }}
+                className="grid gap-2.5 rounded-xl border border-brand-200 bg-brand-50/40 p-3 sm:grid-cols-3 dark:border-brand-900/40 dark:bg-brand-950/20"
+              >
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Título do lembrete *
+                  </label>
+                  <input
+                    name="title"
+                    required
+                    placeholder={`Ex: Cobrar parcela de ${person.nickname}...`}
+                    className="field-input w-full text-xs"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Data de vencimento *
+                  </label>
+                  <input
+                    name="due_on"
+                    type="date"
+                    required
+                    defaultValue={today}
+                    className="field-input w-full text-xs"
+                  />
+                </div>
+                <div className="flex gap-2 sm:col-span-3 pt-1">
+                  <button disabled={busy} className="btn-primary px-3 py-1 text-xs font-semibold">
+                    {busy ? 'Salvando…' : 'Salvar lembrete'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddReminder(false)}
+                    className="px-2 py-1 text-xs font-medium text-slate-500 hover:underline"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => onToggleReminder(item.id, item.version, !isCompleted)}
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${
-                          isCompleted
-                            ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700'
-                        }`}
-                        title={isCompleted ? 'Reabrir lembrete' : 'Marcar como concluído'}
-                      >
-                        {isCompleted && <Check size={12} strokeWidth={3} />}
-                      </button>
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
 
-                      <div className="min-w-0 flex-1">
-                        <p className={`font-medium ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>
-                          {item.title}
-                        </p>
-                        <div className="flex items-center gap-2 pt-0.5">
-                          <span
-                            className={`inline-flex items-center gap-0.5 font-semibold ${
+            {!detail ? (
+              <p className="text-xs text-slate-400 py-3 text-center">Carregando lembretes…</p>
+            ) : detail.reminders.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center dark:border-slate-800">
+                <Calendar size={20} className="mx-auto text-slate-400 mb-1.5" />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Nenhum lembrete na Agenda vinculado a esta pessoa.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddReminder(true)}
+                  className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  <Plus size={13} />
+                  <span>Criar lembrete de cobrança</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {detail.reminders.map(item => {
+                  const isCompleted = !!item.completed_at;
+                  const isOverdue = !isCompleted && item.effective_due_on < today;
+                  const isToday = !isCompleted && item.effective_due_on === today;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex flex-wrap items-center justify-between gap-2.5 rounded-xl border p-2.5 text-xs transition-colors ${
+                        isCompleted
+                          ? 'border-slate-200 bg-slate-50/50 opacity-60 dark:border-slate-800 dark:bg-slate-800/30'
+                          : isOverdue
+                            ? 'border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/20'
+                            : isToday
+                              ? 'border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20'
+                              : 'border-slate-100 bg-slate-50/70 dark:border-slate-800/80 dark:bg-slate-800/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onToggleReminder(item.id, item.version, !isCompleted)}
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${
+                            isCompleted
+                              ? 'border-emerald-500 bg-emerald-500 text-white'
+                              : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700'
+                          }`}
+                          title={isCompleted ? 'Reabrir lembrete' : 'Marcar como concluído'}
+                        >
+                          {isCompleted && <Check size={12} strokeWidth={3} />}
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`font-medium ${
                               isCompleted
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : isOverdue
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : isToday
-                                    ? 'text-amber-600 dark:text-amber-400'
-                                    : 'text-slate-500 dark:text-slate-400'
+                                ? 'line-through text-slate-400'
+                                : 'text-slate-800 dark:text-slate-200'
                             }`}
                           >
-                            {displayDate(item.effective_due_on)}
-                            {isCompleted && ' • Concluído'}
-                            {!isCompleted && isOverdue && ' • Vencido'}
-                            {!isCompleted && isToday && ' • Vence hoje'}
-                          </span>
+                            {item.title}
+                          </p>
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <span
+                              className={`inline-flex items-center gap-0.5 font-semibold ${
+                                isCompleted
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : isOverdue
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : isToday
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : 'text-slate-500 dark:text-slate-400'
+                              }`}
+                            >
+                              {displayDate(item.effective_due_on)}
+                              {isCompleted && ' • Concluído'}
+                              {!isCompleted && isOverdue && ' • Vencido'}
+                              {!isCompleted && isToday && ' • Vence hoje'}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {!isCompleted && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => onSettleReminder(item)}
-                        className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 font-semibold text-brand-700 transition hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-900/60"
-                        title="Registrar pagamento ou recebimento desta parcela"
-                      >
-                        <HandCoins size={12} />
-                        <span>Dar baixa</span>
-                      </button>
-                    )}
+                      {!isCompleted && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onSettleReminder(item)}
+                          className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-900/60"
+                          title="Registrar pagamento ou recebimento desta parcela"
+                        >
+                          <HandCoins size={12} />
+                          <span>Dar baixa</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: NOTES & MANAGEMENT */}
+        {activeTab === 'notes' && (
+          <div className="space-y-4">
+            {/* Notes display or Edit mode */}
+            {mode === 'edit' && !person.archived_at ? (
+              <form
+                aria-label="Editar pessoa"
+                onSubmit={async event => {
+                  event.preventDefault();
+                  const form = new FormData(event.currentTarget);
+                  await onManage('update', {
+                    nickname: String(form.get('nickname') ?? '').trim(),
+                    notes: String(form.get('notes') ?? '').trim() || null
+                  });
+                }}
+                className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/40"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1 text-xs">
+                    <label className="font-semibold text-slate-700 dark:text-slate-300">
+                      Apelido / Nome *
+                    </label>
+                    <input
+                      aria-label="Apelido da pessoa"
+                      name="nickname"
+                      required
+                      maxLength={100}
+                      defaultValue={person.nickname}
+                      className={input}
+                    />
                   </div>
-                );
-              })}
+                  <div className="grid gap-1 text-xs">
+                    <label className="font-semibold text-slate-700 dark:text-slate-300">
+                      Observações e acordos
+                    </label>
+                    <textarea
+                      aria-label="Observações da pessoa"
+                      name="notes"
+                      maxLength={2000}
+                      rows={3}
+                      defaultValue={person.notes ?? ''}
+                      placeholder="Anote aqui acordos combinados, dados de pagamento..."
+                      className={input}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={busy} className="btn-primary px-4 py-2 text-xs font-semibold">
+                    {busy ? 'Salvando…' : 'Salvar alterações'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('view')}
+                    className="px-3 py-2 text-xs font-medium text-slate-600 hover:underline dark:text-slate-400"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4 text-xs sm:text-sm dark:border-slate-800/80 dark:bg-slate-800/40">
+                <div className="flex items-center justify-between pb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Observações e Notas:
+                  </span>
+                  {!person.archived_at && (
+                    <button
+                      type="button"
+                      onClick={() => setMode('edit')}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      <Edit3 size={13} />
+                      <span>Editar</span>
+                    </button>
+                  )}
+                </div>
+                {person.notes ? (
+                  <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
+                    {person.notes}
+                  </p>
+                ) : (
+                  <p className="italic text-slate-400">
+                    Nenhuma observação anotada. Clique em editar para registrar dados de pix ou acordos.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Opening Balance Form if requested */}
+            {mode === 'opening' && !person.archived_at && (
+              <form
+                onSubmit={async event => {
+                  event.preventDefault();
+                  const form = new FormData(event.currentTarget);
+                  const amount = parseBrlCents(String(form.get('amount') ?? ''));
+                  if (amount <= 0) return;
+                  await onManage('opening', {
+                    balance_cents: form.get('direction') === 'pay' ? -amount : amount,
+                    on: String(form.get('date'))
+                  });
+                }}
+                className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/30 p-4 dark:border-brand-900/40 dark:bg-brand-950/20"
+              >
+                <h4 className="text-xs font-bold uppercase tracking-wider text-brand-900 dark:text-brand-300">
+                  Definir saldo inicial antigo
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1 text-xs">
+                    <label className="font-semibold text-slate-700 dark:text-slate-300">
+                      Quem devia no início?
+                    </label>
+                    <select
+                      aria-label="Direção do saldo inicial da pessoa"
+                      name="direction"
+                      className={input}
+                    >
+                      <option value="receive">A pessoa me devia</option>
+                      <option value="pay">Eu devia à pessoa</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-1 text-xs">
+                    <label className="font-semibold text-slate-700 dark:text-slate-300">
+                      Valor do saldo inicial (R$)
+                    </label>
+                    <CurrencyInput
+                      aria-label="Saldo inicial da pessoa"
+                      name="amount"
+                      required
+                      placeholder="0,00"
+                      className={input}
+                    />
+                  </div>
+                  <div className="grid gap-1 text-xs sm:col-span-2">
+                    <label className="font-semibold text-slate-700 dark:text-slate-300">
+                      Data de início
+                    </label>
+                    <input
+                      aria-label="Data do saldo inicial da pessoa"
+                      name="date"
+                      type="date"
+                      required
+                      defaultValue={today}
+                      max={today}
+                      className={input}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Esse valor representa uma dívida antiga que já existia antes do uso do app.
+                </p>
+                <div className="flex gap-2">
+                  <button disabled={busy} className="btn-primary px-4 py-2 text-xs font-semibold">
+                    Registrar saldo inicial
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('view')}
+                    className="px-3 py-2 text-xs font-medium text-slate-600 hover:underline dark:text-slate-400"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Management actions footer */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {mode !== 'edit' && !person.archived_at && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setMode('edit')}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <Edit3 size={13} />
+                  <span>Editar apelido e notas</span>
+                </button>
+              )}
+
+              {person.kind === 'contact' && person.opening_on === null && detail?.movements.length === 0 && mode !== 'opening' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setMode('opening')}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <span>Informar saldo inicial</span>
+                </button>
+              )}
+
+              {!person.archived_at && person.kind !== 'member' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onManage('archive')}
+                  className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                >
+                  <span>Arquivar</span>
+                </button>
+              )}
+
+              {person.archived_at && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onManage('restore')}
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 transition-colors"
+                >
+                  <span>Desarquivar pessoa</span>
+                </button>
+              )}
+
+              {person.kind === 'contact' && detail?.movements.length === 0 && detail?.reminders.length === 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onManage('delete')}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors"
+                >
+                  <Trash2 size={13} />
+                  <span>Excluir</span>
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
