@@ -5,7 +5,8 @@ import AccountTable, { accountKindLabels } from '../components/AccountTable';
 import CategoryPanels from '../components/CategoryPanels';
 import { ALL_APP_PAGES } from '../lib/modules';
 import { useAppStore } from '../store/useAppStore';
-import { Boxes, CheckCircle2, RotateCcw, Info, Sliders } from 'lucide-react';
+import { Boxes, CheckCircle2, RotateCcw, Info, Sliders, Building2, History } from 'lucide-react';
+import LedgerExtras from './LedgerExtras';
 
 interface ManagedAccount { id: string; name: string; kind: string; color?: string | null; institution_name: string | null; liquidity: string; is_emergency_reserve: boolean; archived_at: string | null; version: number }
 interface ManagedCategory { id: string; name: string; kind: string; parent_id: string | null; icon: string | null; color: string | null; is_essential: boolean; fixity: string | null; income_class: string | null; is_tax_deductible: boolean; archived_at: string | null; system_role: string | null; version: number }
@@ -23,7 +24,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   const [categoryName, setCategoryName] = useState(''), [categoryKind, setCategoryKind] = useState('expense'), [categoryColor, setCategoryColor] = useState('#64748b');
   const [categoryParent, setCategoryParent] = useState('');
   const [accountName, setAccountName] = useState(''), [accountKind, setAccountKind] = useState('checking'), [accountOpening, setAccountOpening] = useState('0'), [accountColor, setAccountColor] = useState('#0ea5e9');
-  const [settingsTab, setSettingsTab] = useState<'modules' | 'space'>('modules');
+  const [settingsTab, setSettingsTab] = useState<'modules' | 'preferences' | 'space' | 'audit'>('modules');
   const disabledPages = useAppStore(s => s.disabledPages);
   const togglePage = useAppStore(s => s.togglePage);
   const enableAllPages = useAppStore(s => s.enableAllPages);
@@ -207,6 +208,21 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
           <button
             type="button"
             role="tab"
+            aria-selected={settingsTab === 'preferences'}
+            onClick={() => setSettingsTab('preferences')}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              settingsTab === 'preferences'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <Sliders size={17} />
+            Preferências da Conta
+          </button>
+
+          <button
+            type="button"
+            role="tab"
             aria-selected={settingsTab === 'space'}
             onClick={() => setSettingsTab('space')}
             className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
@@ -215,8 +231,23 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <Sliders size={17} />
+            <Building2 size={17} />
             Espaço e Feriados
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={settingsTab === 'audit'}
+            onClick={() => setSettingsTab('audit')}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              settingsTab === 'audit'
+                ? 'border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <History size={17} />
+            Histórico de Alterações
           </button>
         </div>
 
@@ -350,6 +381,10 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
           </div>
         )}
 
+        {settingsTab === 'preferences' && (
+          <LedgerExtras section="settings" workspace={workspace} money={money} onChanged={onChanged} />
+        )}
+
         {settingsTab === 'space' && (
           data ? (
             <div className="space-y-4">
@@ -360,6 +395,10 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
           ) : (
             <p className={panel}>Carregando configurações do espaço…</p>
           )
+        )}
+
+        {settingsTab === 'audit' && (
+          <LedgerExtras section="audit" workspace={workspace} money={money} onChanged={onChanged} />
         )}
       </div>
     )}

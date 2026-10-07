@@ -65,4 +65,12 @@ describe('All App Pages and Modules management', () => {
     const disabled = ['settings', 'budgets']
     expect(isPageEnabled('settings', disabled)).toBe(true)
   })
+
+  it('contains only tags under Organização group', () => {
+    const orgPages = ALL_APP_PAGES.filter(p => p.group === 'Organização')
+    expect(orgPages).toHaveLength(1)
+    expect(orgPages[0].id).toBe('tags')
+    expect(ALL_APP_PAGES.some(p => p.id === 'notifications')).toBe(false)
+    expect(ALL_APP_PAGES.some(p => p.id === 'audit')).toBe(false)
+  })
 })

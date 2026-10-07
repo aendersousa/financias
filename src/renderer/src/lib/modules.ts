@@ -177,20 +177,6 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     group: 'Organização',
     icon: Tags,
     description: 'Etiquetas para classificar lançamentos por viagens ou projetos.'
-  },
-  {
-    id: 'audit',
-    label: 'Histórico de alterações',
-    group: 'Organização',
-    icon: History,
-    description: 'Trilha de auditoria das ações e modificações realizadas.'
-  },
-  {
-    id: 'notifications',
-    label: 'Notificações',
-    group: 'Organização',
-    icon: Bell,
-    description: 'Alertas de vencimento de contas, faturas e lembretes.'
   }
 ]
 

@@ -19,12 +19,16 @@ const destinations: Record<string, { section: Destination; label: string }> = {
   import_batch:{ section:'imports',label:'Revisar extrato' },category:{ section:'reports',label:'Comparar consumo' }
 };
 const destinationLabels: Record<Destination,string> = { agenda:'Ver na Agenda',cards:'Ver cartões',budgets:'Ver orçamento',reserves:'Ver metas e provisões',dashboard:'Ver Livre para gastar',accounts:'Conferir conta',transactions:'Conferir lançamento',imports:'Revisar extrato',sharing:'Ver membros',reports:'Comparar consumo',foreign_currency:'Confirmar conversões' };
-export default function LedgerNotifications({ workspace,money,onNavigate }: { workspace: LedgerWorkspace; money: (value: number) => string; onNavigate: (section: Destination) => void }) {
+export default function LedgerNotifications({ workspace,money,onNavigate,onUpdateUnread }: { workspace: LedgerWorkspace; money: (value: number) => string; onNavigate: (section: Destination) => void; onUpdateUnread?: (count: number) => void }) {
   const [inbox,setInbox] = useState<Inbox | null>(null);
   const [filter,setFilter] = useState('unread');
   const [busy,setBusy] = useState(false),[error,setError] = useState('');
   const pending = useRef(false);
-  async function load() { setInbox(await ledgerRpc<Inbox>('daily_alerts',{ p_space:workspace.space.id })); }
+  async function load() {
+    const next = await ledgerRpc<Inbox>('daily_alerts',{ p_space:workspace.space.id });
+    setInbox(next);
+    onUpdateUnread?.(next.unread_count);
+  }
   async function run(task: () => Promise<unknown>) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError('');

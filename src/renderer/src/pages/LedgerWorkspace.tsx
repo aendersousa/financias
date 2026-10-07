@@ -55,8 +55,6 @@ const navigation = [
   { id: 'health', label: 'Saúde financeira', icon: Wallet },
   { id: 'closing', label: 'Relatório mensal e fechamento', icon: History },
   { id: 'tags', label: 'Tags', icon: Tags },
-  { id: 'audit', label: 'Histórico de alterações', icon: History },
-  { id: 'notifications', label: 'Notificações', icon: Bell },
   { id: 'settings', label: 'Configurações', icon: Settings }
 ] as const;
 const panelClass = 'card p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -78,9 +76,7 @@ const itemGroupMap: Partial<Record<Section, string>> = {
   reports: 'Acompanhamento',
   health: 'Acompanhamento',
   closing: 'Acompanhamento',
-  tags: 'Organização',
-  audit: 'Organização',
-  notifications: 'Organização'
+  tags: 'Organização'
 };
 const planningSections: Section[] = ['agenda','forecast','budgets','reserves','recurrences','portfolio'];
 const sectionDescriptions: Partial<Record<Section,string>> = {
@@ -91,6 +87,9 @@ const sectionDescriptions: Partial<Record<Section,string>> = {
   agenda:'Compromissos, vencimentos e lembretes do seu espaço', forecast:'Acompanhe o saldo previsto nas suas contas',
   budgets:'Limites de gastos por categoria e mês', reserves:'Organize suas metas, provisões e aportes',
   recurrences:'Receitas e despesas que se repetem', portfolio:'Investimentos, bens, empréstimos e financiamentos',
+  notifications:'Alertas e avisos importantes sobre suas finanças',
+  settings:'Personalização do app, preferências de conta e espaço financeiro',
+  tags:'Tags e etiquetas para classificar lançamentos'
 };
 
 export default function LedgerWorkspace() {
@@ -103,6 +102,7 @@ export default function LedgerWorkspace() {
   const [busy, setBusy] = useState(false);
   const [online,setOnline]=useState(navigator.onLine),[cacheTime,setCacheTime]=useState<string | null>(null),[usingCache,setUsingCache]=useState(false);
   const [logoutCount,setLogoutCount]=useState<number | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const preferencesInitialized = useRef(false);
   const workspaceLoadSequence = useRef(0);
   const privacy = useAppStore(s => s.privacyMode);
@@ -124,7 +124,7 @@ export default function LedgerWorkspace() {
   }
 
   useEffect(() => {
-    if (section !== 'settings' && !isPageActive(section)) {
+    if (section !== 'settings' && section !== 'notifications' && !isPageActive(section)) {
       const fallback = visibleNavigation.find(n => n.id !== 'settings')?.id ?? 'dashboard';
       setSection(fallback as Section);
     }
@@ -133,9 +133,14 @@ export default function LedgerWorkspace() {
   async function reloadData() {
     const sequence=++workspaceLoadSequence.current;
     const next = await loadLedgerWorkspace();
-    const [reserves, allSpaces] = await Promise.all([ledgerRpc<ReserveSummary>('reserve_summary',{ p_space:next.space.id }), ledgerRpc<FinancialSpace[]>('my_spaces', {})]);
+    const [reserves, allSpaces, alerts] = await Promise.all([
+      ledgerRpc<ReserveSummary>('reserve_summary',{ p_space:next.space.id }),
+      ledgerRpc<FinancialSpace[]>('my_spaces', {}),
+      ledgerRpc<{ unread_count: number }>('daily_alerts', { p_space: next.space.id }).catch(() => ({ unread_count: 0 }))
+    ]);
     if(sequence!==workspaceLoadSequence.current) return;
     setWorkspace(next); setReserveSummary(reserves); setSpaces(allSpaces);
+    setUnreadNotifications(alerts.unread_count);
     setUsingCache(false); setCacheTime(new Date().toISOString());
     await cacheWorkspace(next,next.loadedForUserId).catch(() => setError('Os dados foram carregados, mas não foi possível salvar uma cópia neste aparelho.'));
   }
@@ -205,6 +210,24 @@ export default function LedgerWorkspace() {
       </div>
       <div className="flex items-center gap-2">
         <button
+          type="button"
+          onClick={() => navigate('notifications')}
+          aria-label={`Notificações${unreadNotifications > 0 ? ` (${unreadNotifications} não lidas)` : ''}`}
+          title="Central de notificações"
+          className={`relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800 ${
+            section === 'notifications'
+              ? 'border-brand-500 text-brand-600 dark:border-brand-400 dark:text-brand-400'
+              : ''
+          }`}
+        >
+          <Bell size={15} />
+          {unreadNotifications > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white shadow ring-1 ring-white dark:ring-slate-900">
+              {unreadNotifications > 99 ? '99+' : unreadNotifications}
+            </span>
+          )}
+        </button>
+        <button
           onClick={togglePrivacy}
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
         >
@@ -233,7 +256,7 @@ export default function LedgerWorkspace() {
     <div className="grid w-full gap-6 p-4 md:grid-cols-[210px_minmax(0,1fr)] md:p-6">
       <nav className="flex gap-1 overflow-x-auto md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] md:flex-col md:self-start md:overflow-y-auto" aria-label="Navegação principal">{visibleNavigation.map(item => <Fragment key={item.id}>{groupFirstId.has(item.id) && itemGroupMap[item.id] && <p className="hidden px-4 pb-1 pt-3 text-xs font-medium text-slate-500 md:block">{itemGroupMap[item.id]}</p>}<button onClick={() => navigate(item.id)} aria-current={section === item.id ? 'page' : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium ${section === item.id ? 'nav-active' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}><item.icon size={18} className="shrink-0"/>{item.label}</button></Fragment>)}</nav>
       <main className="min-w-0 space-y-5">
-        <div className="workspace-header flex flex-wrap items-center justify-between gap-3"><PageHeader icon={navigation.find(n => n.id === section)?.icon ?? LayoutDashboard} title={navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'') ?? 'WalletUp'} subtitle={sectionDescriptions[section]} /></div>
+        <div className="workspace-header flex flex-wrap items-center justify-between gap-3"><PageHeader icon={navigation.find(n => n.id === section)?.icon ?? (section === 'notifications' ? Bell : LayoutDashboard)} title={navigation.find(n => n.id === section)?.label.replace(/^\d\. /,'') ?? (section === 'notifications' ? 'Notificações' : 'WalletUp')} subtitle={sectionDescriptions[section]} /></div>
         {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</div>}
         {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
         {!workspace && <div className={panelClass}>{busy ? 'Carregando…' : 'Não foi possível abrir seus dados. Use Atualizar para tentar novamente.'}</div>}
@@ -249,7 +272,7 @@ export default function LedgerWorkspace() {
         {workspace && section === 'transactions' && <LedgerTransactions key={workspace.space.id} workspace={workspace} money={money} reserves={reserveSummary} online={online&&!usingCache} onChanged={reloadData}/>}
         {workspace && online && !usingCache && <>
           {['accounts','categories','settings'].includes(section) && <LedgerManagement key={`management-${workspace.space.id}-${section}`} section={section as 'accounts' | 'categories' | 'settings'} workspace={workspace} money={money} onChanged={refresh}/>}
-          {extraSection && !['portfolio','closing','reserves','notifications','reports','health','imports','agenda','sharing','budgets','foreign_currency','forecast'].includes(section) && <LedgerExtras key={`${workspace.space.id}-${section}`} section={section as ExtraSection} workspace={workspace} money={money} onChanged={refresh}/>}
+          {['tags', 'recurrences'].includes(section) && <LedgerExtras key={`${workspace.space.id}-${section}`} section={section as ExtraSection} workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'budgets' && <LedgerBudgets key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'people' && <LedgerPeople key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh} onAgenda={()=>navigate('agenda')}/>}
           {section === 'foreign_currency' && <LedgerForeignCurrency key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/>}
@@ -260,7 +283,7 @@ export default function LedgerWorkspace() {
           {section === 'health' && <LedgerFinancialHealth key={workspace.space.id} workspace={workspace} money={money} privacy={privacy}/>}
           {section === 'forecast' && <LedgerCashForecast key={workspace.space.id} workspace={workspace} money={money} privacy={privacy}/>}
           {section === 'reserves' && <><LedgerReserves key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/><LedgerReservePlan key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/></>}
-          {section === 'notifications' && <LedgerNotifications key={workspace.space.id} workspace={workspace} money={money} onNavigate={navigate}/>}
+          {section === 'notifications' && <LedgerNotifications key={workspace.space.id} workspace={workspace} money={money} onNavigate={navigate} onUpdateUnread={setUnreadNotifications}/>}
           {section === 'portfolio' && <LedgerPortfolio key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'closing' && <LedgerClosing workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'cards' && <><LedgerCardManagement key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/><LedgerCardOperations workspace={workspace} money={money} onChanged={refresh}/></>}
