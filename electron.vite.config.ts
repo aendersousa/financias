@@ -13,7 +13,10 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
-    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      'import.meta.env.VITE_FINANCIAL_MODEL': JSON.stringify(process.env.VITE_FINANCIAL_MODEL || 'ledger')
+    },
     plugins: [react(), tailwindcss()],
     build: {
       rollupOptions: {

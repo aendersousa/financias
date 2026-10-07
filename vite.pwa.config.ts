@@ -9,7 +9,10 @@ export default defineConfig({
   root: 'src/renderer',
   envDir: __dirname,
   base: '/financias/',
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    'import.meta.env.VITE_FINANCIAL_MODEL': JSON.stringify(process.env.VITE_FINANCIAL_MODEL || 'ledger')
+  },
   plugins: [
     {
       name: 'local-supabase-development-policy',
