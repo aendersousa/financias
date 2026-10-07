@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient';
 
 export interface LedgerAccount { id: string; name: string; ledger_account_id: string; balance_cents: number; kind: string; color?: string | null; liquidity: 'cash' | 'benefit' | 'investment' | 'property' }
 export interface LedgerCategory { id: string; name: string; kind: 'income' | 'expense'; ledger_account_id: string | null; parent_id: string | null }
-export interface LedgerCard { id: string; name: string; granted_cents: number; used_cents: number; free_cents: number }
+export interface LedgerCard { id: string; name: string; granted_cents: number; used_cents: number; free_cents: number; card_type?: 'both' | 'credit' | 'debit' }
 export interface LedgerCommitment { id: string; title: string; direction: 'inflow' | 'outflow' | null; effective_due_on: string; remaining_cents: number | null; settlement_status: string; kind: string; version: number }
 export interface LedgerTransactionEntry { account_name: string; owner_type: string; account_class: string; amount_cents: number }
 export interface LedgerTransaction { id: string; description: string; occurred_on: string; kind: string; status: string; version: number; amount_cents?: number; entries?: LedgerTransactionEntry[]; notes?: string | null }

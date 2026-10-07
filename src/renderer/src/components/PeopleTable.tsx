@@ -6,6 +6,12 @@ export interface PersonItem {
   id: string
   nickname: string
   balance_cents: number
+  received_cents?: number
+  paid_cents?: number
+  lent_cents?: number
+  borrowed_cents?: number
+  interest_received_cents?: number
+  interest_paid_cents?: number
   archived_at?: string | null
   notes?: string | null
   opening_on?: string | null
@@ -33,11 +39,12 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
     <table aria-label="Pessoas" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50">
         <tr>
-          <th scope="col" className="w-[36%] px-3 py-2.5 sm:w-[26%] sm:px-4">Pessoa</th>
+          <th scope="col" className="w-[36%] px-3 py-2.5 sm:w-[22%] sm:px-4">Pessoa</th>
           <th scope="col" className="hidden lg:table-cell lg:w-[13%] px-3 py-2.5">Início</th>
-          <th scope="col" className="hidden sm:table-cell sm:w-[18%] px-3 py-2.5">Próx. Pagamento</th>
+          <th scope="col" className="hidden sm:table-cell sm:w-[16%] px-3 py-2.5">Próx. Pagamento</th>
           <th scope="col" className="hidden md:table-cell md:w-[13%] px-3 py-2.5">Situação</th>
-          <th scope="col" className="w-[32%] px-3 py-2.5 text-right sm:w-[16%] sm:px-4">Saldo</th>
+          <th scope="col" className="hidden w-[13%] px-3 py-2.5 text-right xl:table-cell">Emprestado / pago</th>
+          <th scope="col" className="w-[32%] px-3 py-2.5 text-right sm:w-[16%] sm:px-4">Falta pagar</th>
           <th scope="col" className="w-[32%] px-3 text-right sm:w-[14%] sm:px-4"><span className="sr-only">Ações</span></th>
         </tr>
       </thead>
@@ -68,6 +75,7 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                       {renderName ? renderName(person) : <span>{person.nickname}</span>}
                     </div>
                     {person.archived_at && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Arquivada</p>}
+                    <div className="mt-1 space-y-0.5 text-xs text-slate-500 dark:text-slate-400 xl:hidden"><p>Total emprestado: {person.lent_cents===undefined?'—':money(isPayable?person.borrowed_cents??0:person.lent_cents)}</p><p>Juros pagos: {person.interest_received_cents===undefined?'—':money(isPayable?person.interest_paid_cents??0:person.interest_received_cents)}</p></div>
 
                     {/* Mobile: badges e datas resumidas */}
                     <div className="mt-1 sm:hidden flex flex-wrap items-center gap-1.5">
@@ -160,6 +168,7 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                 )}
               </td>
 
+              <td className="hidden px-3 py-3 text-right tabular-nums xl:table-cell"><p className="text-xs text-slate-500">Total emprestado</p><p className="font-semibold">{person.lent_cents===undefined?'—':money(isPayable?person.borrowed_cents??0:person.lent_cents)}</p><p className="mt-1 text-xs text-slate-500">Já pago: {person.received_cents===undefined?'—':money(isPayable?person.paid_cents??0:hasDebt?person.received_cents:person.received_cents+(person.paid_cents??0))}</p><p title="Soma dos pagamentos em que os juros foram informados separadamente. Juros previstos não entram neste total." className="mt-1 text-xs text-slate-500">Juros pagos: {person.interest_received_cents===undefined?'—':money(isPayable?person.interest_paid_cents??0:person.interest_received_cents)}</p></td>
               {/* Saldo */}
               <td className="px-3 py-3 text-right font-medium sm:px-4">
                 <span className={`block font-semibold ${
@@ -171,6 +180,8 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                 }`}>
                   {money(Math.abs(person.balance_cents))}
                 </span>
+                <span className="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400 xl:hidden">Já pago: {person.received_cents===undefined?'—':money(isPayable?person.paid_cents??0:hasDebt?person.received_cents:person.received_cents+(person.paid_cents??0))}</span>
+                {isPayable&&<span className="mt-1 block text-xs font-normal text-slate-500">Por você</span>}
               </td>
 
               {/* Ações */}
@@ -178,10 +189,10 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                 {renderActions?.(person)}
               </td>
             </tr>
-            {editor && <tr><td colSpan={6} className="p-3 sm:p-4">{editor}</td></tr>}
+            {editor && <tr><td colSpan={7} className="p-3 sm:p-4">{editor}</td></tr>}
           </Fragment>
         })}
-        {!people.length && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">Nenhuma pessoa encontrada com os filtros atuais.</td></tr>}
+        {!people.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">Nenhuma pessoa encontrada com os filtros atuais.</td></tr>}
       </tbody>
     </table>
   </div>

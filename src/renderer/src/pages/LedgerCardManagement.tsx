@@ -13,6 +13,7 @@ interface Card {
   closing_day:number; due_day:number; closing_day_purchase_goes_next:boolean; installment_remainder:string; default_payment_financial_account_id:string | null; default_refund_model:string;
   limit_release_days_pix:number; limit_release_days_debit:number; limit_release_days_boleto:number; revolving_interest_monthly_percent:number | null; late_fee_percent:number; late_interest_monthly_percent:number;
   balance_cents:number; granted_cents:number; used_cents:number; free_cents:number; opening_bank_used_cents:number | null; opening_difference_cents:number | null; holders:Holder[]; authorizations:Authorization[]; statements:Statement[];
+  card_type?: 'both' | 'credit' | 'debit';
   limit_history:{ id:string; valid_from:string; limit_cents:number; reason:string | null }[]; recurrences:{ id:string; title:string }[]; commitments:{ id:string; title:string; due_on:string }[]; out_of_period_purchases:{ transaction_id:string; description:string; on:string }[];
 }
 const panel='card p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -25,6 +26,7 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
   const [cards,setCards]=useState<Card[] | null>(null);
   const [selected,setSelected]=useState('');
   const [mode,setMode]=useState<Mode>('settings');
+  const [newCardType,setNewCardType]=useState<'both' | 'credit' | 'debit'>('both');
   const [holderId,setHolderId]=useState('');
   const [authorizationId,setAuthorizationId]=useState('');
   const [statementId,setStatementId]=useState('');
@@ -61,10 +63,21 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     pending.current=true; setBusy(true); setError(''); setNotice('');
     let created=false;
     try {
-      const limit=parseBrlCents(text('limit'));
-      if(limit<=0) throw new Error('Informe um limite maior que zero.');
-      await ledgerRpc('create_credit_card',{p_space:workspace.space.id,p_name:text('name'),p_limit_cents:limit,p_closing_day:Number(text('closing')),p_due_day:Number(text('due')),p_payment_account:text('account') || null});
-      created=true; form.reset(); setSelected('');
+      const type = newCardType;
+      const limit = type === 'debit' ? 0 : parseBrlCents(text('limit'));
+      if(type !== 'debit' && limit <= 0) throw new Error('Informe um limite maior que zero.');
+      const closingDay = type === 'debit' ? 1 : Number(text('closing'));
+      const dueDay = type === 'debit' ? 10 : Number(text('due'));
+      await ledgerRpc('create_credit_card',{
+        p_space:workspace.space.id,
+        p_name:text('name'),
+        p_limit_cents:limit,
+        p_closing_day:closingDay,
+        p_due_day:dueDay,
+        p_payment_account:text('account') || null,
+        p_card_type:type
+      });
+      created=true; form.reset(); setNewCardType('both'); setSelected('');
       await load(); await onChanged(); setNotice('Cartão adicionado.');
     } catch(failure) {
       setError(created ? 'O cartão foi adicionado, mas não foi possível atualizar a lista. Use Atualizar para conferir.' : failure instanceof Error ? failure.message : 'Não foi possível adicionar o cartão. Confira os dados.');
@@ -89,7 +102,7 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     const form=new FormData(event.currentTarget),text=(name:string) => String(form.get(name) ?? '').trim(),amount=(name:string) => parseBrlCents(text(name) || '0');
     try {
       if(mode==='settings') {
-        const payload:Record<string,unknown>={name:text('name'),issuer_name:text('issuer_name') || null,brand:text('brand') || null,last_digits:text('last_digits') || null,closing_day:Number(text('closing_day')),due_day:Number(text('due_day')),closing_day_purchase_goes_next:form.has('goes_next'),installment_remainder:text('remainder'),default_payment_financial_account_id:text('account') || null,default_refund_model:text('refund_model'),limit_release_days_pix:Number(text('release_pix')),limit_release_days_debit:Number(text('release_debit')),limit_release_days_boleto:Number(text('release_boleto')),revolving_interest_monthly_percent:text('revolving') ? Number(text('revolving').replace(',','.')) : null,late_fee_percent:Number(text('late_fee').replace(',','.')),late_interest_monthly_percent:Number(text('late_interest').replace(',','.'))};
+        const payload:Record<string,unknown>={name:text('name'),card_type:text('card_type') || card.card_type || 'both',issuer_name:text('issuer_name') || null,brand:text('brand') || null,last_digits:text('last_digits') || null,closing_day:Number(text('closing_day')),due_day:Number(text('due_day')),closing_day_purchase_goes_next:form.has('goes_next'),installment_remainder:text('remainder'),default_payment_financial_account_id:text('account') || null,default_refund_model:text('refund_model'),limit_release_days_pix:Number(text('release_pix')),limit_release_days_debit:Number(text('release_debit')),limit_release_days_boleto:Number(text('release_boleto')),revolving_interest_monthly_percent:text('revolving') ? Number(text('revolving').replace(',','.')) : null,late_fee_percent:Number(text('late_fee').replace(',','.')),late_interest_monthly_percent:Number(text('late_interest').replace(',','.'))};
         if(Object.values(payload).some(value => typeof value==='number' && !Number.isFinite(value))) throw new Error('Informe números válidos nas datas, prazos e taxas.');
         await mutate('manage_card',{p_card:card.id,p_version:card.version,p_action:'settings',p_payload:payload},'Regras atualizadas. As parcelas mantiveram suas faturas e valores.');
       } else if(mode==='limit') await mutate('manage_card',{p_card:card.id,p_version:card.version,p_action:'limit',p_payload:{amount_cents:amount('amount'),valid_from:text('date'),reason:text('reason')}},'Novo limite registrado no histórico.');
@@ -117,6 +130,11 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{card.name}</h2><p className="mt-1 text-sm text-slate-500">Configure portadores, datas, limite e compras em processamento.</p></div><button type="button" disabled={busy} onClick={() => selectCard(card.id)} className="text-sm text-slate-500">Fechar</button></div>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
+    {card.card_type === 'debit' && (
+      <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-xs sm:text-sm text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200">
+        Cartão cadastrado na modalidade <strong>Apenas Débito</strong>. As compras no débito debitam na hora da conta bancária vinculada.
+      </div>
+    )}
     <dl className="grid gap-3 sm:grid-cols-3">{[['Limite concedido',card.granted_cents],['Limite utilizado',card.used_cents],['Limite livre',card.free_cents]].map(([label,value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-xl font-semibold">{money(value as number)}</dd></div>)}</dl>
     {card.status==='cancelled' && (card.recurrences.length>0 || card.commitments.length>0) && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Redirecione os pagamentos deste cartão na Agenda e nas recorrências.</p>{[...card.recurrences,...card.commitments].map((item,index) => <p key={`${item.id}-${index}`} className="mt-1">{item.title}</p>)}</div>}
     {card.out_of_period_purchases.length>0 && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Confira as compras fora do novo período da fatura.</p>{card.out_of_period_purchases.map(item => <p key={item.transaction_id} className="mt-1">{date(item.on)} · {item.description}</p>)}<p className="mt-2">Ajuste a fatura do lançamento enquanto as faturas de origem e destino estiverem abertas.</p></div>}
@@ -124,7 +142,16 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
       <div className="flex flex-wrap gap-2">{card.status!=='archived' && ([['settings','Regras'],['holder','Portadores'],['authorization','Autorizações'],['limit','Limite'],['statement','Datas de fatura']] as const).filter(([value]) => administrator || value==='authorization').map(([value,label]) => <button key={value} disabled={busy} onClick={() => changeMode(value)} className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${mode===value ? 'bg-brand-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{label}</button>)}{administrator && card.status==='active' && card.started_on===null && card.balance_cents===0 && <button disabled={busy} onClick={() => changeMode('opening')} className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${mode==='opening' ? 'bg-brand-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>Cartão já em uso</button>}</div>
       {(administrator || mode==='authorization') && card.status!=='archived' && !(mode==='opening' && card.started_on!==null) && <form key={`${card.id}-${mode}-${holderId}-${authorizationId}-${statementId}-${card.version}`} onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         {mode==='settings' && <>
-          {field('Nome','name',card.name,'text',true)}{field('Emissor','issuer_name',card.issuer_name ?? '')}{field('Bandeira','brand',card.brand ?? '')}{field('Últimos quatro dígitos','last_digits',card.last_digits ?? '')}{field('Dia de fechamento','closing_day',card.closing_day,'number',true)}{field('Dia de vencimento','due_day',card.due_day,'number',true)}
+          {field('Nome','name',card.name,'text',true)}
+          <label className="grid gap-1.5 text-sm">
+            Tipo do cartão
+            <select aria-label="Tipo do cartão" name="card_type" defaultValue={card.card_type ?? 'both'} className={input}>
+              <option value="both">Débito e Crédito</option>
+              <option value="credit">Apenas Crédito</option>
+              <option value="debit">Apenas Débito</option>
+            </select>
+          </label>
+          {field('Emissor','issuer_name',card.issuer_name ?? '')}{field('Bandeira','brand',card.brand ?? '')}{field('Últimos quatro dígitos','last_digits',card.last_digits ?? '')}{field('Dia de fechamento','closing_day',card.closing_day,'number',true)}{field('Dia de vencimento','due_day',card.due_day,'number',true)}
           <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" name="goes_next" defaultChecked={card.closing_day_purchase_goes_next}/>Compra no dia do fechamento vai para a fatura seguinte</label>
           <label className="grid gap-1.5 text-sm">Centavo restante nas parcelas<select aria-label="Centavo restante nas parcelas" name="remainder" defaultValue={card.installment_remainder} className={input}><option value="first">Primeira parcela</option><option value="last">Última parcela</option></select></label>
           <label className="grid gap-1.5 text-sm">Conta de pagamento padrão<select aria-label="Conta de pagamento padrão" name="account" defaultValue={card.default_payment_financial_account_id ?? ''} className={input}><option value="">Selecionar ao pagar</option>{workspace.accounts.filter(item => ['cash','investment'].includes(item.liquidity)).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -168,17 +195,40 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
   return <div className="space-y-6">
     {administrator && <form aria-label="Adicionar cartão" onSubmit={createCard} className="card flex flex-wrap items-end gap-3 p-4">
       <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-name" className="field-label">Nome</label><input id="new-card-name" name="name" disabled={busy} required maxLength={100} placeholder="Ex: Nubank Mastercard" className="field-input" /></div>
-      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-limit" className="field-label">Limite</label><CurrencyInput id="new-card-limit" name="limit" disabled={busy} required placeholder="0,00" className="w-full sm:w-36" /></div>
-      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-closing" className="field-label">Dia de fechamento</label><input id="new-card-closing" name="closing" disabled={busy} required type="number" min={1} max={31} defaultValue="1" className="field-input w-full sm:w-32" /></div>
-      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-due" className="field-label">Dia de vencimento</label><input id="new-card-due" name="due" disabled={busy} required type="number" min={1} max={31} defaultValue="10" className="field-input w-full sm:w-32" /></div>
-      <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-account" className="field-label">Conta de pagamento</label><select id="new-card-account" name="account" disabled={busy} className="field-input w-full sm:max-w-56"><option value="">Selecionar ao pagar</option>{workspace.accounts.filter(account => ['cash','investment'].includes(account.liquidity)).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div>
+      <div className="flex w-full flex-col gap-1 sm:w-auto">
+        <label htmlFor="new-card-type" className="field-label">Tipo do cartão</label>
+        <select
+          id="new-card-type"
+          value={newCardType}
+          onChange={e => setNewCardType(e.target.value as 'both' | 'credit' | 'debit')}
+          disabled={busy}
+          className="field-input w-full sm:w-44"
+        >
+          <option value="both">Débito e Crédito</option>
+          <option value="credit">Apenas Crédito</option>
+          <option value="debit">Apenas Débito</option>
+        </select>
+      </div>
+      {newCardType !== 'debit' && <>
+        <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-limit" className="field-label">Limite</label><CurrencyInput id="new-card-limit" name="limit" disabled={busy} required placeholder="0,00" className="w-full sm:w-36" /></div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-closing" className="field-label">Dia de fechamento</label><input id="new-card-closing" name="closing" disabled={busy} required type="number" min={1} max={31} defaultValue="1" className="field-input w-full sm:w-32" /></div>
+        <div className="flex w-full flex-col gap-1 sm:w-auto"><label htmlFor="new-card-due" className="field-label">Dia de vencimento</label><input id="new-card-due" name="due" disabled={busy} required type="number" min={1} max={31} defaultValue="10" className="field-input w-full sm:w-32" /></div>
+      </>}
+      <div className="flex w-full flex-col gap-1 sm:w-auto">
+        <label htmlFor="new-card-account" className="field-label">{newCardType === 'debit' ? 'Conta vinculada (débito) *' : 'Conta de pagamento'}</label>
+        <select id="new-card-account" name="account" disabled={busy} required={newCardType === 'debit'} className="field-input w-full sm:max-w-56">
+          <option value="">{newCardType === 'debit' ? 'Selecione a conta' : 'Selecionar ao pagar'}</option>
+          {workspace.accounts.filter(account => ['cash','investment'].includes(account.liquidity)).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+        </select>
+      </div>
       <button disabled={busy} className="btn-primary">Adicionar cartão</button>
     </form>}
     {!card && error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {!card && notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
     <CardTable cards={(cards ?? workspace.cards).map(item => {
       const rules=cards?.find(value => value.id===item.id);
-      return {...item,limit:money(item.granted_cents),used:money(item.used_cents),available:money(item.free_cents),closingDay:rules?.closing_day,dueDay:rules?.due_day,status:rules?.status};
+      const cardType = rules?.card_type ?? (item as any).card_type ?? 'both';
+      return {...item,cardType,limit:money(item.granted_cents),used:money(item.used_cents),available:money(item.free_cents),closingDay:rules?.closing_day,dueDay:rules?.due_day,status:rules?.status};
     })}
       renderName={item => writer ? <button type="button" disabled={busy || !cards} onClick={() => selectCard(item.id)} aria-label={`Editar cartão ${item.name}`} aria-expanded={selected===item.id} className="break-words text-left">{item.name}</button> : <span>{item.name}</span>}
       renderActions={item => <button type="button" disabled={busy || !cards} onClick={() => selectCard(item.id)} aria-label={`Ver detalhes do cartão ${item.name}`} aria-expanded={selected===item.id} className="text-xs font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-400">Detalhes</button>}

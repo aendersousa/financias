@@ -49,6 +49,12 @@ interface Contact {
   opening_on: string | null;
   balance_cents: number;
   scheduled_balance_cents: number;
+  received_cents?: number;
+  paid_cents?: number;
+  lent_cents?: number;
+  borrowed_cents?: number;
+  interest_received_cents?: number;
+  interest_paid_cents?: number;
 }
 
 interface PersonDetail {
@@ -265,6 +271,8 @@ export default function LedgerPeople({
 
     try {
       const amount = parseBrlCents(text('amount'));
+      const interest = text('interest') ? parseBrlCents(text('interest')) : 0;
+      if (interest < 0 || interest > amount) throw new Error('Os juros devem estar entre zero e o valor total pago.');
       if (amount <= 0) throw new Error('Informe um valor maior que zero.');
       const targetPerson = text('person') || movementPersonId;
       if (!targetPerson) throw new Error('Selecione uma pessoa.');
@@ -285,7 +293,7 @@ export default function LedgerPeople({
       setError('');
       setNotice('');
 
-      await ledgerRpc('settle_person', {
+      await ledgerRpc(interest>0?'settle_person_with_interest':'settle_person', {
         p_space: workspace.space.id,
         p_person: targetPerson,
         p_account: text('account'),
@@ -293,7 +301,8 @@ export default function LedgerPeople({
         p_amount_cents: amount,
         p_occurred_on: text('date'),
         p_client_uuid: crypto.randomUUID(),
-        p_description: finalDesc
+        p_description: finalDesc,
+        ...(interest>0?{p_interest_cents:interest,p_category:text('interest_category')}: {})
       });
 
       await onChanged();
@@ -2727,6 +2736,7 @@ export default function LedgerPeople({
             </div>
           </div>
 
+          {['receive','pay'].includes(movementDirection)&&<div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-sm"><span>Desse valor, quanto é juros?</span><CurrencyInput name="interest" aria-label="Juros incluídos no pagamento" placeholder="0,00" className={input}/><span className="text-xs text-slate-500">O valor acima é o total pago. Só a parte sem juros reduz a dívida.</span></label><label className="grid gap-1.5 text-sm"><span>Categoria dos juros</span><select name="interest_category" aria-label="Categoria dos juros" className={input}><option value="">Selecione se houver juros</option>{workspace.categories.filter(category=>category.ledger_account_id&&category.kind===(movementDirection==='receive'?'income':'expense')).map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select><span className="text-xs text-slate-500">Juros recebidos são receita; juros pagos são despesa.</span></label></div>}
           <div className="grid gap-1.5 text-sm">
             <label htmlFor="movement-description" className="font-medium text-slate-700 dark:text-slate-300">
               Descrição no extrato (opcional)

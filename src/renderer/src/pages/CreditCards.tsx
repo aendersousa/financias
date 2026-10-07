@@ -14,6 +14,7 @@ export default function CreditCards() {
   const removeCreditCard = useAppStore((s) => s.removeCreditCard)
 
   const [nome, setNome] = useState('')
+  const [tipoCartao, setTipoCartao] = useState<'both' | 'credit' | 'debit'>('both')
   const [limite, setLimite] = useState('')
   const [diaFechamento, setDiaFechamento] = useState('1')
   const [diaVencimento, setDiaVencimento] = useState('10')
@@ -27,13 +28,15 @@ export default function CreditCards() {
     try {
       await addCreditCard({
         nome: nome.trim(),
-        limite: parseCurrencyToNumber(limite),
-        dia_fechamento: Number(diaFechamento),
-        dia_vencimento: Number(diaVencimento),
-        conta_pagamento_id: contaPagamentoId ? Number(contaPagamentoId) : null
+        limite: tipoCartao === 'debit' ? 0 : parseCurrencyToNumber(limite),
+        dia_fechamento: tipoCartao === 'debit' ? 1 : Number(diaFechamento),
+        dia_vencimento: tipoCartao === 'debit' ? 10 : Number(diaVencimento),
+        conta_pagamento_id: contaPagamentoId ? Number(contaPagamentoId) : null,
+        tipo_cartao: tipoCartao
       })
       setNome('')
       setLimite('')
+      setTipoCartao('both')
     } finally {
       setSubmitting(false)
     }
@@ -56,47 +59,67 @@ export default function CreditCards() {
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label htmlFor="legacy-card-limit" className="field-label">Limite</label>
-          <CurrencyInput
-            id="legacy-card-limit"
-            value={limite}
-            onChange={(e) => setLimite(e.target.value)}
-            className="w-full sm:w-32"
-          />
+          <label htmlFor="legacy-card-type" className="field-label">Tipo do cartão</label>
+          <select
+            id="legacy-card-type"
+            value={tipoCartao}
+            onChange={(e) => setTipoCartao(e.target.value as 'both' | 'credit' | 'debit')}
+            className="field-input"
+          >
+            <option value="both">Débito e Crédito</option>
+            <option value="credit">Apenas Crédito</option>
+            <option value="debit">Apenas Débito</option>
+          </select>
         </div>
+        {tipoCartao !== 'debit' && (
+          <>
+            <div className="flex w-full flex-col gap-1 sm:w-auto">
+              <label htmlFor="legacy-card-limit" className="field-label">Limite</label>
+              <CurrencyInput
+                id="legacy-card-limit"
+                value={limite}
+                onChange={(e) => setLimite(e.target.value)}
+                className="w-full sm:w-32"
+              />
+            </div>
+            <div className="flex w-full flex-col gap-1 sm:w-auto">
+              <label htmlFor="legacy-card-closing-day" className="field-label">Dia fechamento</label>
+              <input
+                id="legacy-card-closing-day"
+                type="number"
+                min="1"
+                max="31"
+                value={diaFechamento}
+                onChange={(e) => setDiaFechamento(e.target.value)}
+                className="field-input w-full sm:w-24"
+              />
+            </div>
+            <div className="flex w-full flex-col gap-1 sm:w-auto">
+              <label htmlFor="legacy-card-due-day" className="field-label">Dia vencimento</label>
+              <input
+                id="legacy-card-due-day"
+                type="number"
+                min="1"
+                max="31"
+                value={diaVencimento}
+                onChange={(e) => setDiaVencimento(e.target.value)}
+                className="field-input w-full sm:w-24"
+              />
+            </div>
+          </>
+        )}
         <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label htmlFor="legacy-card-closing-day" className="field-label">Dia fechamento</label>
-          <input
-            id="legacy-card-closing-day"
-            type="number"
-            min="1"
-            max="31"
-            value={diaFechamento}
-            onChange={(e) => setDiaFechamento(e.target.value)}
-            className="field-input w-full sm:w-24"
-          />
-        </div>
-        <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label htmlFor="legacy-card-due-day" className="field-label">Dia vencimento</label>
-          <input
-            id="legacy-card-due-day"
-            type="number"
-            min="1"
-            max="31"
-            value={diaVencimento}
-            onChange={(e) => setDiaVencimento(e.target.value)}
-            className="field-input w-full sm:w-24"
-          />
-        </div>
-        <div className="flex w-full flex-col gap-1 sm:w-auto">
-          <label htmlFor="legacy-card-payment-account" className="field-label">Conta de pagamento</label>
+          <label htmlFor="legacy-card-payment-account" className="field-label">
+            {tipoCartao === 'debit' ? 'Conta vinculada (débito)' : 'Conta de pagamento'}
+          </label>
           <select
             id="legacy-card-payment-account"
             value={contaPagamentoId}
             onChange={(e) => setContaPagamentoId(e.target.value ? Number(e.target.value) : '')}
             className="field-input"
+            required={tipoCartao === 'debit'}
           >
-            <option value="">Nenhuma</option>
+            <option value="">{tipoCartao === 'debit' ? 'Selecione a conta' : 'Nenhuma'}</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.nome}
@@ -113,6 +136,7 @@ export default function CreditCards() {
         cards={creditCards.map(card => ({
           id: card.id,
           name: card.nome,
+          cardType: card.tipo_cartao ?? 'both',
           limit: formatCurrency(card.limite),
           used: <span className={card.fatura_atual > card.limite ? 'font-medium text-red-500' : 'font-medium'}>{formatCurrency(card.fatura_atual)}</span>,
           available: <span className={card.fatura_atual > card.limite ? 'text-red-500' : undefined}>{formatCurrency(card.limite - card.fatura_atual)}</span>,

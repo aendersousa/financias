@@ -289,7 +289,7 @@ export default function LedgerWorkspace() {
           {section === 'cards' && <><LedgerCardManagement key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/><LedgerCardOperations workspace={workspace} money={money} onChanged={refresh}/></>}
         </>}
         {workspace && section === 'accounts' && (!online || usingCache) && <AccountTable accounts={workspace.accounts.map(account => ({ ...account, type: accountKindLabels[account.kind] ?? account.kind, balance: money(account.balance_cents) }))} />}
-        {workspace && section === 'cards' && (!online || usingCache) && <CardTable cards={workspace.cards.map(card => ({ ...card, limit: money(card.granted_cents), used: money(card.used_cents), available: money(card.free_cents) }))} />}
+        {workspace && section === 'cards' && (!online || usingCache) && <CardTable cards={workspace.cards.map(card => ({ ...card, cardType: card.card_type ?? 'both', limit: money(card.granted_cents), used: money(card.used_cents), available: money(card.free_cents) }))} />}
         {workspace && section === 'people' && (!online || usingCache) && <PeopleTable people={workspace.people.filter(person => !person.archived_at)} money={money} />}
         {workspace && section === 'categories' && (!online || usingCache) && <CategoryPanels categories={workspace.categories} />}
       </main>
