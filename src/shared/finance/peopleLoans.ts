@@ -1,6 +1,7 @@
 import { parseBrlCents } from './money';
 
 export type PeopleLoanFrequency = 'monthly' | 'daily' | 'weekly';
+export type PeopleLoanPayMode = 'installments' | 'single' | 'indefinite';
 
 export interface PeopleLoanCalculationInput {
   principalInput: string;
@@ -11,7 +12,8 @@ export interface PeopleLoanCalculationInput {
   months?: number;
   installmentsCount?: number;
   frequency?: PeopleLoanFrequency;
-  payMode: 'installments' | 'single';
+  payMode: PeopleLoanPayMode;
+  startDate?: string;
   firstDueDate: string;
   today: string;
 }
@@ -30,9 +32,40 @@ export interface PeopleLoanCalculationResult {
   months: number;
   count: number;
   frequency: PeopleLoanFrequency;
+  payMode: PeopleLoanPayMode;
   baseInstallmentCents: number;
   effectiveRate: number;
   schedule: PeopleLoanScheduleItem[];
+  isIndefinite?: boolean;
+  elapsedMonths?: number;
+  elapsedDays?: number;
+  monthlyInterestCents?: number;
+  dailyInterestCents?: number;
+  accumulatedInterestCents?: number;
+  nextDueDate?: string;
+}
+
+export function calculateMonthsElapsed(startDateIso: string, currentDateIso: string): number {
+  if (!startDateIso || !currentDateIso) return 0;
+  const partsStart = startDateIso.split('-').map(Number);
+  const partsCur = currentDateIso.split('-').map(Number);
+  if (partsStart.length !== 3 || partsCur.length !== 3 || partsStart.some(isNaN) || partsCur.some(isNaN)) return 0;
+  const [startY, startM, startD] = partsStart;
+  const [curY, curM, curD] = partsCur;
+
+  let months = (curY - startY) * 12 + (curM - startM);
+  if (curD < startD) {
+    months = Math.max(0, months - 1);
+  }
+  return Math.max(0, months);
+}
+
+export function calculateDaysElapsed(startDateIso: string, currentDateIso: string): number {
+  if (!startDateIso || !currentDateIso) return 0;
+  const d1 = new Date(startDateIso + 'T00:00:00Z').getTime();
+  const d2 = new Date(currentDateIso + 'T00:00:00Z').getTime();
+  if (isNaN(d1) || isNaN(d2) || d2 <= d1) return 0;
+  return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
 }
 
 export function addDays(baseDateIso: string, daysToAdd: number): string {
@@ -65,6 +98,82 @@ export function addMonthsClamped(baseDateIso: string, monthsToAdd: number): stri
 export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLoanCalculationResult {
   const principalCents = parseBrlCents(input.principalInput || '0');
   const frequency: PeopleLoanFrequency = input.frequency || 'monthly';
+
+  if (input.payMode === 'indefinite') {
+    const startDate = input.startDate || input.today;
+    const elapsedMonths = calculateMonthsElapsed(startDate, input.today);
+    const elapsedDays = calculateDaysElapsed(startDate, input.today);
+
+    let monthlyInterestCents = 0;
+    let dailyInterestCents = 0;
+
+    if (input.interestType === 'fixed') {
+      const fixedCents = parseBrlCents(input.interestFixedInput || '0');
+      if (input.interestPeriod === 'daily') {
+        dailyInterestCents = fixedCents;
+        monthlyInterestCents = fixedCents * 30;
+      } else {
+        monthlyInterestCents = fixedCents;
+        dailyInterestCents = Math.round(fixedCents / 30);
+      }
+    } else if (input.interestType === 'percent') {
+      const rate = parseFloat(input.interestRate.replace(',', '.')) || 0;
+      if (input.interestPeriod === 'daily') {
+        dailyInterestCents = Math.round(principalCents * (rate / 100));
+        monthlyInterestCents = dailyInterestCents * 30;
+      } else {
+        monthlyInterestCents = Math.round(principalCents * (rate / 100));
+        dailyInterestCents = Math.round(monthlyInterestCents / 30);
+      }
+    }
+
+    const isDaily = frequency === 'daily' || input.interestPeriod === 'daily';
+    const accumulatedInterestCents = isDaily
+      ? dailyInterestCents * elapsedDays
+      : monthlyInterestCents * elapsedMonths;
+
+    const totalCents = principalCents + accumulatedInterestCents;
+    const nextDueDate = input.firstDueDate || (
+      isDaily
+        ? addDays(input.today, 1)
+        : addMonthsClamped(startDate, Math.max(1, elapsedMonths + 1))
+    );
+
+    const schedule: PeopleLoanScheduleItem[] = [];
+    if (monthlyInterestCents > 0 || principalCents > 0) {
+      schedule.push({
+        installmentNumber: 1,
+        totalCount: 1,
+        amountCents: monthlyInterestCents > 0 ? monthlyInterestCents : principalCents,
+        dueDate: nextDueDate
+      });
+    }
+
+    const effectiveRate = principalCents > 0
+      ? ((isDaily ? dailyInterestCents * 30 : monthlyInterestCents) / principalCents) * 100
+      : 0;
+
+    return {
+      principalCents,
+      interestCents: accumulatedInterestCents,
+      totalCents,
+      months: elapsedMonths,
+      count: 1,
+      frequency,
+      payMode: 'indefinite',
+      baseInstallmentCents: isDaily ? dailyInterestCents : monthlyInterestCents,
+      effectiveRate,
+      schedule,
+      isIndefinite: true,
+      elapsedMonths,
+      elapsedDays,
+      monthlyInterestCents,
+      dailyInterestCents,
+      accumulatedInterestCents,
+      nextDueDate
+    };
+  }
+
   const rawCount = Number(input.installmentsCount ?? input.months) || 1;
   const maxLimit = frequency === 'daily' ? 365 : 60;
   const countPeriods = Math.max(1, Math.min(maxLimit, rawCount));
@@ -162,6 +271,7 @@ export function calculatePeopleLoan(input: PeopleLoanCalculationInput): PeopleLo
     months,
     count,
     frequency,
+    payMode: input.payMode,
     baseInstallmentCents,
     effectiveRate,
     schedule

@@ -1,6 +1,6 @@
 {
   "name": "financias",
-  "version": "2.1.25",
+  "version": "2.1.26",
   "description": "App desktop de gestao financeira pessoal",
   "main": "out/main/index.js",
   "scripts": {
@@ -9,6 +9,8 @@
     "test:db:fresh": "powershell -NoProfile -File supabase/verify-fresh.ps1",
     "test:api:local": "node scripts/test-ledger-api.mjs",
     "test:browser:local": "node scripts/test-ledger-browser.mjs",
+    "test:browser:entries": "node scripts/test-unified-entries.mjs",
+    "test:browser:entries:mock": "npm run build:pwa && node scripts/test-unified-entries.mjs --mock",
     "test:browser:categories": "node scripts/test-category-layout.mjs",
     "test:browser:accounts": "node scripts/test-account-layout.mjs",
     "test:browser:cards": "node scripts/test-card-layout.mjs",

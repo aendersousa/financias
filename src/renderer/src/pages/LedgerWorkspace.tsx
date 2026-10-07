@@ -16,7 +16,7 @@ import LedgerTransactions from './LedgerTransactions';
 import LedgerReserves, { type ReserveSummary } from './LedgerReserves';
 import LedgerNotifications from './LedgerNotifications';
 import LedgerFreeToSpend from './LedgerFreeToSpend';
-import LedgerQuickEntry from './LedgerQuickEntry';
+import LedgerEntryManagement from './LedgerEntryManagement';
 import LedgerManagement from './LedgerManagement';
 import LedgerReports from './LedgerReports';
 import LedgerFinancialHealth from './LedgerFinancialHealth';
@@ -96,7 +96,7 @@ export default function LedgerWorkspace() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [spaces, setSpaces] = useState<FinancialSpace[]>([]);
   const [reserveSummary,setReserveSummary] = useState<ReserveSummary | null>(null);
-  const [section, setSection] = useState<Section>(() => location.hash.startsWith('#invite=') ? 'sharing' : 'dashboard');
+  const [section, setSection] = useState<Section>(() => location.hash.startsWith('#invite=') ? 'sharing' : new URLSearchParams(location.search).get('quick')==='expense' ? 'transactions' : 'dashboard');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -261,14 +261,14 @@ export default function LedgerWorkspace() {
         {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
         {!workspace && <div className={panelClass}>{busy ? 'Carregando…' : 'Não foi possível abrir seus dados. Use Atualizar para tentar novamente.'}</div>}
         {workspace && section === 'dashboard' && <>
-          <LedgerQuickEntry key={workspace.space.id} workspace={workspace} money={money} onChanged={reloadData}/>
+          <div className={panelClass}><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-500">Registre receitas, despesas e transferências em Lançamentos.</p><button type="button" onClick={()=>navigate('transactions')} className="btn-primary">Adicionar lançamento</button></div><div className="mt-3"><LedgerEntryManagement key={workspace.space.id} workspace={workspace} money={money} onChanged={reloadData}/></div></div>
           <LedgerFreeToSpend workspace={workspace} money={money} offline={!online || usingCache}/>
           {online && !usingCache && <LedgerDashboardSummary workspace={workspace} money={money} privacy={privacy}/>}
           <div className="grid gap-4 sm:grid-cols-3">{[{ label:'Saldo em contas',value:workspace.totals.cash_cents, detail:'Contas corrente, de pagamento e carteiras, até hoje.' },{ label:'Limite utilizado',value:workspace.totals.card_used_cents, detail:'Dívidas e autorizações pendentes dos cartões.' },{ label:'Contas a pagar',value:workspace.totals.commitment_outflows_cents, detail:'Compromissos pendentes e parcialmente pagos.' }].map(item => <div key={item.label} className={panelClass}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-2 text-2xl font-semibold">{money(item.value)}</p><p className="mt-2 text-xs text-slate-500">{item.detail}</p></div>)}</div>
           {workspace.accounts.some(a => a.liquidity !== 'cash') && <div className={panelClass}><h2 className="font-semibold">Outros saldos</h2><p className="mt-1 text-sm text-slate-500">Benefícios, investimentos e bens são acompanhados separadamente do saldo em contas.</p><div className="mt-4 grid gap-4 sm:grid-cols-3">{[{ liquidity:'benefit',label:'Benefícios VR/VA',value:workspace.totals.benefit_cents },{ liquidity:'investment',label:'Investimentos e poupança',value:workspace.totals.investment_cents },{ liquidity:'property',label:'Bens',value:workspace.totals.property_cents }].filter(item => workspace.accounts.some(a => a.liquidity === item.liquidity)).map(item => <div key={item.liquidity}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-1 text-xl font-semibold">{money(item.value)}</p></div>)}</div></div>}
           <div className={panelClass}><h2 className="font-semibold">Comece pelos cadastros</h2><p className="mt-2 text-sm text-slate-500">Cadastre suas contas e os saldos atuais. Depois organize as categorias, adicione seus cartões e registre as movimentações.</p><button onClick={() => navigate('accounts')} className="mt-4 btn-primary px-4 py-2 text-sm font-semibold text-white">Cadastrar uma conta</button></div>
         </>}
-        {workspace && (!online || usingCache) && extraSection && <p className={panelClass}>{['sharing','foreign_currency','imports',...planningSections].includes(section) ? 'Sem conexão. Esta tela precisa de internet. Consulte os lançamentos salvos ou registre um lançamento rápido na aba Lançamentos.' : 'Sem conexão. Esta tela precisa de internet.'}</p>}
+        {workspace && (!online || usingCache) && extraSection && <p className={panelClass}>{['sharing','foreign_currency','imports',...planningSections].includes(section) ? 'Sem conexão. Esta tela precisa de internet. Consulte os lançamentos salvos ou registre uma movimentação na aba Lançamentos.' : 'Sem conexão. Esta tela precisa de internet.'}</p>}
         {workspace && section === 'transactions' && <LedgerTransactions key={workspace.space.id} workspace={workspace} money={money} reserves={reserveSummary} online={online&&!usingCache} onChanged={reloadData}/>}
         {workspace && online && !usingCache && <>
           {['accounts','categories','settings'].includes(section) && <LedgerManagement key={`management-${workspace.space.id}-${section}`} section={section as 'accounts' | 'categories' | 'settings'} workspace={workspace} money={money} onChanged={refresh}/>}

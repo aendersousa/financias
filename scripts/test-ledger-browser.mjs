@@ -354,12 +354,13 @@ try {
   const offlineCash = beforeOffline.totals.cash_cents;
   await page.context().setOffline(true);
   await expect(page.getByRole('status').filter({ hasText:'Sem conexão' })).toBeVisible();
-  await page.getByRole('button',{ name:'Novo gasto rápido',exact:true }).click();
-  await page.getByLabel('Valor rápido (R$)',{ exact:true }).fill('45,00');
-  await page.getByLabel('Descrição rápida (opcional)',{ exact:true }).fill('Almoço offline navegador');
-  await page.getByLabel('Categoria do lançamento rápido',{ exact:true }).selectOption({ label:'Mercado navegador' });
-  await page.getByLabel('Conta ou cartão do lançamento rápido',{ exact:true }).selectOption({ label:'Banco navegador' });
-  await page.getByRole('button',{ name:'Salvar lançamento rápido',exact:true }).click();
+  await page.getByRole('button',{ name:'Adicionar lançamento',exact:true }).click();
+  const unifiedOfflineForm=page.getByRole('form',{ name:'Adicionar lançamento',exact:true });
+  await unifiedOfflineForm.locator('input[name="amount"]').fill('45,00');
+  await unifiedOfflineForm.locator('input[name="name"]').fill('Almoço offline navegador');
+  await unifiedOfflineForm.getByRole('combobox',{ name:'Categoria',exact:true }).selectOption({ label:'Mercado navegador' });
+  await unifiedOfflineForm.getByRole('combobox',{ name:'Conta',exact:true }).selectOption({ label:'Banco navegador' });
+  await unifiedOfflineForm.getByRole('button',{ name:'Salvar para enviar depois',exact:true }).click();
   await expect(page.getByText(/1 lançamentos pendentes de envio/)).toBeVisible();
   assert.equal((await snapshot()).totals.cash_cents,offlineCash,'Queued item must not change canonical balances');
   const queued = await page.evaluate(() => new Promise((resolve,reject) => {

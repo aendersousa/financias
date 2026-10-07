@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { parseBrlCents } from '../../../shared/finance/money'
+import { todayInSpace } from '../../../shared/finance/calendar'
 import TransactionTable from '../components/TransactionTable'
 import CurrencyInput from '../components/CurrencyInput'
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository'
 import type { ReserveSummary } from './LedgerReserves'
-import LedgerQuickEntry from './LedgerQuickEntry'
+import LedgerEntryManagement, { type EntrySelection } from './LedgerEntryManagement'
+import type { EntryPreset } from '../lib/entryPreferences'
+import { activeUserId, offlineQueue, queueChanged, sendLocalQueue } from '../lib/offlineStorage'
+import { validateQuickEntry, type QueueItem } from '../../../shared/finance/offlineQueue'
 import LedgerTransactionActions from './LedgerTransactionActions'
 
 type Kind='expense'|'income'|'transfer'|'card_purchase'|'card_payment'
@@ -22,6 +26,13 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   const [selected,setSelected]=useState<string|null>(null),[search,setSearch]=useState(''),[status,setStatus]=useState('all')
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [page,setPage]=useState(1)
+  const [entrySelection,setEntrySelection]=useState<EntrySelection|null>(null)
+  const [preferencesRevision,setPreferencesRevision]=useState(0)
+  const [suggestions,setSuggestions]=useState<{categoryId:string;name:string}[]>([])
+  const suggestionRequest=useRef(0)
+  const formRef=useRef<HTMLFormElement>(null)
+  const preset=entrySelection?.preset
+  const supportsPreferences=['expense','income','card_purchase'].includes(kind)
   const pending=useRef(false),requests=useRef(new Map<string,string>())
   const writer=workspace.role!=='viewer'
   const categories=workspace.categories.filter(category=>category.ledger_account_id&&category.kind===(kind==='income'?'income':'expense'))
@@ -34,9 +45,38 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   useEffect(()=>{setPage(value=>Math.min(value,pageCount))},[pageCount])
   useEffect(()=>{if(!online)setSelected(null)},[online])
   function openDetails(id:string) {if(busy)return;setSelected(selected===id?null:id)}
+  function useEntry(selection:EntrySelection) {
+    if(pending.current||!writer)return
+    setEntrySelection(selection);setKind(selection.preset.kind??'expense');setNonce(value=>value+1);setError('');setNotice('');setSelected(null);setSuggestions([]);suggestionRequest.current++
+    requestAnimationFrame(()=>{formRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'});formRef.current?.querySelector<HTMLInputElement>('input[name="name"]')?.focus({preventScroll:true})})
+  }
+  function resetEntry() {setEntrySelection(null);setNonce(value=>value+1);setSelected(null);setPage(1);setSuggestions([]);suggestionRequest.current++}
+  async function suggest(description:string) {
+    const request=++suggestionRequest.current
+    if(!online||!supportsPreferences||description.trim().length<3){setSuggestions([]);return}
+    try {const result=await ledgerRpc<{categoryId:string;name:string}[]>('suggest_entry_category',{p_space:workspace.space.id,p_description:description,p_kind:kind});if(request===suggestionRequest.current)setSuggestions(result)}
+    catch {if(request===suggestionRequest.current)setSuggestions([])}
+  }
+  function entryPreset(values:FormData):EntryPreset {
+    const text=(key:string)=>String(values.get(key)??'').trim()
+    return {kind:kind as EntryPreset['kind'],description:text('name'),occurredOn:text('date'),
+      ...(text('amount')?{amountCents:parseBrlCents(text('amount'))}:{}),categoryId:text('category')||undefined,
+      ...(kind==='card_purchase'?{cardId:text('card')||undefined,installments:Number(text('installments'))}:{accountId:text('account')||undefined}),reserveId:text('reserve')||undefined}
+  }
+  async function saveDraft() {
+    if(!formRef.current||pending.current||!writer||!online||!supportsPreferences||entrySelection?.item)return
+    pending.current=true;setBusy(true);setError('');setNotice('')
+    try {
+      const payload=entryPreset(new FormData(formRef.current)),key=JSON.stringify({draft:payload,space:workspace.space.id})
+      if(!requests.current.has(key))requests.current.set(key,crypto.randomUUID())
+      await ledgerRpc('save_transaction_draft',{p_space:workspace.space.id,p_title:payload.description||'Lançamento por completar',p_payload:payload,p_draft:entrySelection?.draft?.id??null,p_version:entrySelection?.draft?.version??null,p_client_uuid:entrySelection?.draft?null:requests.current.get(key)})
+      requests.current.delete(key);resetEntry();setPreferencesRevision(value=>value+1);setNotice('Rascunho salvo. Ele não altera saldos.')
+    }catch(failure){setError(failure instanceof Error?failure.message:'Não foi possível salvar o rascunho.')}
+    finally{pending.current=false;setBusy(false)}
+  }
   async function save(event:FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if(pending.current||!writer||!online)return
+    if(pending.current||!writer)return
     const values=new FormData(event.currentTarget),text=(key:string)=>String(values.get(key)??'').trim()
     pending.current=true;setBusy(true);setError('');setNotice('')
     try {
@@ -45,6 +85,25 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       const account=workspace.accounts.find(item=>item.id===text('account'))
       const category=categories.find(item=>item.id===text('category'))
       const date=text('date')
+      if(!online||entrySelection?.item) {
+        if(!supportsPreferences||text('reserve')||kind==='card_purchase'&&Number(text('installments'))!==1)throw new Error('Sem conexão, registre despesas e receitas à vista ou compras no cartão em 1x, sem vínculo com metas. As outras operações precisam de internet.')
+        if(kind!=='card_purchase'&&!['cash','benefit'].includes(account?.liquidity??''))throw new Error('Escolha uma conta à vista ou de benefícios para salvar no aparelho.')
+        const content={kind:kind as EntryPreset['kind'],amountCents:cents,description:text('name'),occurredOn:date,categoryId:category?.id??'',categoryLedgerId:category?.ledger_account_id??'',...(kind==='card_purchase'?{cardId:text('card')}:{accountId:account?.id,accountLedgerId:account?.ledger_account_id})}
+        validateQuickEntry(content)
+        const userId=await activeUserId()
+        if(entrySelection?.item&&entrySelection.item.userId!==userId)throw new Error('O usuário mudou. Abra novamente o lançamento pendente.')
+        const key=JSON.stringify({space:workspace.space.id,content})
+        if(!requests.current.has(key))requests.current.set(key,crypto.randomUUID())
+        const item:QueueItem={clientUuid:entrySelection?.item?.clientUuid??requests.current.get(key)!,userId,spaceId:workspace.space.id,createdAt:entrySelection?.item?.createdAt??new Date().toISOString(),state:'pending',attempts:0,nextAttemptAt:null,lastReason:null,content}
+        await offlineQueue.put(item);queueChanged();requests.current.delete(key);resetEntry()
+        setNotice('Lançamento salvo no aparelho. Será enviado quando a conexão voltar.')
+        if(online) {
+          try {await sendLocalQueue();await onChanged();const remaining=await offlineQueue.list(userId);if(!remaining.some(row=>row.clientUuid===item.clientUuid&&row.spaceId===item.spaceId))setNotice('Salvo. Os saldos foram atualizados.')}
+          catch {setNotice('Lançamento salvo no aparelho. Confira o envio na área de pendências.')}
+        }
+        return
+      }
+      if(values.get('save_model')==='on'&&(text('reserve')||kind==='card_purchase'&&Number(text('installments'))!==1||kind!=='card_purchase'&&!['cash','benefit'].includes(account?.liquidity??'')))throw new Error('Os modelos permitem despesas e receitas à vista ou compras no cartão em 1x, sem vínculo com metas. Desmarque a opção de modelo para registrar esta operação.')
       let name:string,args:Record<string,unknown>
       if(kind==='card_purchase') {
         name='record_card_purchase'
@@ -68,32 +127,46 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       if(name==='post_transaction')args={p_payload:{...(args.p_payload as Record<string,unknown>),client_uuid:uuid}}
       else args={...args,p_client_uuid:uuid}
       await ledgerRpc(name,{p_space:workspace.space.id,...args})
-      requests.current.delete(key);setNonce(value=>value+1);setSelected(null);setPage(1)
+      requests.current.delete(key);resetEntry()
       try {await onChanged();setNotice('Salvo. Os saldos foram atualizados.')}
       catch {setNotice('Lançamento registrado. Use Atualizar para consultar os saldos.')}
+      if(values.get('save_model')==='on'&&supportsPreferences) {
+        const payload=entryPreset(values)
+        const {occurredOn,installments,reserveId,...model}=payload
+        try {await ledgerRpc('save_entry_model',{p_space:workspace.space.id,p_name:text('model_name')||text('name')||'Meu lançamento',p_payload:model,p_client_uuid:crypto.randomUUID()});setPreferencesRevision(value=>value+1)}
+        catch {setError('O lançamento foi registrado, mas o modelo não foi salvo. Crie o modelo na área de gerenciamento.')}
+      }
+      if(entrySelection?.draft) {
+        try {await ledgerRpc('delete_entry_preference',{p_space:workspace.space.id,p_id:entrySelection.draft.id,p_version:entrySelection.draft.version,p_kind:'draft'});setPreferencesRevision(value=>value+1)}
+        catch {setError('O lançamento foi registrado, mas o rascunho permanece salvo. Exclua o rascunho na área de gerenciamento para evitar usá-lo novamente.')}
+      }
     } catch(failure) {setError(failure instanceof Error?failure.message:'Confira os campos e tente novamente.')}
     finally {pending.current=false;setBusy(false)}
   }
   return <div className="space-y-6">
-    {writer&&online&&<form aria-label="Adicionar lançamento" onSubmit={save} key={nonce} className="card flex flex-wrap items-end gap-3 p-4">
+    {writer&&<form ref={formRef} aria-label="Adicionar lançamento" onSubmit={save} key={nonce} className="card flex flex-wrap items-end gap-3 p-4">
       <fieldset disabled={busy} className="contents">
-        <label className={labelClass}><span className="field-label">Operação</span><select aria-label="Operação" value={kind} onChange={event=>setKind(event.target.value as Kind)} className={input}><option value="expense">Despesa</option><option value="income">Receita</option><option value="transfer">Transferência</option><option value="card_purchase">Compra no cartão</option><option value="card_payment">Pagamento do cartão</option></select></label>
-        {!['transfer','card_payment'].includes(kind)&&<label className="flex w-full flex-col gap-1 sm:w-60"><span className="field-label">Nome ou descrição</span><input name="name" required maxLength={100} placeholder="Ex: Mercado" className={input}/></label>}
-        {kind!=='card_purchase'&&<label className={labelClass}><span className="field-label">Conta</span><select aria-label="Conta" key={'account-'+kind} name="account" required defaultValue="" className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
+        {!online&&<p className="w-full text-xs text-amber-700 dark:text-amber-300">Sem conexão: despesas e receitas à vista ou compras no cartão em 1x ficam salvas neste aparelho até o envio. Transferências, parcelamentos e metas precisam de internet.</p>}
+        {entrySelection&&<div className="flex w-full flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><span>{entrySelection.item?'Editando lançamento não enviado':entrySelection.draft?'Completando rascunho':'Modelo preenchido. Confira os campos antes de adicionar.'}</span><button type="button" onClick={resetEntry} className="font-semibold text-brand-700 dark:text-brand-300">Limpar formulário</button></div>}
+        <label className={labelClass}><span className="field-label">Operação</span><select aria-label="Operação" value={kind} onChange={event=>{setKind(event.target.value as Kind);setSuggestions([]);suggestionRequest.current++}} className={input}><option value="expense">Despesa</option><option value="income">Receita</option><option value="transfer" disabled={!online||Boolean(entrySelection?.item)}>Transferência</option><option value="card_purchase">Compra no cartão</option><option value="card_payment" disabled={!online||Boolean(entrySelection?.item)}>Pagamento do cartão</option></select></label>
+        {!['transfer','card_payment'].includes(kind)&&<label className="flex w-full flex-col gap-1 sm:w-60"><span className="field-label">Nome ou descrição</span><input name="name" required maxLength={100} defaultValue={preset?.description??''} onBlur={event=>void suggest(event.target.value)} placeholder="Ex: Mercado" className={input}/></label>}
+        {kind!=='card_purchase'&&<label className={labelClass}><span className="field-label">Conta</span><select aria-label="Conta" key={'account-'+kind} name="account" required defaultValue={preset?.accountId??''} className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
         {kind==='transfer'&&<label className={labelClass}><span className="field-label">Conta de destino</span><select aria-label="Conta de destino" name="destination" required defaultValue="" className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
-        {!['transfer','card_payment'].includes(kind)&&<label className={labelClass}><span className="field-label">Categoria</span><select aria-label="Categoria" key={'category-'+kind} name="category" required defaultValue="" className={input}><option value="" disabled>Selecione uma categoria</option>{categories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
-        {['card_purchase','card_payment'].includes(kind)&&<label className={labelClass}><span className="field-label">Cartão</span><select aria-label="Cartão" name="card" required defaultValue="" className={input}><option value="">Selecione</option>{workspace.cards.map(card=><option key={card.id} value={card.id}>{card.name}</option>)}</select></label>}
-        {kind==='card_purchase'&&<label className="flex w-full flex-col gap-1 sm:w-24"><span className="field-label">Parcelas</span><input name="installments" type="number" min="1" max="600" defaultValue="1" required className={input}/></label>}
+        {!['transfer','card_payment'].includes(kind)&&<label className={labelClass}><span className="field-label">Categoria</span><select aria-label="Categoria" key={'category-'+kind} name="category" required defaultValue={preset?.kind===kind?preset.categoryId??'':''} className={input}><option value="" disabled>Selecione uma categoria</option>{categories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
+        {['card_purchase','card_payment'].includes(kind)&&<label className={labelClass}><span className="field-label">Cartão</span><select aria-label="Cartão" name="card" required defaultValue={preset?.cardId??''} className={input}><option value="">Selecione</option>{workspace.cards.map(card=><option key={card.id} value={card.id}>{card.name}</option>)}</select></label>}
+        {kind==='card_purchase'&&<label className="flex w-full flex-col gap-1 sm:w-24"><span className="field-label">Parcelas</span><input name="installments" type="number" min="1" max={!online||entrySelection?.item?1:600} defaultValue={preset?.installments??1} required className={input}/></label>}
         {kind==='card_payment'&&<label className={labelClass}><span className="field-label">Meio de pagamento</span><select aria-label="Meio de pagamento" name="channel" className={input}><option value="pix">Pix</option><option value="boleto">Boleto</option></select></label>}
-        <label className="flex w-full flex-col gap-1 sm:w-36"><span className="field-label">Valor</span><CurrencyInput name="amount" required placeholder="0,00" className={input}/></label>
-        <label className="flex w-full flex-col gap-1 sm:w-40"><span className="field-label">Data</span><input name="date" type="date" required defaultValue={workspace.space.today} className={input}/></label>
-        {['expense','card_purchase'].includes(kind)&&goals.length>0&&<label className="flex w-full flex-col gap-1 sm:w-52"><span className="field-label">Usar uma meta (opcional)</span><select aria-label="Usar uma meta (opcional)" name="reserve" className={input}><option value="">Gasto sem vínculo com uma meta</option>{goals.map(goal=><option key={goal.id} value={goal.id}>{goal.name} · {money(goal.balance_cents)}</option>)}</select></label>}
-        <button disabled={busy} className="btn-primary disabled:opacity-50">Adicionar lançamento</button>
+        <label className="flex w-full flex-col gap-1 sm:w-36"><span className="field-label">Valor</span><CurrencyInput name="amount" required defaultValue={preset?.amountCents!==undefined?preset.amountCents/100:''} placeholder="0,00" className={input}/></label>
+        <label className="flex w-full flex-col gap-1 sm:w-40"><span className="field-label">Data</span><input name="date" type="date" required defaultValue={preset?.occurredOn??(online?workspace.space.today:todayInSpace(workspace.space.timezone))} className={input}/></label>
+        {['expense','card_purchase'].includes(kind)&&goals.length>0&&<label className="flex w-full flex-col gap-1 sm:w-52"><span className="field-label">Usar uma meta (opcional)</span><select aria-label="Usar uma meta (opcional)" name="reserve" defaultValue={preset?.reserveId??''} className={input}><option value="">Gasto sem vínculo com uma meta</option>{goals.map(goal=><option disabled={!online||Boolean(entrySelection?.item)} key={goal.id} value={goal.id}>{goal.name} · {money(goal.balance_cents)}</option>)}</select></label>}
+        <button disabled={busy||!online&&!supportsPreferences} className="btn-primary disabled:opacity-50">{entrySelection?.item?'Salvar e reenviar':online?'Adicionar lançamento':'Salvar para enviar depois'}</button>
+        {suggestions.length>0&&<div className="flex w-full flex-wrap items-center gap-2 text-xs"><span className="text-slate-500">Categorias sugeridas pelo histórico:</span>{suggestions.map(category=><button type="button" key={category.categoryId} onClick={()=>{const target=formRef.current?.elements.namedItem('category');if(target instanceof HTMLSelectElement)target.value=category.categoryId;setSuggestions([])}} className="rounded-full border border-brand-300 px-3 py-1 font-semibold text-brand-700 dark:text-brand-300">{category.name}</button>)}</div>}
+        {supportsPreferences&&!entrySelection?.item&&<details className="w-full border-t border-slate-200 pt-3 dark:border-slate-800"><summary className="cursor-pointer text-xs font-medium text-slate-500 dark:text-slate-400">Modelo e rascunho</summary><div className="mt-3 flex flex-wrap items-end gap-3"><label className="flex items-center gap-2 text-sm"><input name="save_model" type="checkbox" disabled={!online}/>Salvar também como meu modelo</label><label className="flex w-full flex-col gap-1 sm:w-60"><span className="field-label">Nome do modelo (opcional)</span><input name="model_name" maxLength={100} disabled={!online} className={input}/></label><button type="button" disabled={!online} onClick={()=>void saveDraft()} className="text-sm font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-300">Salvar como rascunho</button>{!entrySelection&&<button type="button" onClick={resetEntry} className="text-xs text-slate-500">Limpar formulário</button>}{!online&&<p className="w-full text-xs text-slate-500">Você pode usar modelos já carregados. Salvar novos modelos e rascunhos precisa de internet.</p>}</div></details>}
       </fieldset>
     </form>}
     {error&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice&&<p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    <LedgerQuickEntry compact workspace={workspace} money={money} onChanged={onChanged}/>
+    <LedgerEntryManagement workspace={workspace} money={money} onChanged={onChanged} onUse={useEntry} refreshKey={preferencesRevision} disabled={busy}/>
     <div className="flex flex-wrap items-end gap-3">
       <label className="flex w-full flex-col gap-1 sm:w-72"><span className="field-label">Buscar lançamento</span><input value={search} onChange={event=>{setSearch(event.target.value);setSelected(null);setPage(1)}} placeholder="Descrição" className={input}/></label>
       <label className={labelClass}><span className="field-label">Situação do lançamento</span><select aria-label="Situação do lançamento" value={status} onChange={event=>{setStatus(event.target.value);setSelected(null);setPage(1)}} className={input}><option value="all">Todos</option><option value="posted">Registrados</option><option value="cancelled">Cancelados</option></select></label>

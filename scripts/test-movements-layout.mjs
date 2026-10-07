@@ -347,17 +347,17 @@ try {
   });
   await page.context().setOffline(true);
   await expect(page.getByRole('status').filter({ hasText:'Sem conexão' })).toBeVisible();
-  await expect(transactionForm()).toHaveCount(0);
+  await expect(transactionForm()).toHaveCount(1);
   await expect(transactions(page).getByRole('button')).toHaveCount(0);
-  const quick=page.getByRole('region',{ name:'Lançamento rápido e fila de envio',exact:true });
+  const quick=page.getByRole('region',{ name:'Modelos, rascunhos e envio pendente',exact:true });
+  await page.getByText('Modelos, rascunhos e envio pendente',{exact:true}).click();
   await expect(quick).toBeVisible();
   for(const [description,amount] of [['Fila local um','1,00'],['Fila local dois','2,00']]) {
-    await quick.getByRole('button',{ name:'Novo gasto rápido',exact:true }).click();
-    await quick.getByLabel('Valor rápido (R$)',{ exact:true }).fill(amount);
-    await quick.getByLabel('Descrição rápida (opcional)',{ exact:true }).fill(description);
-    await quick.getByLabel('Categoria do lançamento rápido',{ exact:true }).selectOption(category);
-    await quick.getByLabel('Conta ou cartão do lançamento rápido',{ exact:true }).selectOption(bank);
-    await quick.getByRole('button',{ name:'Salvar lançamento rápido',exact:true }).click();
+    await transactionForm().locator('input[name="amount"]').fill(amount);
+    await transactionForm().locator('input[name="name"]').fill(description);
+    await transactionForm().getByRole('combobox',{name:'Categoria',exact:true}).selectOption(category);
+    await transactionForm().getByRole('combobox',{name:'Conta',exact:true}).selectOption(bank);
+    await transactionForm().getByRole('button',{ name:'Salvar para enviar depois',exact:true }).click();
   }
   await expect(quick.getByText(/2 lançamentos pendentes de envio/)).toBeVisible();
   assert.equal(await cash(),beforeQueue,'Pending offline entries never alter server balances');

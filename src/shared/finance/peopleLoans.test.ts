@@ -148,5 +148,53 @@ describe('peopleLoans calculations', () => {
     const total = result.schedule.reduce((acc, s) => acc + s.amountCents, 0);
     expect(total).toBe(150000);
   });
+
+  it('calculates indefinite loan with fixed monthly interest and elapsed months', () => {
+    const result = calculatePeopleLoan({
+      principalInput: '1500,00',
+      interestType: 'fixed',
+      interestRate: '',
+      interestFixedInput: '50,00',
+      interestPeriod: 'monthly',
+      payMode: 'indefinite',
+      startDate: '2026-07-07',
+      firstDueDate: '2026-11-07',
+      today: '2026-10-07'
+    });
+
+    expect(result.principalCents).toBe(150000);
+    expect(result.isIndefinite).toBe(true);
+    expect(result.elapsedMonths).toBe(3);
+    expect(result.monthlyInterestCents).toBe(5000);
+    expect(result.interestCents).toBe(15000); // 3 * 50 = 150
+    expect(result.totalCents).toBe(165000); // 1500 + 150 = 1650
+    expect(result.schedule).toHaveLength(1);
+    expect(result.schedule[0].amountCents).toBe(5000); // next interest reminder
+    expect(result.schedule[0].dueDate).toBe('2026-11-07');
+  });
+
+  it('calculates indefinite loan with monthly percentage interest starting today', () => {
+    const result = calculatePeopleLoan({
+      principalInput: '1500,00',
+      interestType: 'percent',
+      interestRate: '5',
+      interestFixedInput: '',
+      interestPeriod: 'monthly',
+      payMode: 'indefinite',
+      startDate: '2026-10-07',
+      firstDueDate: '2026-11-07',
+      today: '2026-10-07'
+    });
+
+    expect(result.principalCents).toBe(150000);
+    expect(result.isIndefinite).toBe(true);
+    expect(result.elapsedMonths).toBe(0);
+    expect(result.monthlyInterestCents).toBe(7500); // 5% of 1500 = 75
+    expect(result.interestCents).toBe(0); // 0 elapsed months
+    expect(result.totalCents).toBe(150000);
+    expect(result.schedule).toHaveLength(1);
+    expect(result.schedule[0].amountCents).toBe(7500);
+    expect(result.schedule[0].dueDate).toBe('2026-11-07');
+  });
 });
 
