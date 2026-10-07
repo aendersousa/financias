@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { loadEntryPreferences, type EntryPreferences, type EntryPreset } from '../lib/entryPreferences';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
+import { CurrencyInput } from '../components/CurrencyInput';
 
 type Model = EntryPreferences['models'][number];
 interface Editor {
@@ -161,7 +162,7 @@ export default function LedgerModelManagement({ workspace, money, onChanged }: {
           <label className="grid gap-1 text-sm"><span>Nome {suffix}</span><input aria-label={`Nome ${suffix}`} value={editor.name} onChange={event => change('name', event.target.value)} required maxLength={100} className={input}/></label>
           <label className="grid gap-1 text-sm"><span>Tipo {suffix}</span><select aria-label={`Tipo ${suffix}`} value={editor.kind} onChange={event => changeKind(event.target.value as EntryPreset['kind'])} className={input}>{Object.entries(kinds).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
           <label className="grid gap-1 text-sm"><span>Descrição {suffix} (opcional)</span><input aria-label={`Descrição ${suffix} (opcional)`} value={editor.description} onChange={event => change('description', event.target.value)} maxLength={100} className={input}/></label>
-          <label className="grid gap-1 text-sm"><span>Valor {suffix} (R$, opcional)</span><input aria-label={`Valor ${suffix} (R$, opcional)`} value={editor.amount} onChange={event => change('amount', event.target.value)} inputMode="decimal" placeholder="Escolher ao usar" className={input}/></label>
+          <label className="grid gap-1 text-sm"><span>Valor {suffix} (opcional)</span><CurrencyInput aria-label={`Valor ${suffix} (opcional)`} value={editor.amount} onChange={event => change('amount', event.target.value)} placeholder="Escolher ao usar" className={input}/></label>
           <label className="grid gap-1 text-sm"><span>Categoria {suffix}</span><select aria-label={`Categoria ${suffix}`} value={editor.category} onChange={event => change('category', event.target.value)} className={input}><option value="">Escolher ao usar</option>{editor.category && !categories.some(category => category.id === editor.category) && <option value={editor.category} disabled>Categoria indisponível; escolha outra</option>}{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <label className="grid gap-1 text-sm"><span>Conta ou cartão {suffix}</span><select aria-label={`Conta ou cartão ${suffix}`} value={editor.payment} onChange={event => change('payment', event.target.value)} className={input}><option value="">Escolher ao usar</option>{editor.payment && !payments.some(payment => payment.id === editor.payment) && <option value={editor.payment} disabled>Conta ou cartão indisponível; escolha outro</option>}{payments.map(payment => <option key={payment.id} value={payment.id}>{payment.name}</option>)}</select></label>
         </fieldset>

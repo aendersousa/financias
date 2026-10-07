@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Goal as GoalIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 
 export default function Goals() {
   const formatCurrency = useCurrencyFormatter()
@@ -22,7 +23,7 @@ export default function Goals() {
     if (!nome.trim() || !valorAlvo) return
     setSubmitting(true)
     try {
-      await addGoal({ nome: nome.trim(), valor_alvo: Number(valorAlvo), valor_atual: 0, prazo: prazo || null })
+      await addGoal({ nome: nome.trim(), valor_alvo: parseCurrencyToNumber(valorAlvo), valor_atual: 0, prazo: prazo || null })
       setNome('')
       setValorAlvo('')
       setPrazo('')
@@ -32,7 +33,7 @@ export default function Goals() {
   }
 
   async function handleAporte(id: number, valorAtual: number) {
-    const aporte = Number(aportes[id] || 0)
+    const aporte = parseCurrencyToNumber(aportes[id] || 0)
     if (!aporte) return
     await updateGoal(id, { valor_atual: valorAtual + aporte })
     setAportes((prev) => ({ ...prev, [id]: '' }))
@@ -55,13 +56,10 @@ export default function Goals() {
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="field-label">Valor alvo</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CurrencyInput
             value={valorAlvo}
             onChange={(e) => setValorAlvo(e.target.value)}
-            className="field-input w-full sm:w-32"
+            className="w-full sm:w-36"
             required
           />
         </div>
@@ -92,14 +90,12 @@ export default function Goals() {
                 <div className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500" style={{ width: `${pct}%` }} />
               </div>
               {g.prazo && <p className="text-xs text-slate-400">Prazo: {g.prazo}</p>}
-              <div className="mt-2 flex gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Aporte"
+              <div className="mt-2 flex items-center gap-2">
+                <CurrencyInput
+                  placeholder="0,00"
                   value={aportes[g.id] || ''}
                   onChange={(e) => setAportes((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                  className="field-input w-24 py-1"
+                  className="w-28 py-1 text-sm"
                 />
                 <button
                   onClick={() => handleAporte(g.id, g.valor_atual)}

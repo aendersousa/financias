@@ -40,3 +40,4 @@ describe('ColorInput helpers', () => {
     expect(hexToRgbString('#000000')).toBe('0, 0, 0');
   });
 });
+

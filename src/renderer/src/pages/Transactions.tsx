@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import { formatDate, todayIso } from '../lib/format'
 import { statusCritical, statusGood } from '../lib/palette'
 import PageHeader from '../components/PageHeader'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 import type { CategoryType, TransactionStatus } from '../../../shared/types'
 
 export default function Transactions() {
@@ -54,7 +55,7 @@ export default function Transactions() {
           account_id: Number(accountId),
           category_id: Number(categoryId),
           cartao_id: Number(cartaoId),
-          valor_total: Number(valor),
+          valor_total: parseCurrencyToNumber(valor),
           parcelas: numParcelas,
           data,
           descricao,
@@ -65,7 +66,7 @@ export default function Transactions() {
           account_id: Number(accountId),
           category_id: Number(categoryId),
           tipo,
-          valor: Number(valor),
+          valor: parseCurrencyToNumber(valor),
           data,
           descricao,
           status,
@@ -133,13 +134,10 @@ export default function Transactions() {
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="field-label">Valor {cartaoId && Number(parcelas) > 1 ? 'total' : ''}</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CurrencyInput
             value={valor}
             onChange={(e) => setValor(e.target.value)}
-            className="field-input w-full sm:w-28"
+            className="w-full sm:w-32"
             required
           />
         </div>

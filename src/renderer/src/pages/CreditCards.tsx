@@ -4,6 +4,7 @@ import { CreditCard as CreditCardIcon } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
 import CardTable from '../components/CardTable'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 
 export default function CreditCards() {
   const formatCurrency = useCurrencyFormatter()
@@ -26,7 +27,7 @@ export default function CreditCards() {
     try {
       await addCreditCard({
         nome: nome.trim(),
-        limite: Number(limite) || 0,
+        limite: parseCurrencyToNumber(limite),
         dia_fechamento: Number(diaFechamento),
         dia_vencimento: Number(diaVencimento),
         conta_pagamento_id: contaPagamentoId ? Number(contaPagamentoId) : null
@@ -56,14 +57,11 @@ export default function CreditCards() {
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label htmlFor="legacy-card-limit" className="field-label">Limite</label>
-          <input
+          <CurrencyInput
             id="legacy-card-limit"
-            type="number"
-            step="0.01"
-            min="0"
             value={limite}
             onChange={(e) => setLimite(e.target.value)}
-            className="field-input w-full sm:w-28"
+            className="w-full sm:w-32"
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { parseBrlCents } from '../../../shared/finance/money'
 import TransactionTable from '../components/TransactionTable'
+import CurrencyInput from '../components/CurrencyInput'
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository'
 import type { ReserveSummary } from './LedgerReserves'
 import LedgerQuickEntry from './LedgerQuickEntry'
@@ -77,7 +78,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
         {['card_purchase','card_payment'].includes(kind)&&<label className={labelClass}><span className="field-label">Cartão</span><select aria-label="Cartão" name="card" required defaultValue="" className={input}><option value="">Selecione</option>{workspace.cards.map(card=><option key={card.id} value={card.id}>{card.name}</option>)}</select></label>}
         {kind==='card_purchase'&&<label className="flex w-full flex-col gap-1 sm:w-24"><span className="field-label">Parcelas</span><input name="installments" type="number" min="1" max="600" defaultValue="1" required className={input}/></label>}
         {kind==='card_payment'&&<label className={labelClass}><span className="field-label">Meio de pagamento</span><select aria-label="Meio de pagamento" name="channel" className={input}><option value="pix">Pix</option><option value="boleto">Boleto</option></select></label>}
-        <label className="flex w-full flex-col gap-1 sm:w-32"><span className="field-label">Valor (R$)</span><input name="amount" inputMode="decimal" required placeholder="0,00" className={input}/></label>
+        <label className="flex w-full flex-col gap-1 sm:w-36"><span className="field-label">Valor</span><CurrencyInput name="amount" required placeholder="0,00" className={input}/></label>
         <label className="flex w-full flex-col gap-1 sm:w-40"><span className="field-label">Data</span><input name="date" type="date" required defaultValue={workspace.space.today} className={input}/></label>
         {['expense','card_purchase'].includes(kind)&&goals.length>0&&<label className="flex w-full flex-col gap-1 sm:w-52"><span className="field-label">Usar uma meta (opcional)</span><select aria-label="Usar uma meta (opcional)" name="reserve" className={input}><option value="">Gasto sem vínculo com uma meta</option>{goals.map(goal=><option key={goal.id} value={goal.id}>{goal.name} · {money(goal.balance_cents)}</option>)}</select></label>}
         <button disabled={busy} className="btn-primary disabled:opacity-50">Adicionar lançamento</button>

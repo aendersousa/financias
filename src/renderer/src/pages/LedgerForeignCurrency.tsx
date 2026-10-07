@@ -3,6 +3,7 @@ import { formatBrlCents, parseBrlCents } from '../../../shared/finance/money';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { useAppStore } from '../store/useAppStore';
 import ForeignPurchaseTable, { foreignPurchaseStatus } from '../components/ForeignPurchaseTable';
+import CurrencyInput from '../components/CurrencyInput';
 
 interface Quote {
   currency:string; minor_unit:number; original_minor:number; original_amount:string; rate:string | null;
@@ -203,9 +204,9 @@ function ForeignPurchaseForm({action,selected,summary,workspace,money,privacy,bu
       </>}
       {field(action.kind==='create' ? 'Data da compra' : 'Data da confirmação / atualização','fx-date',<input id="fx-date" name="date" type="date" defaultValue={workspace.space.today} min={selected?.on} required className={input}/>)}
       {action.kind==='create' && field('Conversão informada','fx-entry-mode',<select id="fx-entry-mode" aria-label="Conversão informada" value={entryMode} onChange={event => setEntryMode(event.target.value as 'rate' | 'brl')} className={input}><option value="rate">Taxa de câmbio</option><option value="brl">Valor cobrado em reais</option></select>)}
-      {entryMode==='rate' ? field('Taxa: reais por unidade da moeda','fx-rate',<input id="fx-rate" value={rate} onChange={event => setRate(event.target.value)} inputMode="decimal" required className={input}/>) : field('Valor da compra em reais (sem IOF)','fx-brl',<input id="fx-brl" value={brl} onChange={event => setBrl(event.target.value)} inputMode="decimal" required className={input}/>)}
+      {entryMode==='rate' ? field('Taxa: reais por unidade da moeda','fx-rate',<input id="fx-rate" value={rate} onChange={event => setRate(event.target.value)} inputMode="decimal" required className={input}/>) : field('Valor da compra em reais (sem IOF)','fx-brl',<CurrencyInput id="fx-brl" value={brl} onChange={event => setBrl(event.target.value)} required className={input}/>)}
       {action.kind!=='reestimate' && <>
-        {field(action.kind==='confirm' ? 'IOF final em reais (informe 0 se não houve)' : 'IOF em reais (opcional)','fx-iof',<input id="fx-iof" value={iof} onChange={event => setIof(event.target.value)} inputMode="decimal" required={action.kind==='confirm'} className={input}/>)}
+        {field(action.kind==='confirm' ? 'IOF final em reais (informe 0 se não houve)' : 'IOF em reais (opcional)','fx-iof',<CurrencyInput id="fx-iof" value={iof} onChange={event => setIof(event.target.value)} required={action.kind==='confirm'} className={input}/>)}
         {action.kind==='create' ? <>{field('Data do IOF (se diferente)','fx-iof-date',<input id="fx-iof-date" name="iof_date" type="date" className={input}/>)}</> : field('Origem do valor confirmado','fx-source',<select id="fx-source" aria-label="Origem do valor confirmado" name="source" defaultValue={selected?.card_id ? 'invoice' : 'statement'} className={input}><option value="invoice">Fatura do cartão</option><option value="statement">Extrato bancário</option><option value="user">Informado manualmente</option></select>)}
       </>}
       {action.kind==='create' && <div className="flex flex-wrap gap-x-6 gap-y-3 sm:col-span-2 xl:col-span-4"><label className="flex items-center gap-2 text-sm"><input name="confirmed" type="checkbox"/>Este já é o valor final cobrado em reais</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={split} onChange={event => {setSplit(event.target.checked);if(event.target.checked && parts.length===0) setParts([crypto.randomUUID(),crypto.randomUUID()]);}}/>Dividir entre categorias pelo valor na moeda estrangeira</label></div>}

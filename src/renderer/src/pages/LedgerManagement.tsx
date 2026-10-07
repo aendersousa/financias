@@ -4,6 +4,7 @@ import { parseBrlCents } from '../../../shared/finance/money';
 import AccountTable, { accountKindLabels } from '../components/AccountTable';
 import CategoryPanels from '../components/CategoryPanels';
 import ColorInput from '../components/ColorInput';
+import CurrencyInput from '../components/CurrencyInput';
 import { ALL_APP_PAGES } from '../lib/modules';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -49,7 +50,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
   const [balanceCheck,setBalanceCheck]=useState<BalanceCheck | null>(null),[adjustmentId,setAdjustmentId]=useState(() => crypto.randomUUID());
   const [categoryName, setCategoryName] = useState(''), [categoryKind, setCategoryKind] = useState('expense'), [categoryColor, setCategoryColor] = useState('#64748b');
   const [categoryParent, setCategoryParent] = useState('');
-  const [accountName, setAccountName] = useState(''), [accountKind, setAccountKind] = useState('checking'), [accountOpening, setAccountOpening] = useState('0'), [accountColor, setAccountColor] = useState('#0ea5e9');
+  const [accountName, setAccountName] = useState(''), [accountKind, setAccountKind] = useState('checking'), [accountOpening, setAccountOpening] = useState('0,00'), [accountColor, setAccountColor] = useState('#0ea5e9');
   const [settingsTab, setSettingsTab] = useState<'modules' | 'preferences' | 'space' | 'audit'>('modules');
   const disabledPages = useAppStore(s => s.disabledPages);
   const togglePage = useAppStore(s => s.togglePage);
@@ -86,7 +87,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
     let created = false;
     try {
       const id = await ledgerRpc<string>('create_financial_account', { p_space: workspace.space.id, p_name: accountName.trim(), p_kind: accountKind, p_opening_cents: parseBrlCents(accountOpening), p_opening_on: workspace.space.today });
-      created = true; setAccountName(''); setAccountOpening('0');
+      created = true; setAccountName(''); setAccountOpening('0,00');
       await saveAccountDisplayColor(id, accountColor);
       await load(); await onChanged(); setNotice('Conta adicionada.');
     } catch (failure) {
@@ -143,7 +144,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label htmlFor="new-account-opening" className="field-label">Saldo inicial</label>
-          <input id="new-account-opening" disabled={busy} value={accountOpening} onChange={event => setAccountOpening(event.target.value)} inputMode="decimal" placeholder="0" required className="field-input w-full sm:w-32" />
+          <CurrencyInput id="new-account-opening" disabled={busy} value={accountOpening} onChange={event => setAccountOpening(event.target.value)} placeholder="0,00" required className="w-full sm:w-36" />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label htmlFor="new-account-color" className="field-label">Cor</label>
@@ -169,7 +170,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
       </form>}
       {canWrite && adjusting === account.id && <><form onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError(''); try { const check=await ledgerRpc<BalanceCheck>('check_account_balance',{p_space:workspace.space.id,p_account:account.id,p_on:String(form.get('date')),p_statement_balance_cents:parseBrlCents(String(form.get('balance'))),p_client_uuid:retry}); setBalanceCheck(check); setAdjustmentId(crypto.randomUUID()); setNotice('Conferência salva.'); } catch (failure) { setError((failure as Error).message); } finally {setBusy(false);} }} onChange={() => {setBalanceCheck(null); setRetry(crypto.randomUUID());}} className="grid gap-4 sm:grid-cols-2">
         <p className="text-sm text-slate-500 sm:col-span-2">Informe o saldo do extrato para comparar com o saldo registrado na mesma data.</p>
-        {field('Data do extrato', <input name="date" type="date" defaultValue={workspace.space.today} max={workspace.space.today} required className={input}/>)}{field('Saldo do extrato (R$)', <input name="balance" inputMode="decimal" required className={input}/>)}<div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Comparar saldos</button><button type="button" onClick={() => setAdjusting(null)}>Cancelar</button></div>
+        {field('Data do extrato', <input name="date" type="date" defaultValue={workspace.space.today} max={workspace.space.today} required className={input}/>)}{field('Saldo do extrato', <CurrencyInput name="balance" required className={input}/>)}<div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Comparar saldos</button><button type="button" onClick={() => setAdjusting(null)}>Cancelar</button></div>
       </form>{balanceCheck && <div className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-sm">Saldo no aplicativo: {money(balanceCheck.application_balance_cents)} · Extrato: {money(balanceCheck.statement_balance_cents)}</p>{balanceCheck.difference_cents===0 ? <p role="status" className="text-sm font-semibold text-brand-700 dark:text-brand-300">Os saldos conferem.</p> : <><p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Diferença: {money(balanceCheck.difference_cents)}</p><p className="text-xs text-slate-500">Confira se falta algum lançamento ou importe o extrato. Se a diferença permanecer sem explicação, você pode registrá-la como ajuste de patrimônio.</p><form onSubmit={event => {event.preventDefault(); void run('account_adjustment',{p_account:account.id,p_on:balanceCheck.checked_on,p_statement_balance_cents:balanceCheck.statement_balance_cents,p_reason:String(new FormData(event.currentTarget).get('reason')),p_client_uuid:adjustmentId});}} className="grid gap-3">{field('Motivo para registrar o ajuste',<input name="reason" minLength={5} maxLength={1000} required className={input}/>)}<div><button disabled={busy} className={primary}>Registrar diferença não identificada</button></div></form></>}</div>}</>}
         </section> : null}
       />}

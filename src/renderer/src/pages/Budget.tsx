@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { PiggyBank } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 
 export default function Budget() {
   const formatCurrency = useCurrencyFormatter()
@@ -44,13 +45,10 @@ export default function Budget() {
                 <tr key={b.categoria_id} className="table-row-hover">
                   <td className="px-4 py-2.5">{b.categoria_nome}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      defaultValue={b.valor_planejado || ''}
-                      onBlur={(e) => setBudget(b.categoria_id, month, Number(e.target.value) || 0)}
-                      className="field-input w-24 py-1 text-right sm:w-28"
+                    <CurrencyInput
+                      defaultValue={b.valor_planejado ? b.valor_planejado : ''}
+                      onBlur={(e) => setBudget(b.categoria_id, month, parseCurrencyToNumber(e.target.value))}
+                      className="w-28 py-1 text-right sm:w-32"
                     />
                   </td>
                   <td className={`px-4 py-2.5 text-right font-medium ${over ? 'text-red-500' : ''}`}>

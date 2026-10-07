@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
 import AccountTable from '../components/AccountTable'
 import ColorInput from '../components/ColorInput'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 import type { AccountType } from '../../../shared/types'
 
 const tipoLabels: Record<AccountType, string> = {
@@ -22,7 +23,7 @@ export default function Accounts() {
 
   const [nome, setNome] = useState('')
   const [tipo, setTipo] = useState<AccountType>('corrente')
-  const [saldoInicial, setSaldoInicial] = useState('0')
+  const [saldoInicial, setSaldoInicial] = useState('0,00')
   const [cor, setCor] = useState('#0ea5e9')
   const [submitting, setSubmitting] = useState(false)
 
@@ -31,9 +32,9 @@ export default function Accounts() {
     if (!nome.trim()) return
     setSubmitting(true)
     try {
-      await addAccount({ nome: nome.trim(), tipo, saldo_inicial: Number(saldoInicial) || 0, cor })
+      await addAccount({ nome: nome.trim(), tipo, saldo_inicial: parseCurrencyToNumber(saldoInicial), cor })
       setNome('')
-      setSaldoInicial('0')
+      setSaldoInicial('0,00')
     } finally {
       setSubmitting(false)
     }
@@ -66,12 +67,10 @@ export default function Accounts() {
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="field-label">Saldo inicial</label>
-          <input
-            type="number"
-            step="0.01"
+          <CurrencyInput
             value={saldoInicial}
             onChange={(e) => setSaldoInicial(e.target.value)}
-            className="field-input w-full sm:w-32"
+            className="w-full sm:w-36"
           />
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
