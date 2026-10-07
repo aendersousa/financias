@@ -3,6 +3,7 @@ import { accountDisplayColor, saveAccountDisplayColor, ledgerRpc, selectFinancia
 import { parseBrlCents } from '../../../shared/finance/money';
 import AccountTable, { accountKindLabels } from '../components/AccountTable';
 import CategoryPanels from '../components/CategoryPanels';
+import ColorInput from '../components/ColorInput';
 import { ALL_APP_PAGES } from '../lib/modules';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -144,9 +145,9 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
           <label htmlFor="new-account-opening" className="field-label">Saldo inicial</label>
           <input id="new-account-opening" disabled={busy} value={accountOpening} onChange={event => setAccountOpening(event.target.value)} inputMode="decimal" placeholder="0" required className="field-input w-full sm:w-32" />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label htmlFor="new-account-color" className="field-label">Cor</label>
-          <input id="new-account-color" disabled={busy} type="color" value={accountColor} onChange={event => setAccountColor(event.target.value)} className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700" />
+          <ColorInput id="new-account-color" disabled={busy} value={accountColor} onChange={setAccountColor} />
         </div>
         <button disabled={busy} className="btn-primary">Adicionar conta</button>
       </form>}
@@ -161,7 +162,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
             <button type="button" onClick={() => { setEditing(null); setAdjusting(null); }}>Fechar detalhes</button>
           </div>
           {canManage && editing === account.id && <form onSubmit={event => void saveAccount(event, account)} className="grid gap-4 sm:grid-cols-2">
-        {field('Nome da conta', <input name="name" defaultValue={account.name} required maxLength={100} className={input}/>)}{field('Instituição', <input name="institution" defaultValue={account.institution_name ?? ''} maxLength={100} className={input}/>)}{field('Cor da conta', <input name="color" type="color" defaultValue={account.color ?? '#0ea5e9'} className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700"/>)}
+        {field('Nome da conta', <input name="name" defaultValue={account.name} required maxLength={100} className={input}/>)}{field('Instituição', <input name="institution" defaultValue={account.institution_name ?? ''} maxLength={100} className={input}/>)}{field('Cor da conta', <ColorInput name="color" defaultValue={account.color ?? '#0ea5e9'} disabled={busy}/>)}
         {field('Disponibilidade do dinheiro', <select value={liquidity} onChange={event => setLiquidity(event.target.value)} disabled={['wallet', 'benefit', 'property'].includes(account.kind)} className={input}>{['benefit', 'property'].includes(account.kind) ? <option value={account.kind}>{account.kind === 'benefit' ? 'Benefício VR/VA' : 'Bem'}</option> : <><option value="cash">Disponível para gastar em contas</option><option value="investment">Investimento, fora do Livre para gastar</option></>}</select>)}
         <label className="flex gap-2 text-sm"><input name="emergency" type="checkbox" defaultChecked={account.is_emergency_reserve} disabled={liquidity !== 'investment'}/>Usar como reserva de emergência</label>
         <p className="text-xs text-slate-500 sm:col-span-2">A disponibilidade altera os números atuais. Os retratos de meses fechados preservam a classificação da época.</p><div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Salvar conta</button><button type="button" onClick={() => setEditing(null)}>Cancelar</button></div>
@@ -184,9 +185,9 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
           <label htmlFor="new-category-kind" className="field-label">Tipo</label>
           <select id="new-category-kind" disabled={busy} value={categoryKind} onChange={event => { setCategoryKind(event.target.value); setCategoryParent(''); }} className="field-input"><option value="expense">Despesa</option><option value="income">Receita</option></select>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label htmlFor="new-category-color" className="field-label">Cor</label>
-          <input id="new-category-color" disabled={busy} type="color" value={categoryColor} onChange={event => setCategoryColor(event.target.value)} className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700" />
+          <ColorInput id="new-category-color" disabled={busy} value={categoryColor} onChange={setCategoryColor} />
         </div>
         <button disabled={busy} className="btn-primary">Adicionar categoria</button>
       </form>}
@@ -195,7 +196,7 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
         renderName={category => canManage && !category.archived_at ? <button type="button" disabled={busy} onClick={() => setEditing(category.id)} aria-label={`Editar categoria ${category.name}`} title="Editar categoria" className="min-w-0 break-words text-left">{category.name}</button> : <span className="break-words">{category.name}{category.archived_at && <span className="ml-2 text-xs text-slate-400">Arquivada</span>}</span>}
         renderActions={category => canManage && !category.system_role && !data.categories.some(child => child.parent_id === category.id) ? <button type="button" disabled={busy} onClick={() => void run('manage_category', { p_category: category.id, p_version: category.version, p_action: category.archived_at ? 'restore' : 'archive' })} title={category.archived_at ? undefined : 'Retirar das categorias ativas e preservar o histórico'} className={category.archived_at ? 'shrink-0 text-xs text-brand-600 dark:text-brand-400' : 'btn-danger-text shrink-0'}>{category.archived_at ? 'Restaurar' : 'Excluir'}</button> : null}
         renderEditor={category => canManage && editing === category.id ? <div className="mt-4 space-y-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700"><form onSubmit={event => void saveCategory(event, category)} className="grid gap-4 sm:grid-cols-2">
-        {field('Nome da categoria', <input name="name" defaultValue={category.name} required maxLength={100} className={input}/>)}{field('Ícone (texto curto)', <input name="icon" defaultValue={category.icon ?? ''} maxLength={40} className={input}/>)}{field('Cor', <input name="color" type="color" defaultValue={category.color ?? '#0d9488'} className={input}/>)}
+        {field('Nome da categoria', <input name="name" defaultValue={category.name} required maxLength={100} className={input}/>)}{field('Ícone (texto curto)', <input name="icon" defaultValue={category.icon ?? ''} maxLength={40} className={input}/>)}{field('Cor', <ColorInput name="color" defaultValue={category.color ?? '#0d9488'} disabled={busy}/>)}
         {category.kind === 'expense' ? <>{field('Comportamento', <select name="fixity" defaultValue={category.fixity ?? 'variable'} className={input}><option value="variable">Variável</option><option value="fixed">Fixa</option></select>)}<label className="flex gap-2 text-sm"><input name="essential" type="checkbox" defaultChecked={category.is_essential}/>Despesa essencial</label><label className="flex gap-2 text-sm"><input name="tax" type="checkbox" defaultChecked={category.is_tax_deductible}/>Dedutível no imposto de renda</label></> : field('Classe da renda', <select name="income_class" defaultValue={category.income_class ?? 'recurring'} className={input}><option value="recurring">Recorrente</option><option value="extraordinary">Extraordinária</option><option value="benefit">Benefício</option><option value="cashback">Cashback</option><option value="financial">Financeira</option></select>)}
         <div className="flex gap-3 sm:col-span-2"><button disabled={busy} className={primary}>Salvar categoria</button><button type="button" onClick={() => setEditing(null)}>Cancelar</button></div>
       </form><form onSubmit={event => { event.preventDefault(); void run('manage_category', { p_category: category.id, p_version: category.version, p_action: 'move', p_changes: { parent_id: String(new FormData(event.currentTarget).get('parent')) || null } }); }} className="flex flex-wrap items-end gap-3">{field('Mover para outro grupo', <select name="parent" defaultValue={category.parent_id ?? ''} className={input}><option value="">Categoria principal</option>{data.categories.filter(parent => parent.id !== category.id && parent.kind === category.kind && !parent.archived_at && data.categories.some(child => child.parent_id === parent.id)).map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}</select>)}<button disabled={busy} className={primary}>Mover categoria</button></form></div> : null}

@@ -3,6 +3,7 @@ import { Tags } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import PageHeader from '../components/PageHeader'
 import CategoryPanels from '../components/CategoryPanels'
+import ColorInput from '../components/ColorInput'
 import type { CategoryType } from '../../../shared/types'
 
 export default function Categories() {
@@ -52,11 +53,10 @@ export default function Categories() {
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="field-label">Cor</label>
-          <input
-            type="color"
+          <ColorInput
             value={cor}
-            onChange={(e) => setCor(e.target.value)}
-            className="h-9 w-12 rounded-lg border border-slate-300 dark:border-slate-700"
+            onChange={setCor}
+            disabled={submitting}
           />
         </div>
         <button type="submit" disabled={submitting} className="btn-primary">
