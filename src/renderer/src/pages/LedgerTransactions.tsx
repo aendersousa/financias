@@ -55,7 +55,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   const categories=workspace.categories.filter(category=>category.ledger_account_id&&category.kind===(kind==='income'?'income':'expense'))
   const goals=reserves?.reserves.filter(reserve=>reserve.reserve_type==='goal'&&['active','achieved'].includes(reserve.status))??[]
   const visible=workspace.transactions.filter(transaction=>{
-    const entries=transaction.entries??[],flow=transactionFlow(entries)
+    const entries=transaction.entries??[],flow=transaction.kind==='card_purchase'?'Saída':transactionFlow(entries)
     const matchesFlow=flowFilter==='all'||flowFilter==='foreign'&&Boolean(foreignTransactions[transaction.id])||flowFilter==='income'&&(flow==='Entrada'||transaction.kind==='income')||flowFilter==='expense'&&(flow==='Saída'||transaction.kind==='expense')||flowFilter==='transfer'&&(flow==='Transferência'||transaction.kind==='transfer')||flowFilter==='card'&&transaction.kind.startsWith('card_')
     const account=workspace.accounts.find(item=>item.id===accountFilter),card=workspace.cards.find(item=>item.id===accountFilter)
     const matchesAccount=!accountFilter||entries.some(entry=>entry.account_name===(account?.name??card?.name)&&['financial_account','credit_card'].includes(entry.owner_type))

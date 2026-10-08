@@ -45,7 +45,7 @@ export default function TransactionTable<T extends LedgerTransaction>({transacti
           const categories=[...new Set(entries.filter(entry=>entry.owner_type==='category').map(entry=>entry.account_name))].join(' · ')
           const amount=transaction.amount_cents??(entries.length?entries.reduce((sum,entry)=>sum+Math.max(0,entry.amount_cents),0):null)
           const cancelled=transaction.status==='cancelled'
-          const flow=transactionFlow(entries)??(transaction.kind==='income'?'Entrada':transaction.kind==='expense'?'Saída':null)
+          const flow=transaction.kind==='card_purchase'?'Saída':transactionFlow(entries)??(transaction.kind==='income'?'Entrada':transaction.kind==='expense'?'Saída':null)
           const expense=flow==='Saída'
           const income=flow==='Entrada'
           const Icon=expense?ArrowUpRight:income?ArrowDownLeft:transaction.kind.startsWith('card_')?CreditCard:ArrowLeftRight

@@ -23,11 +23,11 @@ export default function RecurrenceTable({ rules, money, renderActions, renderEdi
   return <div className="table-shell">
     <table aria-label="Recorrências" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50"><tr>
-        <th scope="col" className="w-[49%] px-3 py-2.5 sm:w-[34%] sm:px-4">Descrição</th>
-        <th scope="col" className="hidden w-[16%] px-4 py-2.5 sm:table-cell">Frequência</th>
-        <th scope="col" className="w-[30%] px-2 py-2.5 text-right sm:w-[18%] sm:px-4">Valor</th>
-        <th scope="col" className="hidden px-4 py-2.5 sm:table-cell">Situação</th>
-        <th scope="col" className="w-[21%] px-2 py-2.5 sm:w-24 sm:px-4"><span className="sr-only">Ações</span></th>
+        <th scope="col" className="w-[45%] px-3 py-2.5 sm:w-[35%] sm:px-4">Descrição</th>
+        <th scope="col" className="hidden w-[22%] px-4 py-2.5 sm:table-cell">Frequência</th>
+        <th scope="col" className="hidden w-[15%] px-4 py-2.5 sm:table-cell">Situação</th>
+        <th scope="col" className="w-[35%] px-2 py-2.5 text-right sm:w-[18%] sm:px-4">Valor</th>
+        <th scope="col" className="w-[20%] px-2 py-2.5 text-right sm:w-[10%] sm:px-4"><span className="sr-only">Ações</span></th>
       </tr></thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
         {rules.map(rule => {
@@ -36,20 +36,31 @@ export default function RecurrenceTable({ rules, money, renderActions, renderEdi
             <tr className="table-row-hover transition-[background-color]">
               <td className="px-3 py-2.5 sm:px-4"><div className="flex items-start gap-2">
                 <Repeat2 size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400"/>
-                <div className="min-w-0 [overflow-wrap:anywhere]"><span>{rule.title}</span>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{rule.direction === 'inflow' ? 'A receber' : (rule.current_version.payment_method === 'card' || rule.current_version.payment_credit_card_id ? 'A pagar · Cartão' : 'A pagar')}</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 sm:hidden">{recurrenceFrequency(rule)} · {rule.ends_on ? 'Encerrada' : 'Ativa'}</p>
+                <div className="min-w-0 [overflow-wrap:anywhere]">
+                  <span className="font-medium text-slate-900 dark:text-slate-100">{rule.title}</span>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{rule.direction === 'inflow' ? 'A receber' : (rule.current_version.payment_method === 'card' || rule.current_version.payment_credit_card_id ? 'A pagar · Cartão' : 'A pagar')}</p>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 sm:hidden">{recurrenceFrequency(rule)} · {rule.ends_on ? 'Encerrada' : 'Ativa'}</p>
                 </div>
               </div></td>
-              <td className="hidden px-4 py-2.5 text-slate-500 dark:text-slate-400 sm:table-cell">{recurrenceFrequency(rule)}</td>
-              <td className="px-2 py-2.5 text-right font-medium [overflow-wrap:anywhere] sm:px-4">{money(rule.current_version.amount_cents)}</td>
-              <td className="hidden px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 sm:table-cell">{rule.ends_on ? 'Encerrada' : 'Ativa'}</td>
+              <td className="hidden px-4 py-2.5 text-slate-600 dark:text-slate-300 sm:table-cell">{recurrenceFrequency(rule)}</td>
+              <td className="hidden px-4 py-2.5 sm:table-cell">
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${rule.ends_on ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'}`}>
+                  {rule.ends_on ? 'Encerrada' : 'Ativa'}
+                </span>
+              </td>
+              <td className={`px-2 py-2.5 text-right font-medium [overflow-wrap:anywhere] sm:px-4 ${rule.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                {rule.direction === 'inflow' ? `+ ${money(rule.current_version.amount_cents)}` : money(rule.current_version.amount_cents)}
+              </td>
               <td className="px-2 py-2.5 text-right sm:px-4">{renderActions(rule)}</td>
             </tr>
             {editor && <tr><td colSpan={5} className="p-3 sm:p-4">{editor}</td></tr>}
           </Fragment>;
         })}
-        {!rules.length && <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">Nenhuma recorrência cadastrada.</td></tr>}
+        {!rules.length && <tr><td colSpan={5} className="px-4 py-10 text-center">
+          <Repeat2 className="mx-auto mb-2 text-slate-400 dark:text-slate-600" size={28}/>
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Nenhuma recorrência cadastrada</p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Cadastre seus rendimentos (salário, benefícios) ou despesas fixas para projetar seus saldos.</p>
+        </td></tr>}
       </tbody>
     </table>
   </div>;

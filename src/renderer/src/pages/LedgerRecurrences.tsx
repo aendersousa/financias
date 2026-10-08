@@ -33,7 +33,6 @@ function RecurrenceForm({ workspace, rule, busy, onSave, onCancel }: {
       : 'account'
   );
   const prefix = rule ? `recurrence-edit-${rule.id}` : 'recurrence';
-  const field = 'flex w-full min-w-0 flex-col gap-1 sm:w-40';
   const availableCards = workspace.cards.filter(c => c.card_type !== 'debit').length > 0
     ? workspace.cards.filter(c => c.card_type !== 'debit')
     : workspace.cards;
@@ -49,129 +48,209 @@ function RecurrenceForm({ workspace, rule, busy, onSave, onCancel }: {
       setPaymentMethod('account');
     }
   }
-  return <form aria-label={rule ? `Editar recorrência ${rule.title}` : 'Adicionar recorrência'} onSubmit={event => void submit(event)} className={rule ? 'min-w-0 space-y-4' : `${panel} space-y-4`}>
-    <fieldset disabled={busy} className="flex min-w-0 flex-wrap items-end gap-3">
-      {!rule && <>
-        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-56"><label htmlFor={`${prefix}-name`} className="field-label">Descrição</label><input id={`${prefix}-name`} name="name" maxLength={100} required placeholder="Ex: Assinatura de internet" className={input}/></div>
-        <div className={field}><label htmlFor={`${prefix}-direction`} className="field-label">Direção</label><select id={`${prefix}-direction`} aria-label="Direção" value={direction} onChange={event => { const next = event.target.value; setDirection(next); if (next === 'inflow') setPaymentMethod('account'); }} className={input}><option value="outflow">A pagar</option><option value="inflow">A receber</option></select></div>
-      </>}
-      <div className={field}><label htmlFor={`${prefix}-unit`} className="field-label">Frequência</label><select id={`${prefix}-unit`} aria-label="Frequência" value={unit} disabled={!!rule} onChange={event => setUnit(event.target.value)} className={input}><option value="month">Mensal</option><option value="week">Semanal</option><option value="year">Anual</option></select></div>
-      {unit === 'month' && (
-        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-44">
-          <label htmlFor={`${prefix}-timing-mode`} className="field-label">Tipo de vencimento</label>
-          <select
-            id={`${prefix}-timing-mode`}
-            aria-label="Tipo de vencimento"
-            name="timing_mode"
-            value={timingMode}
-            onChange={event => setTimingMode(event.target.value as 'calendar_day' | 'business_day')}
-            className={input}
-          >
-            <option value="calendar_day">Dia do mês (ex: 5, 10)</option>
-            <option value="business_day">Dia útil (ex: 5º dia útil)</option>
+  return <form aria-label={rule ? `Editar recorrência ${rule.title}` : 'Adicionar recorrência'} onSubmit={event => void submit(event)} className={rule ? 'min-w-0 space-y-4' : `${panel} space-y-5`}>
+    {!rule && (
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+        <div>
+          <h3 className="font-semibold text-slate-900 dark:text-slate-100">Nova recorrência</h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Receitas ou despesas que se repetem periodicamente</p>
+        </div>
+      </div>
+    )}
+    <fieldset disabled={busy} className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {!rule && (
+          <div className="flex w-full min-w-0 flex-col gap-1 sm:col-span-2">
+            <label htmlFor={`${prefix}-name`} className="field-label">Descrição</label>
+            <input id={`${prefix}-name`} name="name" maxLength={100} required placeholder="Ex: Salário, Vale Alimentação (VA), Internet" className={input}/>
+          </div>
+        )}
+        {!rule && (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-direction`} className="field-label">Direção</label>
+            <select id={`${prefix}-direction`} aria-label="Direção" value={direction} onChange={event => { const next = event.target.value; setDirection(next); if (next === 'inflow') setPaymentMethod('account'); }} className={input}>
+              <option value="outflow">A pagar (Despesa)</option>
+              <option value="inflow">A receber (Receita)</option>
+            </select>
+          </div>
+        )}
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <label htmlFor={`${prefix}-amount`} className="field-label">Valor</label>
+          <CurrencyInput id={`${prefix}-amount`} name="amount" required defaultValue={rule ? `${Math.floor(rule.current_version.amount_cents/100)},${String(rule.current_version.amount_cents%100).padStart(2,'0')}` : undefined} placeholder="0,00" className={input}/>
+        </div>
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <label htmlFor={`${prefix}-unit`} className="field-label">Frequência</label>
+          <select id={`${prefix}-unit`} aria-label="Frequência" value={unit} disabled={!!rule} onChange={event => setUnit(event.target.value)} className={input}>
+            <option value="month">Mensal</option>
+            <option value="week">Semanal</option>
+            <option value="year">Anual</option>
           </select>
         </div>
-      )}
-      {unit === 'month' && timingMode === 'business_day' && (
-        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
-          <label htmlFor={`${prefix}-business-day-pos`} className="field-label">Qual dia útil?</label>
-          <select
-            id={`${prefix}-business-day-pos`}
-            aria-label="Qual dia útil?"
-            name="business_day_pos"
-            value={businessDayPos}
-            onChange={event => setBusinessDayPos(Number(event.target.value))}
-            className={input}
-          >
-            <option value={1}>1º dia útil</option>
-            <option value={2}>2º dia útil</option>
-            <option value={3}>3º dia útil</option>
-            <option value={4}>4º dia útil</option>
-            <option value={5}>5º dia útil (Salário / CLT)</option>
-            <option value={6}>6º dia útil</option>
-            <option value={7}>7º dia útil</option>
-            <option value={8}>8º dia útil</option>
-            <option value={9}>9º dia útil</option>
-            <option value={10}>10º dia útil</option>
-            <option value={15}>15º dia útil</option>
-            <option value={20}>20º dia útil</option>
-            <option value={-1}>Último dia útil do mês</option>
-          </select>
-        </div>
-      )}
-      <div className={field}>
-        <label htmlFor={`${prefix}-date`} className="field-label">{rule ? 'A partir de' : 'Primeiro vencimento'}</label>
-        <input
-          id={`${prefix}-date`}
-          type="date"
-          name="date"
-          value={dateInputVal}
-          onChange={e => setDateInputVal(e.target.value)}
-          required
-          className={input}
-        />
+        {unit === 'month' && (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-timing-mode`} className="field-label">Tipo de vencimento</label>
+            <select
+              id={`${prefix}-timing-mode`}
+              aria-label="Tipo de vencimento"
+              name="timing_mode"
+              value={timingMode}
+              onChange={event => setTimingMode(event.target.value as 'calendar_day' | 'business_day')}
+              className={input}
+            >
+              <option value="calendar_day">Dia do mês (ex: 5, 10)</option>
+              <option value="business_day">Dia útil (ex: 5º dia útil)</option>
+            </select>
+          </div>
+        )}
         {unit === 'month' && timingMode === 'business_day' && (
-          <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400">
-            Neste mês: {date(nthBankingDay(dateInputVal || workspace.space.today, businessDayPos))}
-          </span>
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-business-day-pos`} className="field-label">Qual dia útil?</label>
+            <select
+              id={`${prefix}-business-day-pos`}
+              aria-label="Qual dia útil?"
+              name="business_day_pos"
+              value={businessDayPos}
+              onChange={event => setBusinessDayPos(Number(event.target.value))}
+              className={input}
+            >
+              <option value={1}>1º dia útil</option>
+              <option value={2}>2º dia útil</option>
+              <option value={3}>3º dia útil</option>
+              <option value={4}>4º dia útil</option>
+              <option value={5}>5º dia útil (Salário / CLT)</option>
+              <option value={6}>6º dia útil</option>
+              <option value={7}>7º dia útil</option>
+              <option value={8}>8º dia útil</option>
+              <option value={9}>9º dia útil</option>
+              <option value={10}>10º dia útil</option>
+              <option value={15}>15º dia útil</option>
+              <option value={20}>20º dia útil</option>
+              <option value={-1}>Último dia útil do mês</option>
+            </select>
+          </div>
+        )}
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <label htmlFor={`${prefix}-date`} className="field-label">{rule ? 'A partir de' : 'Primeiro vencimento'}</label>
+            {unit === 'month' && timingMode === 'business_day' && (
+              <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400">
+                Neste mês: {date(nthBankingDay(dateInputVal || workspace.space.today, businessDayPos))}
+              </span>
+            )}
+          </div>
+          <input
+            id={`${prefix}-date`}
+            type="date"
+            name="date"
+            value={dateInputVal}
+            onChange={e => setDateInputVal(e.target.value)}
+            required
+            className={input}
+          />
+        </div>
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <label htmlFor={`${prefix}-category`} className="field-label">Categoria</label>
+          <select id={`${prefix}-category`} aria-label="Categoria" name="category" required defaultValue={rule?.current_version.category_id ?? ''} className={input}>
+            <option value="">Selecione</option>
+            {workspace.categories.filter(c => c.ledger_account_id && c.kind === (direction === 'inflow' ? 'income' : 'expense')).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        {direction === 'outflow' ? (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-payment-method`} className="field-label">Forma de pagamento</label>
+            <select
+              id={`${prefix}-payment-method`}
+              aria-label="Forma de pagamento"
+              name="payment_method"
+              value={paymentMethod}
+              onChange={event => setPaymentMethod(event.target.value as 'account' | 'card')}
+              className={input}
+            >
+              <option value="account">Conta bancária</option>
+              <option value="card" disabled={availableCards.length === 0}>Cartão de crédito{availableCards.length === 0 ? ' (nenhum)' : ''}</option>
+            </select>
+          </div>
+        ) : (
+          <input type="hidden" name="payment_method" value="account"/>
+        )}
+        {paymentMethod === 'card' && direction === 'outflow' ? (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-card`} className="field-label">Cartão</label>
+            <select
+              id={`${prefix}-card`}
+              aria-label="Cartão"
+              name="card"
+              required
+              defaultValue={rule?.current_version.payment_credit_card_id ?? ''}
+              className={input}
+            >
+              <option value="">Selecione</option>
+              {availableCards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        ) : (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-account`} className="field-label">Conta bancária</label>
+            <select
+              id={`${prefix}-account`}
+              aria-label="Conta"
+              name="account"
+              required
+              defaultValue={rule?.current_version.payment_financial_account_id ?? ''}
+              className={input}
+            >
+              <option value="">Selecione</option>
+              {workspace.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <label htmlFor={`${prefix}-certainty`} className="field-label">Certeza</label>
+          <select id={`${prefix}-certainty`} aria-label="Certeza" name="certainty" defaultValue={rule?.current_version.certainty ?? 'confirmed'} className={input}>
+            <option value="confirmed">Confirmado</option>
+            <option value="estimated">Estimado</option>
+            {direction === 'inflow' && <option value="conditional">Condicional</option>}
+          </select>
+        </div>
+        {rule && (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            <label htmlFor={`${prefix}-scope`} className="field-label">Aplicar alteração</label>
+            <select id={`${prefix}-scope`} aria-label="Aplicar alteração" name="scope" className={input}>
+              <option value="this_and_following">Esta e as próximas</option>
+              <option value="entire_series">Toda a série em aberto</option>
+            </select>
+          </div>
         )}
       </div>
-      <div className="flex w-full min-w-0 flex-col gap-1 sm:w-36"><label htmlFor={`${prefix}-amount`} className="field-label">Valor</label><CurrencyInput id={`${prefix}-amount`} name="amount" required defaultValue={rule ? `${Math.floor(rule.current_version.amount_cents/100)},${String(rule.current_version.amount_cents%100).padStart(2,'0')}` : undefined} placeholder="0,00" className={input}/></div>
-      <div className={field}><label htmlFor={`${prefix}-certainty`} className="field-label">Certeza</label><select id={`${prefix}-certainty`} aria-label="Certeza" name="certainty" defaultValue={rule?.current_version.certainty ?? 'confirmed'} className={input}><option value="confirmed">Confirmado</option><option value="estimated">Estimado</option>{direction === 'inflow' && <option value="conditional">Condicional</option>}</select></div>
-      <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48"><label htmlFor={`${prefix}-category`} className="field-label">Categoria</label><select id={`${prefix}-category`} aria-label="Categoria" name="category" required defaultValue={rule?.current_version.category_id ?? ''} className={input}><option value="">Selecione</option>{workspace.categories.filter(c => c.ledger_account_id && c.kind === (direction === 'inflow' ? 'income' : 'expense')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-      {direction === 'outflow' ? (
-        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-44">
-          <label htmlFor={`${prefix}-payment-method`} className="field-label">Forma de pagamento</label>
-          <select
-            id={`${prefix}-payment-method`}
-            aria-label="Forma de pagamento"
-            name="payment_method"
-            value={paymentMethod}
-            onChange={event => setPaymentMethod(event.target.value as 'account' | 'card')}
-            className={input}
-          >
-            <option value="account">Conta bancária</option>
-            <option value="card" disabled={availableCards.length === 0}>Cartão de crédito{availableCards.length === 0 ? ' (nenhum)' : ''}</option>
-          </select>
+
+      <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+        <div className="flex flex-wrap items-center gap-5 text-sm text-slate-700 dark:text-slate-300">
+          {!rule && direction === 'inflow' && (
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              <input type="checkbox" name="main_income" className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800" />
+              <span>Esta é minha renda principal</span>
+            </label>
+          )}
+          {!rule && (
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              <input type="checkbox" name="subscription" className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800" />
+              <span>É uma assinatura</span>
+            </label>
+          )}
         </div>
-      ) : (
-        <input type="hidden" name="payment_method" value="account"/>
-      )}
-      {paymentMethod === 'card' && direction === 'outflow' ? (
-        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
-          <label htmlFor={`${prefix}-card`} className="field-label">Cartão</label>
-          <select
-            id={`${prefix}-card`}
-            aria-label="Cartão"
-            name="card"
-            required
-            defaultValue={rule?.current_version.payment_credit_card_id ?? ''}
-            className={input}
-          >
-            <option value="">Selecione</option>
-            {availableCards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <div className="flex items-center justify-end gap-3">
+          {rule && onCancel && (
+            <button type="button" onClick={onCancel} className={secondary}>
+              Cancelar edição
+            </button>
+          )}
+          <button disabled={busy} className={primary}>
+            {busy ? 'Salvando…' : rule ? 'Salvar alterações' : 'Adicionar recorrência'}
+          </button>
         </div>
-      ) : (
-        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
-          <label htmlFor={`${prefix}-account`} className="field-label">Conta</label>
-          <select
-            id={`${prefix}-account`}
-            aria-label="Conta"
-            name="account"
-            required
-            defaultValue={rule?.current_version.payment_financial_account_id ?? ''}
-            className={input}
-          >
-            <option value="">Selecione</option>
-            {workspace.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        </div>
-      )}
-      {rule && <div className="flex w-full min-w-0 flex-col gap-1 sm:w-56"><label htmlFor={`${prefix}-scope`} className="field-label">Aplicar alteração</label><select id={`${prefix}-scope`} aria-label="Aplicar alteração" name="scope" className={input}><option value="this_and_following">Esta e as próximas</option><option value="entire_series">Toda a série em aberto</option></select></div>}
-      <button disabled={busy} className={primary}>{busy ? 'Salvando…' : rule ? 'Salvar recorrência' : 'Adicionar recorrência'}</button>
-      {rule && <button type="button" onClick={onCancel} className={secondary}>Cancelar edição</button>}
-      {!rule && <div className="flex w-full flex-wrap gap-x-5 gap-y-2 pt-1 text-sm"><label className="inline-flex items-center gap-2"><input type="checkbox" name="main_income" disabled={direction !== 'inflow'}/>Esta é minha renda principal</label><label className="inline-flex items-center gap-2"><input type="checkbox" name="subscription"/>É uma assinatura</label></div>}
+      </div>
     </fieldset>
   </form>;
 }

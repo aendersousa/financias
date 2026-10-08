@@ -298,7 +298,7 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
   const [netWorthTab, setNetWorthTab] = useState<'chart' | 'table'>('chart');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [searchFilter, setSearchFilter] = useState('');
-  const [displayLimit, setDisplayLimit] = useState(25);
+  const [displayLimit, setDisplayLimit] = useState(10);
 
   const currentMonth = `${workspace.space.today.slice(0, 7)}-01`;
   const filterPayload: Record<string, unknown> = {
@@ -338,7 +338,7 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
     setData(null);
     setQuery(null);
     setError('');
-    setDisplayLimit(25);
+    setDisplayLimit(10);
 
     void Promise.all([
       ledgerRpc<Reports>('reports_summary', {
@@ -529,9 +529,9 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
         </div>
 
         {/* View Switcher Pills */}
-        <div className="mt-6 border-t border-slate-100 pt-5 dark:border-slate-800/80">
+        <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800/80">
           <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 block">
-            Escolha a visão do relatório
+            O que você quer consultar?
           </label>
           <div className="flex flex-wrap gap-2">
             {viewNavItems.map((item) => {
@@ -558,7 +558,7 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
       </section>
 
       {/* Filter panel */}
-      <section className="card p-5 dark:border-slate-800 dark:bg-slate-900">
+      <details className="card p-5 dark:border-slate-800 dark:bg-slate-900"><summary className="cursor-pointer text-sm font-semibold">Ajustar período e filtros{activeFiltersCount>0?` (${activeFiltersCount} ativos)`:""}</summary><div className="pt-4">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2">
             <Filter size={16} className="text-slate-500 dark:text-slate-400" />
@@ -732,7 +732,7 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
             </div>
           </div>
         )}
-      </section>
+      </div></details>
 
       {/* Error and loading banners */}
       {error && (
@@ -1227,7 +1227,7 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
               <div className="pt-3 text-center border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setDisplayLimit((prev) => prev + 50)}
+                  onClick={() => setDisplayLimit((prev) => prev + 10)}
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   Carregar mais ({rows.length - displayLimit} restantes)
@@ -1237,7 +1237,7 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
           </section>
 
           {/* 6-Month Comparison Section with BarChart */}
-          <section className="card p-5 sm:p-6 space-y-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Comparação dos últimos seis meses">
+          <details className="card p-5 sm:p-6 space-y-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Comparação dos últimos seis meses"><summary className="cursor-pointer text-sm font-semibold">Comparar os últimos seis meses</summary><div className="pt-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -1361,10 +1361,10 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
                 </table>
               </div>
             )}
-          </section>
+          </div></details>
 
           {/* Space Net Worth Section with AreaChart */}
-          <section className="card p-5 sm:p-6 space-y-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Patrimônio do espaço">
+          <details className="card p-5 sm:p-6 space-y-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Patrimônio do espaço"><summary className="cursor-pointer text-sm font-semibold">Evolução do patrimônio</summary><div className="pt-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -1500,10 +1500,10 @@ export default function LedgerReports({ workspace, money, privacy }: ReportProps
                 </table>
               </div>
             )}
-          </section>
+          </div></details>
 
           {/* Future Installments Card */}
-          <FutureInstallmentList value={data.future_installments} money={money} privacy={privacy} />
+          <details className="card p-4 sm:p-5"><summary className="cursor-pointer text-sm font-semibold">Parcelas futuras</summary><div className="mt-4"><FutureInstallmentList value={data.future_installments} money={money} privacy={privacy} /></div></details>
 
           {/* Bottom Export Options Panel */}
           <section className="card p-5 dark:border-slate-800 dark:bg-slate-900">

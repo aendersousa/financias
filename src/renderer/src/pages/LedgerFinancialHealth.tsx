@@ -139,7 +139,7 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
   // UI state
   const [itemsTab, setItemsTab] = useState<'expenses' | 'incomes'>('expenses');
   const [itemsSearch, setItemsSearch] = useState('');
-  const [displayLimit, setDisplayLimit] = useState(25);
+  const [displayLimit, setDisplayLimit] = useState(10);
   const [showUnclosedModal, setShowUnclosedModal] = useState(false);
 
   useEffect(() => {
@@ -497,14 +497,14 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
       )}
 
       {/* 6 Metric KPI Cards */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Indicadores de saúde financeira">
+      <section className="card grid gap-px overflow-hidden bg-slate-200 dark:bg-slate-800 sm:grid-cols-2 lg:grid-cols-3" aria-label="Indicadores de saúde financeira">
         {cards.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="card p-5 dark:border-slate-800 dark:bg-slate-900 flex flex-col justify-between">
+            <div key={item.label} className="bg-white p-4 dark:bg-slate-900 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     {item.label}
                   </span>
                   <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${item.iconColor}`}>
@@ -513,7 +513,7 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
                 </div>
 
                 <div className="mt-3 flex items-baseline justify-between gap-2">
-                  <p className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
+                  <p className="text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">
                     {item.value}
                   </p>
                   {item.status && (
@@ -524,9 +524,7 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
                 </div>
               </div>
 
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed border-t border-slate-100 pt-2.5 dark:border-slate-800/60">
-                {item.note}
-              </p>
+              <details className="mt-3 text-xs text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Como interpretar</summary><p className="mt-2 leading-relaxed">{item.note}</p></details>
             </div>
           );
         })}
@@ -677,7 +675,7 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
 
       {/* Expense Groups Composition Chart & Breakdown */}
       {data.window.sufficient && data.expense_groups && (
-        <section className="card p-5 sm:p-6 space-y-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Composição dos custos da janela">
+        <details className="card p-5 sm:p-6 space-y-5 dark:border-slate-800 dark:bg-slate-900" aria-label="Composição dos custos da janela"><summary className="cursor-pointer text-sm font-semibold">Como suas despesas se dividem</summary><div className="pt-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -780,19 +778,19 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
               })}
             </div>
           </div>
-        </section>
+        </div></details>
       )}
 
       {/* Detailed Window Items (Expenses vs Incomes) */}
       {data.window.sufficient && (
-        <section className="card p-5 sm:p-6 space-y-4 dark:border-slate-800 dark:bg-slate-900" aria-label="Detalhes de despesas e receitas da janela">
+        <details className="card p-5 sm:p-6 space-y-4 dark:border-slate-800 dark:bg-slate-900" aria-label="Detalhes de despesas e receitas da janela"><summary className="cursor-pointer text-sm font-semibold">Consultar despesas e receitas</summary><div className="pt-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-800">
               <button
                 type="button"
                 onClick={() => {
                   setItemsTab('expenses');
-                  setDisplayLimit(25);
+                  setDisplayLimit(10);
                 }}
                 className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                   itemsTab === 'expenses'
@@ -806,7 +804,7 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
                 type="button"
                 onClick={() => {
                   setItemsTab('incomes');
-                  setDisplayLimit(25);
+                  setDisplayLimit(10);
                 }}
                 className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                   itemsTab === 'incomes'
@@ -901,18 +899,18 @@ export default function LedgerFinancialHealth({ workspace, money, privacy }: Rep
             <div className="pt-2 text-center border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => setDisplayLimit((prev) => prev + 50)}
+                onClick={() => setDisplayLimit((prev) => prev + 10)}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Carregar mais itens
               </button>
             </div>
           )}
-        </section>
+        </div></details>
       )}
 
       {/* Future Installments Card */}
-      <FutureInstallmentList value={data.future_installments} money={money} privacy={privacy} />
+      <details className="card p-4 sm:p-5"><summary className="cursor-pointer text-sm font-semibold">Parcelas dos próximos meses</summary><div className="mt-4"><FutureInstallmentList value={data.future_installments} money={money} privacy={privacy} /></div></details>
     </div>
   );
 }
