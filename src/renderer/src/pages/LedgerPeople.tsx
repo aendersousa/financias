@@ -156,6 +156,8 @@ export default function LedgerPeople({
 
   // Shared expense
   const [showSharedExpense, setShowSharedExpense] = useState(false);
+  const [loanStep,setLoanStep]=useState(0);
+  useEffect(()=>{if(showLoanForm)setLoanStep(0);},[showLoanForm]);
   const [sharedSelectedPeople, setSharedSelectedPeople] = useState<string[]>([]);
   const [sharedTotalInput, setSharedTotalInput] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1971,7 +1973,8 @@ export default function LedgerPeople({
           <form
             aria-label="Registrar empréstimo com juros e prazos"
             onSubmit={submitLoan}
-            className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 space-y-4"
+            onInvalidCapture={()=>setLoanStep(1)}
+            className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 space-y-4"
           >
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
@@ -2007,6 +2010,8 @@ export default function LedgerPeople({
               </div>
             )}
 
+            <nav aria-label="Etapas do empréstimo" className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">{['Pessoa','Valores e pagamento','Conferir'].map((label,index)=><button key={label} type="button" aria-current={loanStep===index?'step':undefined} onClick={()=>setLoanStep(index)} className={'flex-1 rounded-lg px-2 py-2 text-xs font-medium '+(loanStep===index?'bg-white text-brand-700 shadow-sm dark:bg-slate-900 dark:text-brand-300':'text-slate-500')}>{label}</button>)}</nav>
+            <div className={loanStep===0?'space-y-4':'hidden'}>
             {/* Contact selector & Direction */}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5 text-sm">
@@ -2118,6 +2123,7 @@ export default function LedgerPeople({
               );
             })()}
 
+            </div><div className={loanStep===1?'space-y-4':'hidden'}>
           {/* Periodicidade de pagamento */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
@@ -2508,6 +2514,7 @@ export default function LedgerPeople({
             </div>
           )}
 
+            </div><div className={loanStep===2?'space-y-4':'hidden'}>
           {/* Real-time simulation preview card */}
           {loanCalc.principalCents > 0 && (
             loanCalc.isIndefinite ? (
@@ -2731,6 +2738,7 @@ export default function LedgerPeople({
             </p>
           </div>
 
+            </div>
           {/* Submit */}
           <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-5 sm:-mb-5 sm:px-5 rounded-b-xl shadow-lg">
             {error && (
@@ -2756,6 +2764,8 @@ export default function LedgerPeople({
               >
                 Cancelar
               </button>
+              {loanStep>0&&<button type="button" disabled={busy} onClick={()=>setLoanStep(step=>step-1)} className="px-3 py-2 text-sm text-slate-500">Voltar</button>}
+              {loanStep<2?<button type="button" disabled={busy||!loanPersonId} onClick={()=>setLoanStep(step=>step+1)} className="btn-primary">Continuar</button>:<>
               <button
                 type="submit"
                 disabled={busy || !loanPersonId || loanCalc.principalCents <= 0 || (loanMoveCash && !loanAccountId)}
@@ -2773,6 +2783,7 @@ export default function LedgerPeople({
                   </>
                 )}
               </button>
+              </>}
             </div>
           </div>
         </form>

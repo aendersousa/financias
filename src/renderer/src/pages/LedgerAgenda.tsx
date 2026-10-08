@@ -253,13 +253,14 @@ export default function LedgerAgenda({
         {
           p_payload:
             creationKind === 'reminder'
-              ? { kind: 'reminder', title: text('name'), due_on: text('date'), person_id: text('person') }
+              ? { kind: 'reminder', title: text('name'), due_on: text('date'), person_id: text('person') || null, notes: text('notes') || null }
               : {
                   title: text('name'),
                   direction: text('kind'),
                   certainty: text('certainty'),
                   amount_cents: amount,
                   due_on: text('date'),
+                  notes: text('notes') || null,
                   competence_month: `${text('competence')}-01`,
                   category_id: text('category'),
                   payment_method: text('kind') === 'inflow' ? 'account' : creationMethod,
@@ -622,7 +623,7 @@ export default function LedgerAgenda({
                   Novo compromisso
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Agende compromissos, contas futuras ou lembretes de cobrança
+                  Agende compromissos, contas futuras, tarefas ou lembretes
                 </p>
               </div>
             </div>
@@ -670,7 +671,7 @@ export default function LedgerAgenda({
                     : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                 }`}
               >
-                Lembrete
+                Lembrete / Tarefa
               </button>
             </div>
           </div>
@@ -687,7 +688,7 @@ export default function LedgerAgenda({
                     className={input}
                   >
                     <option value="one_off">Compromisso a pagar ou receber</option>
-                    <option value="reminder">Lembrete ligado a uma pessoa</option>
+                    <option value="reminder">Lembrete ou tarefa</option>
                   </select>
                 )}
                 <select
@@ -704,8 +705,20 @@ export default function LedgerAgenda({
               {/* ROW 1: Name, Amount, Due Date */}
               <div className="sm:col-span-2">
                 {field(
-                  'Nome ou descrição',
-                  <input name="name" required maxLength={100} placeholder={direction === 'inflow' ? 'Ex: Salário, Devolução de empréstimo' : 'Ex: Aluguel, Fatura de internet'} className={input} />
+                  creationKind === 'reminder' ? 'O que você precisa fazer ou lembrar?' : 'Nome ou descrição',
+                  <input
+                    name="name"
+                    required
+                    maxLength={100}
+                    placeholder={
+                      creationKind === 'reminder'
+                        ? 'Ex: Reunião às 14h, Ir ao mercado, Consulta médica...'
+                        : direction === 'inflow'
+                        ? 'Ex: Salário, Devolução de empréstimo'
+                        : 'Ex: Aluguel, Fatura de internet'
+                    }
+                    className={input}
+                  />
                 )}
               </div>
 
@@ -713,9 +726,15 @@ export default function LedgerAgenda({
                 <>
                   <div className="sm:col-span-1">
                     {field(
-                      'Pessoa do lembrete',
-                      <select name="person" required defaultValue="" className={input}>
-                        <option value="">Selecione uma pessoa</option>
+                      'Data do compromisso',
+                      <input name="date" type="date" defaultValue={workspace.space.today} required className={input} />
+                    )}
+                  </div>
+                  <div className="sm:col-span-1">
+                    {field(
+                      'Pessoa (opcional)',
+                      <select name="person" defaultValue="" className={input}>
+                        <option value="">Nenhuma (tarefa ou compromisso pessoal)</option>
                         {workspace.people.map(person => (
                           <option key={person.id} value={person.id}>
                             {person.nickname}
@@ -724,10 +743,15 @@ export default function LedgerAgenda({
                       </select>
                     )}
                   </div>
-                  <div className="sm:col-span-1">
+                  <div className="sm:col-span-2">
                     {field(
-                      'Vencimento',
-                      <input name="date" type="date" defaultValue={workspace.space.today} required className={input} />
+                      'Anotações ou horário (opcional)',
+                      <input
+                        name="notes"
+                        maxLength={200}
+                        placeholder="Ex: Horário às 14h, levar documentos, lista de compras..."
+                        className={input}
+                      />
                     )}
                   </div>
                 </>
@@ -832,7 +856,7 @@ export default function LedgerAgenda({
               <div className="flex items-end gap-3 sm:col-span-2 justify-end border-t border-slate-200 pt-4 dark:border-slate-800"><button type="button" onClick={()=>setShowAddForm(false)} className="px-3 py-2 text-sm text-slate-500">Cancelar</button>
                 <button className={`${primary} flex items-center justify-center gap-2 px-6 py-2.5`}>
                   <Plus size={16} />
-                  <span>{busy ? 'Salvando…' : 'Adicionar item'}</span>
+                  <span>{busy ? 'Salvando…' : creationKind === 'reminder' ? 'Adicionar lembrete / tarefa' : 'Adicionar compromisso'}</span>
                 </button>
               </div>
             </fieldset>
@@ -1027,7 +1051,7 @@ export default function LedgerAgenda({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3"><label className="relative w-full sm:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Buscar na Agenda" value={search} onChange={event=>{setSearch(event.target.value);setDetails(null);setAction(null);}} placeholder="Buscar compromisso, conta ou categoria" className={input+' pl-9'}/></label><div className="flex flex-wrap gap-1">{[['all','Todos os tipos'],['outflow','A pagar'],['inflow','A receber'],['reminder','Lembretes']].map(([value,label])=><button type="button" key={value} aria-pressed={flow===value} onClick={()=>{setFlow(value);setDetails(null);setAction(null);}} className={'rounded-lg px-3 py-2 text-xs font-medium '+(flow===value?'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300':'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800')}>{label}</button>)}</div></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><label className="relative w-full sm:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Buscar na Agenda" value={search} onChange={event=>{setSearch(event.target.value);setDetails(null);setAction(null);}} placeholder="Buscar compromisso, conta ou categoria" className={input+' pl-9'}/></label><div className="flex flex-wrap gap-1">{[['all','Todos os tipos'],['outflow','A pagar'],['inflow','A receber'],['reminder','Lembretes / Tarefas']].map(([value,label])=><button type="button" key={value} aria-pressed={flow===value} onClick={()=>{setFlow(value);setDetails(null);setAction(null);}} className={'rounded-lg px-3 py-2 text-xs font-medium '+(flow===value?'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300':'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800')}>{label}</button>)}</div></div>
         {/* ELEGANT MONTHLY CALENDAR GRID */}
         {(
           <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -1183,6 +1207,11 @@ export default function LedgerAgenda({
                           </span>
                         )}
                       </div>
+                      {item.notes && (
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 line-clamp-1">
+                          {item.notes}
+                        </p>
+                      )}
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs sm:hidden">
                         <span className="text-slate-500 dark:text-slate-400">{dateLabel(item.on)}</span>
                         {isOverdue && (

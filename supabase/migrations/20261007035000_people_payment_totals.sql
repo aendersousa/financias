@@ -1,7 +1,7 @@
 begin;
 
 -- Count actual reductions of an outstanding balance, excluding cancelled and future movements.
-create function private.person_payment_totals(p_space uuid,p_ledger uuid) returns jsonb
+create or replace function private.person_payment_totals(p_space uuid,p_ledger uuid) returns jsonb
 language sql stable set search_path='' as $$
   with movements as (
     select t.id,t.kind,t.occurred_on,t.created_at,sum(e.amount_cents)::numeric as amount
@@ -23,9 +23,10 @@ do $$
 declare definition text; original text:='to_jsonb(p)||jsonb_build_object';
 begin
   select pg_get_functiondef('api.people_management_summary(uuid,boolean)'::regprocedure) into definition;
-  if position(original in definition)=0 then raise exception 'People projection not found';end if;
-  definition:=replace(definition,original,'to_jsonb(p)||private.person_payment_totals(p_space,p.ledger_account_id)||jsonb_build_object');
-  execute definition;
+  if position(original in definition) > 0 then
+    definition:=replace(definition,original,'to_jsonb(p)||private.person_payment_totals(p_space,p.ledger_account_id)||jsonb_build_object');
+    execute definition;
+  end if;
 end;
 $$;
 commit;
