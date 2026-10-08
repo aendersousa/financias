@@ -472,7 +472,7 @@ export function getPersonLoanTerms(
 
   if (person.reminders && person.reminders.length > 0) {
     for (const r of person.reminders) {
-      if (/vencimento mensal/i.test(r.title) || /juros de .*\(vencimento mensal\)/i.test(r.title)) {
+      if (/vencimento mensal/i.test(r.title) || /juros de .*\(vencimento mensal\)/i.test(r.title) || /juros acumulados/i.test(r.title)) {
         hasIndefiniteReminder = true;
       }
       const match = r.title.match(/parcela\s+(\d+)\/(\d+)(?:\s*\((?:r\$\s*)?([\d.,]+)\))?/i);

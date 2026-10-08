@@ -31,6 +31,7 @@ import PeopleTable from '../components/PeopleTable';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { addDays, addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates, getPersonLoanTerms, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
+import { formatPersonReminderTitle } from '../../../shared/finance/agendaPeople';
 import CurrencyInput from '../components/CurrencyInput';
 
 const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -828,9 +829,12 @@ export default function LedgerPeople({
           }
         }
         for (const item of loanCalc.schedule) {
-          const title = loanPayMode === 'indefinite'
-            ? `${loanDirection === 'lend' ? 'Cobrar' : 'Pagar'} juros de ${targetPerson.nickname}: ${money(loanCalc.monthlyInterestCents || item.amountCents)} (Vencimento mensal)`
-            : `${loanDirection === 'lend' ? 'Cobrar' : 'Pagar'} ${targetPerson.nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
+          const isIndefinite = loanPayMode === 'indefinite';
+          const title = isIndefinite
+            ? `${loanDirection === 'lend' ? 'Juros acumulados de' : 'Juros acumulados com'} ${targetPerson.nickname}: +${money(loanCalc.monthlyInterestCents || item.amountCents)} neste mês`
+            : loanPayMode === 'single'
+              ? `${loanDirection === 'lend' ? 'Receber de' : 'Pagar para'} ${targetPerson.nickname}: Pagamento único de ${money(item.amountCents)}`
+              : `${loanDirection === 'lend' ? 'Cobrar' : 'Pagar'} ${targetPerson.nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
           await ledgerRpc('create_commitment', {
             p_space: workspace.space.id,
             p_payload: {
@@ -1277,9 +1281,12 @@ export default function LedgerPeople({
                 addPersonLoanCalc.schedule.length > 0
               ) {
                 for (const item of addPersonLoanCalc.schedule) {
-                  const title = addPersonLoanPayMode === 'indefinite'
-                    ? `${addPersonDebt === 'receivable' ? 'Cobrar' : 'Pagar'} juros de ${nickname}: ${money(addPersonLoanCalc.monthlyInterestCents || item.amountCents)} (Vencimento mensal)`
-                    : `${addPersonDebt === 'receivable' ? 'Cobrar' : 'Pagar'} ${nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
+                  const isIndefinite = addPersonLoanPayMode === 'indefinite';
+                  const title = isIndefinite
+                    ? `${addPersonDebt === 'receivable' ? 'Juros acumulados de' : 'Juros acumulados com'} ${nickname}: +${money(addPersonLoanCalc.monthlyInterestCents || item.amountCents)} neste mês`
+                    : addPersonLoanPayMode === 'single'
+                      ? `${addPersonDebt === 'receivable' ? 'Receber de' : 'Pagar para'} ${nickname}: Pagamento único de ${money(item.amountCents)}`
+                      : `${addPersonDebt === 'receivable' ? 'Cobrar' : 'Pagar'} ${nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
                   try {
                     await ledgerRpc('create_commitment', {
                       p_space: workspace.space.id,
@@ -4186,8 +4193,10 @@ function PersonDetailPanel({
             ) : (
               <div className="space-y-1.5">
                 {detail.reminders.map(item => {
+                  const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
+                  const displayTitle = formatPersonReminderTitle(item.title, person.nickname);
                   const isCompleted = !!item.completed_at;
-                  const isOverdue = !isCompleted && item.effective_due_on < today;
+                  const isOverdue = !isInterestAccrual && !isCompleted && item.effective_due_on < today;
                   const isToday = !isCompleted && item.effective_due_on === today;
 
                   return (
@@ -4196,11 +4205,13 @@ function PersonDetailPanel({
                       className={`flex flex-wrap items-center justify-between gap-2.5 rounded-xl border p-2.5 text-xs transition-colors ${
                         isCompleted
                           ? 'border-slate-200 bg-slate-50/50 opacity-60 dark:border-slate-800 dark:bg-slate-800/30'
-                          : isOverdue
-                            ? 'border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/20'
-                            : isToday
-                              ? 'border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20'
-                              : 'border-slate-100 bg-slate-50/70 dark:border-slate-800/80 dark:bg-slate-800/40'
+                          : isInterestAccrual
+                            ? 'border-blue-200 bg-blue-50/40 dark:border-blue-900/40 dark:bg-blue-950/20'
+                            : isOverdue
+                              ? 'border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/20'
+                              : isToday
+                                ? 'border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20'
+                                : 'border-slate-100 bg-slate-50/70 dark:border-slate-800/80 dark:bg-slate-800/40'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -4211,9 +4222,11 @@ function PersonDetailPanel({
                           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${
                             isCompleted
                               ? 'border-emerald-500 bg-emerald-500 text-white'
-                              : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700'
+                              : isInterestAccrual
+                                ? 'border-blue-300 bg-white hover:border-blue-400 dark:border-blue-600 dark:bg-slate-700'
+                                : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700'
                           }`}
-                          title={isCompleted ? 'Reabrir lembrete' : 'Marcar como concluído'}
+                          title={isCompleted ? 'Reabrir lembrete' : isInterestAccrual ? 'Marcar como ciente' : 'Marcar como concluído'}
                         >
                           {isCompleted && <Check size={12} strokeWidth={3} />}
                         </button>
@@ -4226,24 +4239,27 @@ function PersonDetailPanel({
                                 : 'text-slate-800 dark:text-slate-200'
                             }`}
                           >
-                            {item.title}
+                            {displayTitle}
                           </p>
                           <div className="flex items-center gap-2 pt-0.5">
                             <span
                               className={`inline-flex items-center gap-0.5 font-semibold ${
                                 isCompleted
                                   ? 'text-emerald-600 dark:text-emerald-400'
-                                  : isOverdue
-                                    ? 'text-red-600 dark:text-red-400'
-                                    : isToday
-                                      ? 'text-amber-600 dark:text-amber-400'
-                                      : 'text-slate-500 dark:text-slate-400'
+                                  : isInterestAccrual
+                                    ? 'text-blue-600 dark:text-blue-400'
+                                    : isOverdue
+                                      ? 'text-red-600 dark:text-red-400'
+                                      : isToday
+                                        ? 'text-amber-600 dark:text-amber-400'
+                                        : 'text-slate-500 dark:text-slate-400'
                               }`}
                             >
                               {displayDate(item.effective_due_on)}
                               {isCompleted && ' • Concluído'}
-                              {!isCompleted && isOverdue && ' • Vencido'}
-                              {!isCompleted && isToday && ' • Vence hoje'}
+                              {!isCompleted && isInterestAccrual && ' • Acumulado no mês'}
+                              {!isCompleted && !isInterestAccrual && isOverdue && ' • Vencido'}
+                              {!isCompleted && !isInterestAccrual && isToday && ' • Vence hoje'}
                             </span>
                           </div>
                         </div>

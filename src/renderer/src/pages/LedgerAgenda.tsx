@@ -590,7 +590,15 @@ export default function LedgerAgenda({
           <div className="space-y-3">
             {(calendar?.items??[]).filter(item=>item.on===popupDay).map(item=><article key={itemKey(item)} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
               <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold [overflow-wrap:anywhere]">{item.title}</h3>{item.remaining_cents!==null&&<span className={'font-semibold tabular-nums '+(item.direction==='inflow'?'text-brand-600 dark:text-brand-400':item.direction==='outflow'?'text-red-500':'')}>{money(item.remaining_cents)}</span>}</div>
-              <p className="mt-1 text-xs text-slate-500">{itemTypes[item.type]??item.type} · {statuses[item.settlement_status]??item.settlement_status}{item.direction==='inflow'?' · A receber':item.direction==='outflow'?' · A pagar':''}</p>
+              {(() => {
+                const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
+                const statusLabel = isInterestAccrual && item.settlement_status !== 'settled' ? 'Acumulado no mês' : (statuses[item.settlement_status] ?? item.settlement_status);
+                return (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {isInterestAccrual ? 'Acúmulo de juros' : (itemTypes[item.type] ?? item.type)} · {statusLabel}{item.direction==='inflow'?' · A receber':item.direction==='outflow'?' · A pagar':''}
+                  </p>
+                );
+              })()}
               {(item.payment_name||item.category_name)&&<p className="mt-3 text-sm text-slate-500">{[item.payment_name,item.category_name].filter(Boolean).join(' · ')}</p>}
               {Boolean(item.paid_cents)&&<p className="mt-2 text-xs text-slate-500">Já pago: {money(item.paid_cents??0)}</p>}
               {item.notes&&<p className="mt-3 whitespace-pre-wrap text-sm text-slate-500 [overflow-wrap:anywhere]">{item.notes}</p>}
@@ -1024,10 +1032,25 @@ export default function LedgerAgenda({
                 const rows = grouped.get(on) ?? [];
                 const dayStatuses=new Map<string,{count:number;tone:string}>();
                 for(const item of rows){
-                  const overdue=['pending','partial','scheduled'].includes(item.settlement_status)&&on<(calendar?.today??workspace.space.today);
-                  const settled=item.settlement_status==='settled';
-                  const label=settled?(item.direction==='inflow'||/^Cobrar /i.test(item.title)?'Recebido':item.type==='reminder'&&!/^Pagar /i.test(item.title)?'Concluído':'Pago'):item.settlement_status==='partial'?'Parcial':overdue?'Vencido':statuses[item.settlement_status]??'Pendente';
-                  const tone=settled?'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200':overdue?'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-200':'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200';
+                  const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
+                  const overdue = !isInterestAccrual && ['pending','partial','scheduled'].includes(item.settlement_status)&&on<(calendar?.today??workspace.space.today);
+                  const settled = item.settlement_status==='settled';
+                  const label = settled
+                    ? (item.direction==='inflow'||/^Cobrar /i.test(item.title)?'Recebido':item.type==='reminder'&&!/^Pagar /i.test(item.title)?'Concluído':'Pago')
+                    : isInterestAccrual
+                      ? 'Acumulado'
+                      : item.settlement_status==='partial'
+                        ? 'Parcial'
+                        : overdue
+                          ? 'Vencido'
+                          : statuses[item.settlement_status]??'Pendente';
+                  const tone = settled
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200'
+                    : isInterestAccrual
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200'
+                      : overdue
+                        ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-200'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200';
                   dayStatuses.set(label,{count:(dayStatuses.get(label)?.count??0)+1,tone});
                 }
                 const isToday = on === workspace.space.today;
@@ -1113,7 +1136,8 @@ export default function LedgerAgenda({
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
             {items.map(item => {
-              const isOverdue = ['pending', 'partial'].includes(item.settlement_status) && item.on < workspace.space.today;
+              const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
+              const isOverdue = !isInterestAccrual && ['pending', 'partial'].includes(item.settlement_status) && item.on < workspace.space.today;
               const isSettled = item.settlement_status === 'settled';
 
               return (
@@ -1179,20 +1203,27 @@ export default function LedgerAgenda({
 
                     {/* SITUAÇÃO BADGE */}
                     <td className="hidden px-4 py-3 sm:table-cell">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          isSettled
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : isOverdue
-                              ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
-                              : item.settlement_status === 'partial'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${isSettled ? 'bg-emerald-500' : isOverdue ? 'bg-red-500' : 'bg-amber-500'}`} />
-                        <span>{statuses[item.settlement_status] ?? item.settlement_status}</span>
-                      </span>
+                      {isInterestAccrual && !isSettled ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                          <span>Acumulado no mês</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            isSettled
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : isOverdue
+                                ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                                : item.settlement_status === 'partial'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                  : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${isSettled ? 'bg-emerald-500' : isOverdue ? 'bg-red-500' : 'bg-amber-500'}`} />
+                          <span>{statuses[item.settlement_status] ?? item.settlement_status}</span>
+                        </span>
+                      )}
                     </td>
 
                     {/* AÇÕES */}
@@ -1259,7 +1290,7 @@ export default function LedgerAgenda({
                                     }
                                     className="btn-primary px-3.5 py-1.5 text-xs font-bold"
                                   >
-                                    {item.settlement_status === 'settled' ? 'Reabrir lembrete' : 'Concluir lembrete'}
+                                    {item.settlement_status === 'settled' ? 'Reabrir lembrete' : isInterestAccrual ? 'Marcar como ciente' : 'Concluir lembrete'}
                                   </button>
                                 ) : ['pending', 'partial'].includes(item.settlement_status) ? (
                                   <>
