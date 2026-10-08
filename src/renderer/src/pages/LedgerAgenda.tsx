@@ -671,6 +671,16 @@ export default function LedgerAgenda({
                       >
                         Editar
                       </button>
+
+                      {!item.loan_installment && (
+                        <button
+                          disabled={busy}
+                          onClick={() => { setPopupDay(''); choose(item, 'cancel'); }}
+                          className="rounded-xl px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                        >
+                          Cancelar item
+                        </button>
+                      )}
                     </div>
                   )}
                 </article>
