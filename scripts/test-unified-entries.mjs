@@ -227,6 +227,9 @@ try {
     await expect(form).toHaveCount(0);
     await expect(international.getByLabel('Moeda',{exact:true})).toBeEnabled();
     await expect(international.getByLabel('Pagamento',{exact:true})).toBeVisible();
+    await international.getByLabel('Operação',{exact:true}).selectOption('expense');
+    await expect(international).toHaveCount(0);await expect(form).toBeVisible();await expect(form.getByLabel('Operação',{exact:true})).toHaveValue('expense');
+    await form.getByLabel('Operação',{exact:true}).selectOption('foreign_purchase');await expect(international).toBeVisible();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'International popup fits mobile');
     await page.screenshot({path:'out/unified-entries-test/international-popup.png'});
     await page.keyboard.press('Escape');

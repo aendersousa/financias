@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addBankingDays, bankingHolidays, effectiveDueDate, todayInSpace } from './calendar';
+import { addBankingDays, bankingHolidays, effectiveDueDate, nthBankingDay, todayInSpace } from './calendar';
 
 describe('D-031 banking calendar', () => {
   it.each([
@@ -24,5 +24,13 @@ describe('D-031 banking calendar', () => {
   });
   it('rejects impossible dates', () => {
     expect(() => effectiveDueDate('2026-02-30')).toThrow();
+  });
+  it('calculates the 5th banking day of the month correctly (salary day)', () => {
+    // Oct 2026: 1 (Thu), 2 (Fri), 5 (Mon), 6 (Tue), 7 (Wed) => 5th is Oct 7
+    expect(nthBankingDay('2026-10-01', 5)).toBe('2026-10-07');
+    // Nov 2026: 1 (Sun), 2 (Holiday Finados), 3 (Tue), 4 (Wed), 5 (Thu), 6 (Fri), 9 (Mon) => 5th is Nov 9
+    expect(nthBankingDay('2026-11-01', 5)).toBe('2026-11-09');
+    // Last banking day of Oct 2026: Oct 31 is Sat, Oct 30 is Fri
+    expect(nthBankingDay('2026-10-01', -1)).toBe('2026-10-30');
   });
 });

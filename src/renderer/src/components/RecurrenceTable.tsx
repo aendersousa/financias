@@ -3,7 +3,16 @@ import { Repeat2 } from 'lucide-react';
 import type { WorkspaceMetadata } from '../lib/ledgerRepository';
 
 export type RecurrenceRule = WorkspaceMetadata['recurrences'][number];
-export const recurrenceFrequency = (unit: RecurrenceRule['unit']) => unit === 'month' ? 'Mensal' : unit === 'week' ? 'Semanal' : 'Anual';
+export const recurrenceFrequency = (rule: RecurrenceRule | RecurrenceRule['unit']) => {
+  if (typeof rule === 'string') {
+    return rule === 'month' ? 'Mensal' : rule === 'week' ? 'Semanal' : 'Anual';
+  }
+  if (rule.unit === 'month' && rule.current_version.timing_mode === 'business_day') {
+    const day = rule.current_version.day_of_month;
+    return day === -1 ? 'Mensal · Último dia útil' : `Mensal · ${day}º dia útil`;
+  }
+  return rule.unit === 'month' ? 'Mensal' : rule.unit === 'week' ? 'Semanal' : 'Anual';
+};
 
 export default function RecurrenceTable({ rules, money, renderActions, renderEditor }: {
   rules: RecurrenceRule[];
@@ -29,10 +38,10 @@ export default function RecurrenceTable({ rules, money, renderActions, renderEdi
                 <Repeat2 size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400"/>
                 <div className="min-w-0 [overflow-wrap:anywhere]"><span>{rule.title}</span>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{rule.direction === 'inflow' ? 'A receber' : (rule.current_version.payment_method === 'card' || rule.current_version.payment_credit_card_id ? 'A pagar · Cartão' : 'A pagar')}</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 sm:hidden">{recurrenceFrequency(rule.unit)} · {rule.ends_on ? 'Encerrada' : 'Ativa'}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 sm:hidden">{recurrenceFrequency(rule)} · {rule.ends_on ? 'Encerrada' : 'Ativa'}</p>
                 </div>
               </div></td>
-              <td className="hidden px-4 py-2.5 text-slate-500 dark:text-slate-400 sm:table-cell">{recurrenceFrequency(rule.unit)}</td>
+              <td className="hidden px-4 py-2.5 text-slate-500 dark:text-slate-400 sm:table-cell">{recurrenceFrequency(rule)}</td>
               <td className="px-2 py-2.5 text-right font-medium [overflow-wrap:anywhere] sm:px-4">{money(rule.current_version.amount_cents)}</td>
               <td className="hidden px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 sm:table-cell">{rule.ends_on ? 'Encerrada' : 'Ativa'}</td>
               <td className="px-2 py-2.5 text-right sm:px-4">{renderActions(rule)}</td>

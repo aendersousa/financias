@@ -65,6 +65,34 @@ export function addBankingDays(value: string, count: number, localHolidays: read
   return result;
 }
 
+export function nthBankingDay(monthIso: string, count: number, localHolidays: readonly Holiday[] = []): string {
+  if (!Number.isInteger(count) || count === 0 || count < -31 || count > 31) throw new Error('Dia útil inválido.');
+  const [year, month] = monthIso.slice(0, 7).split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  if (count > 0) {
+    let bankingCount = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (isBankingDay(dateStr, localHolidays)) {
+        bankingCount++;
+        if (bankingCount === count) return dateStr;
+      }
+    }
+    return effectiveDueDate(`${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`, 'previous', localHolidays);
+  } else {
+    let bankingCount = 0;
+    for (let day = daysInMonth; day >= 1; day--) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (isBankingDay(dateStr, localHolidays)) {
+        bankingCount--;
+        if (bankingCount === count) return dateStr;
+      }
+    }
+    return effectiveDueDate(`${year}-${String(month).padStart(2, '0')}-01`, 'next', localHolidays);
+  }
+}
+
 export function todayInSpace(timezone = 'America/Sao_Paulo', now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
   const value = (type: string) => parts.find((part) => part.type === type)!.value;
