@@ -260,5 +260,32 @@ describe('peopleLoans calculations', () => {
     expect(dates.startDate).toBe('2026-08-11');
     expect(dates.nextDueDate).toBe('2026-10-11');
   });
+
+  it('calculates interestType none with empty fixed input cleanly without throwing', () => {
+    const result = calculatePeopleLoan({
+      principalInput: '240,00',
+      interestType: 'none',
+      interestRate: '5',
+      interestFixedInput: '',
+      interestPeriod: 'monthly',
+      installmentsCount: 2,
+      frequency: 'monthly',
+      payMode: 'installments',
+      startDate: '2026-09-07',
+      firstDueDate: '2026-11-07',
+      today: '2026-10-07'
+    });
+
+    expect(result.principalCents).toBe(24000);
+    expect(result.interestCents).toBe(0);
+    expect(result.totalCents).toBe(24000);
+    expect(result.count).toBe(2);
+    expect(result.schedule).toHaveLength(2);
+    expect(result.schedule[0].amountCents).toBe(12000);
+    expect(result.schedule[0].dueDate).toBe('2026-11-07');
+    expect(result.schedule[1].amountCents).toBe(12000);
+    expect(result.schedule[1].dueDate).toBe('2026-12-07');
+  });
 });
+
 

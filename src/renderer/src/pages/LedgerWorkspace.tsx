@@ -282,7 +282,7 @@ export default function LedgerWorkspace() {
           {section === 'reports' && <LedgerReports key={workspace.space.id} workspace={workspace} money={money} privacy={privacy}/>}
           {section === 'health' && <LedgerFinancialHealth key={workspace.space.id} workspace={workspace} money={money} privacy={privacy}/>}
           {section === 'forecast' && <LedgerCashForecast key={workspace.space.id} workspace={workspace} money={money} privacy={privacy}/>}
-          {section === 'reserves' && <><LedgerReserves key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/><LedgerReservePlan key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/></>}
+          {section === 'reserves' && <><LedgerReserves key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/><details className="text-sm"><summary className="cursor-pointer py-2 font-medium text-slate-500 dark:text-slate-400">Planejamento de aportes e automações</summary><div className="mt-3"><LedgerReservePlan key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/></div></details></>}
           {section === 'notifications' && <LedgerNotifications key={workspace.space.id} workspace={workspace} money={money} onNavigate={navigate} onUpdateUnread={setUnreadNotifications}/>}
           {section === 'portfolio' && <LedgerPortfolio key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'closing' && <LedgerClosing workspace={workspace} money={money} onChanged={refresh}/>}

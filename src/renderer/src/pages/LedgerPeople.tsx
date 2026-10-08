@@ -37,6 +37,18 @@ const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
 const input = 'w-full field-input';
 const displayDate = (value: string) => value.split('-').reverse().join('/');
 
+function safeParseBrlCents(value: string | number | null | undefined): number {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return Math.round(value);
+  const trimmed = String(value).trim();
+  if (!trimmed) return 0;
+  try {
+    return parseBrlCents(trimmed);
+  } catch {
+    return 0;
+  }
+}
+
 type Direction = 'receive' | 'pay' | 'lend' | 'borrow';
 
 interface Contact {
@@ -642,7 +654,9 @@ export default function LedgerPeople({
         const periodLabel = loanInterestPeriod === 'daily' ? '/dia' : loanInterestPeriod === 'monthly' ? '/mês' : 'total';
         const interestRateOrFixed = loanInterestType === 'percent'
           ? `${loanInterestRate}% ${periodLabel}`
-          : `${money(parseBrlCents(loanInterestFixed))} ${periodLabel}`;
+          : loanInterestType === 'fixed'
+          ? `${money(safeParseBrlCents(loanInterestFixed))} ${periodLabel}`
+          : 'sem juros';
 
         const conditionDesc = isIndefinite
           ? `prazo indefinido (sem data final), juro de ${interestRateOrFixed} correndo todo mês com próximo vencimento em ${displayDate(loanCalc.nextDueDate || '')}`
@@ -1071,7 +1085,9 @@ export default function LedgerPeople({
                 const periodLabel = addPersonLoanInterestPeriod === 'daily' ? '/dia' : addPersonLoanInterestPeriod === 'monthly' ? '/mês' : 'total';
                 const interestRateOrFixed = addPersonLoanInterestType === 'percent'
                   ? `${addPersonLoanInterestRate}% ${periodLabel}`
-                  : `${money(parseBrlCents(addPersonLoanInterestFixed))} ${periodLabel}`;
+                  : addPersonLoanInterestType === 'fixed'
+                  ? `${money(safeParseBrlCents(addPersonLoanInterestFixed))} ${periodLabel}`
+                  : 'sem juros';
 
                 const conditionDesc = isIndefinite
                   ? `prazo indefinido (sem data final), juro de ${interestRateOrFixed} correndo todo mês com próximo vencimento em ${displayDate(addPersonLoanCalc.nextDueDate || '')}`
@@ -1108,23 +1124,35 @@ export default function LedgerPeople({
 
               // 2. If initial debt was specified, set opening balance
               if (addPersonDebt !== 'none') {
-                const cents = parseBrlCents(addPersonDebtAmount);
+                const cents = safeParseBrlCents(addPersonDebtAmount);
                 if (cents > 0) {
-                  await ledgerRpc<string>('manage_person', {
-                    p_space: workspace.space.id,
-                    p_person: id,
-                    p_version: 1,
-                    p_action: 'opening',
-                    p_changes: {
-                      balance_cents: addPersonDebt === 'payable' ? -cents : cents,
-                      on: addPersonDebtDate || workspace.space.today
-                    },
-                    p_client_uuid: crypto.randomUUID()
-                  });
+                  try {
+                    await ledgerRpc<string>('manage_person', {
+                      p_space: workspace.space.id,
+                      p_person: id,
+                      p_version: 1,
+                      p_action: 'opening',
+                      p_changes: {
+                        balance_cents: addPersonDebt === 'payable' ? -cents : cents,
+                        on: addPersonDebtDate || workspace.space.today
+                      },
+                      p_client_uuid: crypto.randomUUID()
+                    });
+                  } catch (openingErr) {
+                    const msg = openingErr instanceof Error ? openingErr.message : '';
+                    if (msg.includes('month is closed')) {
+                      throw new Error('A pessoa foi cadastrada, mas o saldo inicial não pôde ser lançado porque o mês da data informada está fechado no sistema. Reabra o mês em Fechamentos ou informe uma data no mês atual.');
+                    }
+                    if (msg.includes('opening balance or date')) {
+                      throw new Error('A data da dívida inicial não pode ser futura.');
+                    }
+                    throw openingErr;
+                  }
                 }
               }
 
               // 3. If loan reminders are enabled, create Agenda commitments
+              let createdRemindersCount = 0;
               if (
                 addPersonDebt !== 'none' &&
                 addPersonConfigureLoan &&
@@ -1136,18 +1164,24 @@ export default function LedgerPeople({
                   const title = addPersonLoanPayMode === 'indefinite'
                     ? `${addPersonDebt === 'receivable' ? 'Cobrar' : 'Pagar'} juros de ${nickname}: ${money(addPersonLoanCalc.monthlyInterestCents || item.amountCents)} (Vencimento mensal)`
                     : `${addPersonDebt === 'receivable' ? 'Cobrar' : 'Pagar'} ${nickname}: Parcela ${item.installmentNumber}/${item.totalCount} (${money(item.amountCents)})`;
-                  await ledgerRpc('create_commitment', {
-                    p_space: workspace.space.id,
-                    p_payload: {
-                      kind: 'reminder',
-                      person_id: id,
-                      title,
-                      due_on: item.dueDate
-                    }
-                  });
+                  try {
+                    await ledgerRpc('create_commitment', {
+                      p_space: workspace.space.id,
+                      p_payload: {
+                        kind: 'reminder',
+                        person_id: id,
+                        title,
+                        due_on: item.dueDate
+                      }
+                    });
+                    createdRemindersCount++;
+                  } catch (reminderErr) {
+                    console.warn('Erro ao criar lembrete na Agenda:', reminderErr);
+                  }
                 }
               }
 
+              const finalCents = safeParseBrlCents(addPersonDebtAmount);
               form.reset();
               setAddPersonDebt('none');
               setAddPersonDebtAmount('');
@@ -1159,16 +1193,24 @@ export default function LedgerPeople({
               await loadContacts();
               await onChanged();
               setNotice(
-                addPersonDebt !== 'none' && parseBrlCents(addPersonDebtAmount) > 0
+                addPersonDebt !== 'none' && finalCents > 0
                   ? addPersonConfigureLoan && addPersonLoanCalc
-                    ? `Pessoa "${nickname}" adicionada com saldo de ${money(parseBrlCents(addPersonDebtAmount))} e ${addPersonLoanCalc.schedule.length} lembrete(s) criado(s) na Agenda!`
-                    : `Pessoa "${nickname}" adicionada com saldo inicial de ${money(parseBrlCents(addPersonDebtAmount))} (${
+                    ? `Pessoa "${nickname}" adicionada com saldo de ${money(finalCents)}${createdRemindersCount > 0 ? ` e ${createdRemindersCount} lembrete(s) criado(s) na Agenda` : ''}!`
+                    : `Pessoa "${nickname}" adicionada com saldo inicial de ${money(finalCents)} (${
                         addPersonDebt === 'receivable' ? 'a receber' : 'a pagar'
                       })!`
                   : `Pessoa "${nickname}" adicionada com sucesso!`
               );
             } catch (failure) {
-              setError(failure instanceof Error ? failure.message : 'Não foi possível cadastrar a pessoa.');
+              const rawMsg = failure instanceof Error ? failure.message : 'Não foi possível cadastrar a pessoa.';
+              const friendlyMsg = rawMsg.includes('month is closed')
+                ? 'A pessoa não pôde ser cadastrada com o saldo inicial porque o mês da data informada está fechado no sistema. Reabra o mês em Fechamentos ou informe uma data no mês atual.'
+                : rawMsg.includes('opening balance or date')
+                ? 'A data da dívida inicial não pode ser futura.'
+                : rawMsg.includes('Informe um valor')
+                ? 'Confira os valores monetários informados.'
+                : rawMsg;
+              setError(friendlyMsg);
             } finally {
               pending.current = false;
               setBusy(false);
@@ -1191,6 +1233,16 @@ export default function LedgerPeople({
               <X size={18} />
             </button>
           </div>
+
+          {error && (
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs sm:text-sm font-medium text-rose-800 dark:border-rose-900/60 dark:bg-rose-950 dark:text-rose-200">
+              <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+              <p className="flex-1">{error}</p>
+              <button type="button" onClick={() => setError('')} className="text-rose-600 hover:opacity-80">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5 text-sm">
@@ -1733,18 +1785,50 @@ export default function LedgerPeople({
             )}
           </div>
 
-          <div className="flex items-center gap-3 pt-1">
-            <button disabled={busy} className="btn-primary px-5 py-2 text-sm font-semibold">
-              {busy ? 'Salvando…' : 'Salvar pessoa'}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setShowAddPerson(false)}
-              className="text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              Cancelar
-            </button>
+          <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-5 sm:-mb-5 sm:px-5 rounded-b-xl shadow-lg">
+            {error && (
+              <div className="w-full pb-1">
+                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                  <AlertCircle size={14} className="shrink-0" /> {error}
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              {busy ? (
+                <span className="flex items-center gap-1.5 text-brand-600 dark:text-brand-400 font-medium">
+                  <RefreshCw size={14} className="animate-spin" /> Salvando cadastro...
+                </span>
+              ) : (
+                <span>Campos com * são obrigatórios</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowAddPerson(false)}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="btn-primary flex items-center gap-2 px-5 py-2 text-sm font-semibold shadow-md"
+              >
+                {busy ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Salvando…</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus size={16} />
+                    <span>Salvar pessoa</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       )}
@@ -1779,6 +1863,16 @@ export default function LedgerPeople({
               <X size={18} />
             </button>
           </div>
+
+          {error && (
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs sm:text-sm font-medium text-rose-800 dark:border-rose-900/60 dark:bg-rose-950 dark:text-rose-200">
+              <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+              <p className="flex-1">{error}</p>
+              <button type="button" onClick={() => setError('')} className="text-rose-600 hover:opacity-80">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {/* Contact selector & Direction */}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -2159,17 +2253,17 @@ export default function LedgerPeople({
                     {loanFrequency === 'daily' ? (
                       <>
                         <option value="daily">
-                          Por dia {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por dia)` : '(a cada dia)'}
+                          Por dia {loanInterestFixed ? `(${money(safeParseBrlCents(loanInterestFixed))} por dia)` : '(a cada dia)'}
                         </option>
                         <option value="monthly">
-                          Por mês {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por mês proporcional)` : '(ao mês)'}
+                          Por mês {loanInterestFixed ? `(${money(safeParseBrlCents(loanInterestFixed))} por mês proporcional)` : '(ao mês)'}
                         </option>
                         {loanPayMode !== 'indefinite' && <option value="total">No total do empréstimo (valor fixo único)</option>}
                       </>
                     ) : (
                       <>
                         <option value="monthly">
-                          Por mês {loanInterestFixed ? `(${money(parseBrlCents(loanInterestFixed))} por mês)` : '(a cada mês)'}
+                          Por mês {loanInterestFixed ? `(${money(safeParseBrlCents(loanInterestFixed))} por mês)` : '(a cada mês)'}
                         </option>
                         {loanPayMode !== 'indefinite' && <option value="total">No total do empréstimo (valor fixo único)</option>}
                       </>
@@ -2380,7 +2474,7 @@ export default function LedgerPeople({
                       {loanCalc.interestCents > 0 && (
                         <span className="ml-1 text-xs font-normal text-slate-500">
                           {loanInterestType === 'fixed' && loanInterestPeriod === 'monthly'
-                            ? `(${money(parseBrlCents(loanInterestFixed))}/mês • ${loanCalc.effectiveRate.toFixed(1)}% total)`
+                            ? `(${money(safeParseBrlCents(loanInterestFixed))}/mês • ${loanCalc.effectiveRate.toFixed(1)}% total)`
                             : loanInterestType === 'percent' && loanInterestPeriod === 'monthly'
                               ? `(${loanInterestRate}%/mês • ${loanCalc.effectiveRate.toFixed(1)}% total)`
                               : `(${loanCalc.effectiveRate.toFixed(1)}%)`}
@@ -2505,20 +2599,48 @@ export default function LedgerPeople({
           </div>
 
           {/* Submit */}
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              disabled={busy || !loanPersonId || loanCalc.principalCents <= 0 || (loanMoveCash && !loanAccountId)}
-              className="btn-primary px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {busy ? 'Registrando empréstimo…' : 'Confirmar empréstimo'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowLoanForm(false)}
-              className="text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              Cancelar
-            </button>
+          <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-5 sm:-mb-5 sm:px-5 rounded-b-xl shadow-lg">
+            {error && (
+              <div className="w-full pb-1">
+                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                  <AlertCircle size={14} className="shrink-0" /> {error}
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              {busy && (
+                <span className="flex items-center gap-1.5 text-brand-600 dark:text-brand-400 font-medium">
+                  <RefreshCw size={14} className="animate-spin" /> Processando empréstimo...
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowLoanForm(false)}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={busy || !loanPersonId || loanCalc.principalCents <= 0 || (loanMoveCash && !loanAccountId)}
+                className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50"
+              >
+                {busy ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Registrando empréstimo…</span>
+                  </>
+                ) : (
+                  <>
+                    <Coins size={16} />
+                    <span>Confirmar empréstimo</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       )}
