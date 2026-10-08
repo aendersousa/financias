@@ -28,7 +28,7 @@ export default function RecurrenceTable({ rules, money, renderActions, renderEdi
               <td className="px-3 py-2.5 sm:px-4"><div className="flex items-start gap-2">
                 <Repeat2 size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400"/>
                 <div className="min-w-0 [overflow-wrap:anywhere]"><span>{rule.title}</span>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{rule.direction === 'inflow' ? 'A receber' : 'A pagar'}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{rule.direction === 'inflow' ? 'A receber' : (rule.current_version.payment_method === 'card' || rule.current_version.payment_credit_card_id ? 'A pagar · Cartão' : 'A pagar')}</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 sm:hidden">{recurrenceFrequency(rule.unit)} · {rule.ends_on ? 'Encerrada' : 'Ativa'}</p>
                 </div>
               </div></td>

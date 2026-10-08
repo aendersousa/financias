@@ -169,23 +169,25 @@ export default function LedgerPeople({
   const [notice, setNotice] = useState('');
   const pending = useRef(false);
   const movementDialog = useRef<HTMLDivElement>(null);
+  const sharedDialog = useRef<HTMLDivElement>(null);
   const requestKey = useRef<{ key: string; id: string } | null>(null);
 
   const canWrite = workspace.role !== 'viewer';
   const cashAccounts = workspace.accounts.filter(account => account.liquidity === 'cash');
 
   useEffect(() => {
-    if (!movementPersonId) return;
+    if (!movementPersonId && !showSharedExpense) return;
+    const activeDialog=showSharedExpense?sharedDialog:movementDialog;
     const previousFocus = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    movementDialog.current?.querySelector<HTMLSelectElement>('select')?.focus();
+    activeDialog.current?.querySelector<HTMLElement>('input:not([type="hidden"]),select')?.focus();
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !pending.current) {
-        setMovementPersonId(null);
+        setMovementPersonId(null);setShowSharedExpense(false);
       }
       if (event.key !== 'Tab') return;
-      const elements = movementDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex="0"]');
+      const elements = activeDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex="0"]');
       if (!elements?.length) return;
       const first = elements[0], last = elements[elements.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -200,7 +202,7 @@ export default function LedgerPeople({
       document.removeEventListener('keydown', handleKey);
       previousFocus?.focus();
     };
-  }, [movementPersonId]);
+  }, [movementPersonId,showSharedExpense]);
 
   // Initialize account for loan if needed
   useEffect(() => {
@@ -1030,7 +1032,7 @@ export default function LedgerPeople({
                       setError('Cadastre pessoas para poder dividir despesas.');
                       return;
                     }
-                    setShowSharedExpense(!showSharedExpense);
+                    setError('');setShowSharedExpense(true);
                     setShowAddPerson(false);
                     setShowLoanForm(false);
                     setMovementPersonId(null);
@@ -3062,10 +3064,11 @@ export default function LedgerPeople({
 
       {/* 5. Shared Expense Form (Dividir despesa paga por você) */}
       {canWrite && showSharedExpense && (
+        <div ref={sharedDialog} role="dialog" aria-modal="true" aria-label="Dividir despesa" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4" onClick={event=>{if(event.target===event.currentTarget&&!busy)setShowSharedExpense(false);}}>
         <form
           aria-label="Despesa dividida em partes iguais"
           onSubmit={submitSharedExpense}
-          className={`${panel} space-y-4 border-2 border-brand-300 dark:border-brand-800`}
+          className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 space-y-4"
         >
           <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
             <div className="flex items-center gap-2">
@@ -3083,12 +3086,15 @@ export default function LedgerPeople({
             </div>
             <button
               type="button"
+              aria-label="Fechar divisão de despesa"
+              disabled={busy}
               onClick={() => setShowSharedExpense(false)}
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
             >
               <X size={18} />
             </button>
           </div>
+          {error&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5 text-sm">
@@ -3272,13 +3278,14 @@ export default function LedgerPeople({
             </button>
             <button
               type="button"
+              disabled={busy}
               onClick={() => setShowSharedExpense(false)}
               className="text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
             >
               Cancelar
             </button>
           </div>
-        </form>
+        </form></div>
       )}
 
       {/* Search and Filters Card */}

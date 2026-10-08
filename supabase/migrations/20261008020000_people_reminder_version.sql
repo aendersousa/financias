@@ -39,3 +39,4 @@ update finance.commitments
     );
 
 commit;
+

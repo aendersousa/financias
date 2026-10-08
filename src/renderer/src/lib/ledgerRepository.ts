@@ -44,7 +44,7 @@ export interface FinancialSpace { id: string; name: string; timezone: string; ki
 export interface WorkspaceMetadata {
   tags: { id: string; name: string; version: number; archived_at: string | null }[];
   transaction_tags: { ledger_transaction_id: string; tag_id: string }[];
-  recurrences: { id: string; title: string; direction: 'inflow' | 'outflow'; unit: 'week' | 'month' | 'year'; starts_on: string; ends_on: string | null; version: number; is_main_income: boolean; is_subscription: boolean; current_version: { amount_cents: number; category_id: string | null; payment_financial_account_id: string | null; certainty: string; day_of_month: number | null; weekday: number | null; month_of_year: number | null } }[];
+  recurrences: { id: string; title: string; direction: 'inflow' | 'outflow'; unit: 'week' | 'month' | 'year'; starts_on: string; ends_on: string | null; version: number; is_main_income: boolean; is_subscription: boolean; current_version: { amount_cents: number; category_id: string | null; payment_method?: 'account' | 'card'; payment_financial_account_id: string | null; payment_credit_card_id?: string | null; certainty: string; day_of_month: number | null; weekday: number | null; month_of_year: number | null } }[];
   audit: { id: string; actor_id: string | null; action: string; entity_type: string; entity_id: string; created_at: string }[];
 }
 

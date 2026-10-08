@@ -1010,23 +1010,26 @@ export default function LedgerAgenda({
         {/* ELEGANT MONTHLY CALENDAR GRID */}
         {(
           <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-            <div className="grid grid-cols-7 gap-1.5 text-center text-xs">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800"><div className="grid min-w-[560px] grid-cols-7 gap-px bg-slate-200 text-center text-xs dark:bg-slate-800">
               {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(lbl => (
-                <span key={lbl} className="py-1 font-semibold text-slate-400 dark:text-slate-500">
+                <span key={lbl} className="bg-slate-50 py-2 text-xs font-medium text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                   {lbl}
                 </span>
               ))}
               {Array.from({ length: firstDay }, (_, idx) => (
-                <div key={`blank-${idx}`} className="min-h-14 sm:min-h-16" />
+                <div key={`blank-${idx}`} className="min-h-20 bg-slate-50/80 dark:bg-slate-950/40 sm:min-h-24" />
               ))}
               {Array.from({ length: days }, (_, idx) => {
                 const on = `${month}-${String(idx + 1).padStart(2, '0')}`;
                 const rows = grouped.get(on) ?? [];
-                const isOverdueDay = rows.some(
-                  it => ['pending', 'partial'].includes(it.settlement_status) && on < workspace.space.today
-                );
-                const hasInflow = rows.some(it => it.direction === 'inflow');
-                const hasOutflow = rows.some(it => it.direction === 'outflow');
+                const dayStatuses=new Map<string,{count:number;tone:string}>();
+                for(const item of rows){
+                  const overdue=['pending','partial','scheduled'].includes(item.settlement_status)&&on<(calendar?.today??workspace.space.today);
+                  const settled=item.settlement_status==='settled';
+                  const label=settled?(item.direction==='inflow'||/^Cobrar /i.test(item.title)?'Recebido':item.type==='reminder'&&!/^Pagar /i.test(item.title)?'Concluído':'Pago'):item.settlement_status==='partial'?'Parcial':overdue?'Vencido':statuses[item.settlement_status]??'Pendente';
+                  const tone=settled?'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200':overdue?'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-200':'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200';
+                  dayStatuses.set(label,{count:(dayStatuses.get(label)?.count??0)+1,tone});
+                }
                 const isToday = on === workspace.space.today;
                 const isSelected = day === on;
 
@@ -1043,38 +1046,30 @@ export default function LedgerAgenda({
                       setAction(null);
                       setDetails(null);
                     }}
-                    className={`flex min-h-14 flex-col justify-between rounded-xl border p-1.5 text-left transition sm:min-h-16 ${
+                    className={`group relative flex min-h-20 min-w-0 flex-col gap-1 border-0 p-2 text-left transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 sm:min-h-24 sm:p-2 ${
                       isSelected
-                        ? 'border-brand-500 bg-brand-50/80 ring-2 ring-brand-500/30 dark:border-brand-400 dark:bg-brand-950/60'
+                        ? 'bg-brand-50 ring-2 ring-inset ring-brand-500 dark:bg-brand-950/50'
                         : isToday
-                          ? 'border-brand-400/80 bg-slate-50 dark:border-brand-500/50 dark:bg-slate-800/60'
-                          : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50/80 dark:border-slate-800/80 dark:bg-slate-900/60 dark:hover:bg-slate-800'
+                          ? 'bg-white dark:bg-slate-900'
+                          : 'bg-white hover:bg-slate-50 dark:bg-slate-900/70 dark:hover:bg-slate-800/80'
                     }`}
                   >
-                    <span className={`text-xs font-bold ${isToday ? 'text-brand-600 dark:text-brand-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                      {idx + 1}
+                    <span className="flex items-center justify-between gap-1">
+                      <span className={'inline-flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold '+(isToday?'bg-brand-500 text-slate-950':isSelected?'text-brand-600 dark:text-brand-300':'text-slate-600 dark:text-slate-300')}>{idx+1}</span>
+                      {isToday&&<span className="text-[10px] font-medium text-brand-600 dark:text-brand-400">Hoje</span>}
                     </span>
 
-                    {rows.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span
-                          className={`rounded px-1 py-0.5 text-[10px] font-bold leading-none ${
-                            isOverdueDay
-                              ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-200'
-                              : hasInflow && !hasOutflow
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200'
-                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                          }`}
-                        >
-                          {rows.length}
-                          <span className="hidden sm:inline"> {rows.length === 1 ? 'item' : 'itens'}</span>
-                        </span>
-                      </div>
-                    )}
+                    {rows.length>0&&<span className="min-w-0 flex-1 space-y-1" aria-label="Resumo dos compromissos">
+                      {rows.slice(0,2).map((item,index)=><span key={itemKey(item)} title={item.title} className={'overflow-hidden text-[10px] leading-snug text-slate-600 dark:text-slate-300 sm:text-xs '+(index===1?'hidden truncate sm:block':'line-clamp-2 [overflow-wrap:anywhere]')}>{item.title}</span>)}
+                    </span>}
+                    {rows.length>0&&<span className="flex min-w-0 flex-wrap gap-1" aria-label="Situação dos compromissos">
+                      {Array.from(dayStatuses,([label,{count,tone}])=><span key={label} title={`${count} ${label.toLowerCase()}`} className={'max-w-full overflow-hidden text-ellipsis rounded-full px-2 py-1 text-[10px] font-medium leading-none '+tone}>{rows.length>1?`${count} `:''}{label}</span>)}
+                    </span>}
                   </button>
                 );
               })}
-            </div>
+            </div></div>
+            <p className="mt-2 text-xs text-slate-500 sm:hidden">Deslize para os lados para ver toda a semana.</p>
             <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
               O calendário reúne compromissos a pagar, a receber, lembretes e faturas. Clique em qualquer dia para filtrar. Dê dois cliques para ver os compromissos do dia.
             </p>

@@ -19,24 +19,85 @@ function RecurrenceForm({ workspace, rule, busy, onSave, onCancel }: {
 }) {
   const [direction, setDirection] = useState<string>(rule?.direction ?? 'outflow');
   const [unit, setUnit] = useState<string>(rule?.unit ?? 'month');
+  const [paymentMethod, setPaymentMethod] = useState<'account' | 'card'>(
+    rule?.current_version.payment_method === 'card' || Boolean(rule?.current_version.payment_credit_card_id)
+      ? 'card'
+      : 'account'
+  );
   const prefix = rule ? `recurrence-edit-${rule.id}` : 'recurrence';
   const field = 'flex w-full min-w-0 flex-col gap-1 sm:w-40';
+  const availableCards = workspace.cards.filter(c => c.card_type !== 'debit').length > 0
+    ? workspace.cards.filter(c => c.card_type !== 'debit')
+    : workspace.cards;
   async function submit(event: FormEvent<HTMLFormElement>) {
     const form = event.currentTarget;
-    if (await onSave(event, direction, unit, rule) && !rule) { form.reset(); setDirection('outflow'); setUnit('month'); }
+    if (await onSave(event, direction, unit, rule) && !rule) {
+      form.reset();
+      setDirection('outflow');
+      setUnit('month');
+      setPaymentMethod('account');
+    }
   }
   return <form aria-label={rule ? `Editar recorrência ${rule.title}` : 'Adicionar recorrência'} onSubmit={event => void submit(event)} className={rule ? 'min-w-0 space-y-4' : `${panel} space-y-4`}>
     <fieldset disabled={busy} className="flex min-w-0 flex-wrap items-end gap-3">
       {!rule && <>
         <div className="flex w-full min-w-0 flex-col gap-1 sm:w-56"><label htmlFor={`${prefix}-name`} className="field-label">Descrição</label><input id={`${prefix}-name`} name="name" maxLength={100} required placeholder="Ex: Assinatura de internet" className={input}/></div>
-        <div className={field}><label htmlFor={`${prefix}-direction`} className="field-label">Direção</label><select id={`${prefix}-direction`} aria-label="Direção" value={direction} onChange={event => setDirection(event.target.value)} className={input}><option value="outflow">A pagar</option><option value="inflow">A receber</option></select></div>
+        <div className={field}><label htmlFor={`${prefix}-direction`} className="field-label">Direção</label><select id={`${prefix}-direction`} aria-label="Direção" value={direction} onChange={event => { const next = event.target.value; setDirection(next); if (next === 'inflow') setPaymentMethod('account'); }} className={input}><option value="outflow">A pagar</option><option value="inflow">A receber</option></select></div>
       </>}
       <div className={field}><label htmlFor={`${prefix}-unit`} className="field-label">Frequência</label><select id={`${prefix}-unit`} aria-label="Frequência" value={unit} disabled={!!rule} onChange={event => setUnit(event.target.value)} className={input}><option value="month">Mensal</option><option value="week">Semanal</option><option value="year">Anual</option></select></div>
       <div className={field}><label htmlFor={`${prefix}-date`} className="field-label">{rule ? 'A partir de' : 'Primeiro vencimento'}</label><input id={`${prefix}-date`} type="date" name="date" defaultValue={workspace.space.today} required className={input}/></div>
       <div className="flex w-full min-w-0 flex-col gap-1 sm:w-36"><label htmlFor={`${prefix}-amount`} className="field-label">Valor</label><CurrencyInput id={`${prefix}-amount`} name="amount" required defaultValue={rule ? `${Math.floor(rule.current_version.amount_cents/100)},${String(rule.current_version.amount_cents%100).padStart(2,'0')}` : undefined} placeholder="0,00" className={input}/></div>
       <div className={field}><label htmlFor={`${prefix}-certainty`} className="field-label">Certeza</label><select id={`${prefix}-certainty`} aria-label="Certeza" name="certainty" defaultValue={rule?.current_version.certainty ?? 'confirmed'} className={input}><option value="confirmed">Confirmado</option><option value="estimated">Estimado</option>{direction === 'inflow' && <option value="conditional">Condicional</option>}</select></div>
       <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48"><label htmlFor={`${prefix}-category`} className="field-label">Categoria</label><select id={`${prefix}-category`} aria-label="Categoria" name="category" required defaultValue={rule?.current_version.category_id ?? ''} className={input}><option value="">Selecione</option>{workspace.categories.filter(c => c.ledger_account_id && c.kind === (direction === 'inflow' ? 'income' : 'expense')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-      <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48"><label htmlFor={`${prefix}-account`} className="field-label">Conta</label><select id={`${prefix}-account`} aria-label="Conta" name="account" required defaultValue={rule?.current_version.payment_financial_account_id ?? ''} className={input}><option value="">Selecione</option>{workspace.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+      {direction === 'outflow' ? (
+        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-44">
+          <label htmlFor={`${prefix}-payment-method`} className="field-label">Forma de pagamento</label>
+          <select
+            id={`${prefix}-payment-method`}
+            aria-label="Forma de pagamento"
+            name="payment_method"
+            value={paymentMethod}
+            onChange={event => setPaymentMethod(event.target.value as 'account' | 'card')}
+            className={input}
+          >
+            <option value="account">Conta bancária</option>
+            <option value="card" disabled={availableCards.length === 0}>Cartão de crédito{availableCards.length === 0 ? ' (nenhum)' : ''}</option>
+          </select>
+        </div>
+      ) : (
+        <input type="hidden" name="payment_method" value="account"/>
+      )}
+      {paymentMethod === 'card' && direction === 'outflow' ? (
+        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
+          <label htmlFor={`${prefix}-card`} className="field-label">Cartão</label>
+          <select
+            id={`${prefix}-card`}
+            aria-label="Cartão"
+            name="card"
+            required
+            defaultValue={rule?.current_version.payment_credit_card_id ?? ''}
+            className={input}
+          >
+            <option value="">Selecione</option>
+            {availableCards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      ) : (
+        <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
+          <label htmlFor={`${prefix}-account`} className="field-label">Conta</label>
+          <select
+            id={`${prefix}-account`}
+            aria-label="Conta"
+            name="account"
+            required
+            defaultValue={rule?.current_version.payment_financial_account_id ?? ''}
+            className={input}
+          >
+            <option value="">Selecione</option>
+            {workspace.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+      )}
       {rule && <div className="flex w-full min-w-0 flex-col gap-1 sm:w-56"><label htmlFor={`${prefix}-scope`} className="field-label">Aplicar alteração</label><select id={`${prefix}-scope`} aria-label="Aplicar alteração" name="scope" className={input}><option value="this_and_following">Esta e as próximas</option><option value="entire_series">Toda a série em aberto</option></select></div>}
       <button disabled={busy} className={primary}>{busy ? 'Salvando…' : rule ? 'Salvar recorrência' : 'Adicionar recorrência'}</button>
       {rule && <button type="button" onClick={onCancel} className={secondary}>Cancelar edição</button>}
@@ -72,16 +133,46 @@ export default function LedgerRecurrences({ workspace, money, onChanged }: {
     finally { pending.current = false; setBusy(false); }
   }
   async function saveRecurrence(event: FormEvent<HTMLFormElement>, direction: string, unit: string, rule?: RecurrenceRule) {
-    event.preventDefault(); const data = new FormData(event.currentTarget), text = (key: string) => String(data.get(key) ?? '');
+    event.preventDefault(); const data = new FormData(event.currentTarget), text = (key: string) => String(data.get(key) ?? '').trim();
     try {
       const amount = parseBrlCents(text('amount'));
       if (amount <= 0) throw new Error('Informe um valor maior que zero.');
       const [year, month, day] = text('date').split('-').map(Number);
       const weekday = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay() || 7;
-      const payload = { title: text('name'), direction, unit, amount_cents: amount, starts_on: text('date'), category_id: text('category'), payment_method: 'account', payment_financial_account_id: text('account'),
-        certainty: text('certainty'), day_of_month: unit === 'week' ? null : day, month_of_year: unit === 'year' ? month : null, weekday: unit === 'week' ? weekday : null,
-        is_main_income: direction === 'inflow' && data.get('main_income') === 'on', is_subscription: data.get('subscription') === 'on' };
-      const saved = rule ? await run('change_recurrence_rule', { p_rule: rule.id, p_version: rule.version, p_from_period: text('date'), p_scope: text('scope'), p_changes: { amount_cents: amount, category_id: text('category'), payment_financial_account_id: text('account'), certainty: text('certainty'), day_of_month: payload.day_of_month, weekday: payload.weekday, month_of_year: payload.month_of_year } }) : await run('create_recurrence_rule', { p_payload: payload });
+      const method = direction === 'inflow' ? 'account' : (text('payment_method') === 'card' ? 'card' : 'account');
+      const accountId = method === 'account' ? (text('account') || null) : null;
+      const cardId = method === 'card' ? (text('card') || null) : null;
+      if (method === 'account' && !accountId) throw new Error('Selecione uma conta bancária.');
+      if (method === 'card' && !cardId) throw new Error('Selecione um cartão de crédito.');
+      const payload = {
+        title: text('name'),
+        direction,
+        unit,
+        amount_cents: amount,
+        starts_on: text('date'),
+        category_id: text('category'),
+        payment_method: method,
+        payment_financial_account_id: accountId,
+        payment_credit_card_id: cardId,
+        certainty: text('certainty'),
+        day_of_month: unit === 'week' ? null : day,
+        month_of_year: unit === 'year' ? month : null,
+        weekday: unit === 'week' ? weekday : null,
+        is_main_income: direction === 'inflow' && data.get('main_income') === 'on',
+        is_subscription: data.get('subscription') === 'on'
+      };
+      const changes = {
+        amount_cents: amount,
+        category_id: text('category'),
+        payment_method: method,
+        payment_financial_account_id: accountId,
+        payment_credit_card_id: cardId,
+        certainty: text('certainty'),
+        day_of_month: payload.day_of_month,
+        weekday: payload.weekday,
+        month_of_year: payload.month_of_year
+      };
+      const saved = rule ? await run('change_recurrence_rule', { p_rule: rule.id, p_version: rule.version, p_from_period: text('date'), p_scope: text('scope'), p_changes: changes }) : await run('create_recurrence_rule', { p_payload: payload });
       if (saved && rule) setEditingRule(null);
       return saved;
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Verifique os campos.'); return false; }
@@ -98,7 +189,11 @@ export default function LedgerRecurrences({ workspace, money, onChanged }: {
         <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div><dt className="field-label">Primeiro vencimento</dt><dd className="mt-1">{date(rule.starts_on)}</dd></div>
           <div><dt className="field-label">Categoria</dt><dd className="mt-1 [overflow-wrap:anywhere]">{workspace.categories.find(item => item.id === rule.current_version.category_id)?.name ?? 'Sem categoria'}</dd></div>
-          <div><dt className="field-label">Conta</dt><dd className="mt-1 [overflow-wrap:anywhere]">{workspace.accounts.find(item => item.id === rule.current_version.payment_financial_account_id)?.name ?? 'Sem conta'}</dd></div>
+          {rule.current_version.payment_method === 'card' || rule.current_version.payment_credit_card_id ? (
+            <div><dt className="field-label">Cartão</dt><dd className="mt-1 [overflow-wrap:anywhere]">{workspace.cards.find(item => item.id === rule.current_version.payment_credit_card_id)?.name ?? 'Cartão'}</dd></div>
+          ) : (
+            <div><dt className="field-label">Conta</dt><dd className="mt-1 [overflow-wrap:anywhere]">{workspace.accounts.find(item => item.id === rule.current_version.payment_financial_account_id)?.name ?? 'Sem conta'}</dd></div>
+          )}
           <div><dt className="field-label">Certeza</dt><dd className="mt-1">{({ confirmed: 'Confirmado', estimated: 'Estimado', conditional: 'Condicional' } as Record<string, string>)[rule.current_version.certainty] ?? rule.current_version.certainty}</dd></div>
           <div><dt className="field-label">Situação</dt><dd className="mt-1">{rule.ends_on ? `Encerrada em ${date(rule.ends_on)}` : 'Ativa'}</dd></div>
           <div><dt className="field-label">Valor</dt><dd className="mt-1">{money(rule.current_version.amount_cents)}</dd></div>
