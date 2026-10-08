@@ -282,12 +282,14 @@ export default function LedgerPeople({
     const text = (name: string) => String(form.get(name) ?? '').trim();
 
     try {
-      const amount = parseBrlCents(text('amount'));
-      const interest = text('interest') ? parseBrlCents(text('interest')) : 0;
-      if (interest < 0 || interest > amount) throw new Error('Os juros devem estar entre zero e o valor total pago.');
+      const amount = safeParseBrlCents(text('amount'));
+      const interest = text('interest') ? safeParseBrlCents(text('interest')) : 0;
       if (amount <= 0) throw new Error('Informe um valor maior que zero.');
+      if (interest < 0 || interest > amount) throw new Error('Os juros devem estar entre zero e o valor total pago.');
       const targetPerson = text('person') || movementPersonId;
       if (!targetPerson) throw new Error('Selecione uma pessoa.');
+      const accountId = text('account') || cashAccounts[0]?.id;
+      if (!accountId) throw new Error('Selecione uma conta bancária.');
 
       const targetContact = contacts.find(c => c.id === targetPerson);
       const customDesc = text('description');
@@ -308,7 +310,7 @@ export default function LedgerPeople({
       await ledgerRpc(interest>0?'settle_person_with_interest':'settle_person', {
         p_space: workspace.space.id,
         p_person: targetPerson,
-        p_account: text('account'),
+        p_account: accountId,
         p_direction: movementDirection,
         p_amount_cents: amount,
         p_occurred_on: text('date'),
@@ -329,10 +331,20 @@ export default function LedgerPeople({
           ? `Empréstimo para ${targetContact?.nickname || 'pessoa'} registrado com sucesso!`
           : movementDirection === 'borrow'
           ? `Empréstimo de ${targetContact?.nickname || 'pessoa'} registrado com sucesso!`
-          : 'Movimentação registrada com sucesso!'
+          : movementDirection === 'receive'
+          ? `Recebimento de ${money(amount)} de ${targetContact?.nickname || 'pessoa'} registrado com sucesso!`
+          : `Pagamento de ${money(amount)} para ${targetContact?.nickname || 'pessoa'} registrado com sucesso!`
       );
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Não foi possível registrar.');
+      const rawMsg = failure instanceof Error ? failure.message : 'Não foi possível registrar.';
+      const friendlyMsg = rawMsg.includes('Cash account not found')
+        ? 'Conta bancária não encontrada. Selecione uma conta válida.'
+        : rawMsg.includes('month is closed')
+        ? 'O mês da movimentação está fechado no sistema. Reabra o mês em Fechamentos ou escolha uma data no mês atual.'
+        : rawMsg.includes('occurred_on')
+        ? 'A data da movimentação não pode ser futura.'
+        : rawMsg;
+      setError(friendlyMsg);
     } finally {
       pending.current = false;
       setBusy(false);
@@ -2645,47 +2657,74 @@ export default function LedgerPeople({
         </form>
       )}
 
-      {/* 4. Movement Form (Acerto, Empréstimo, Pagamento, Recebimento) */}
+      {/* 4. Movement Form (Acerto, Empréstimo, Pagamento, Recebimento) - Modal Dialog */}
       {canWrite && movementPersonId && (
-        <form
-          aria-label="Movimentação com pessoa"
-          onSubmit={submitMovement}
-          className={`${panel} space-y-4 border-2 border-brand-400/80 shadow-md dark:border-brand-700`}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Movimentação com ${activeMovementPerson?.nickname || 'pessoa'}`}
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={e => {
+            if (e.target === e.currentTarget && !busy) {
+              setMovementPersonId(null);
+              setMovementAmount('');
+            }
+          }}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
-                <HandCoins size={18} />
+          <form
+            aria-label="Movimentação com pessoa"
+            onSubmit={submitMovement}
+            className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                  <HandCoins size={20} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Acertar contas com {activeMovementPerson?.nickname || 'pessoa'}
+                  </h2>
+                  {activeMovementPerson && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {activeMovementPerson.balance_cents > 0
+                        ? `Situação: ${activeMovementPerson.nickname} te deve ${money(activeMovementPerson.balance_cents)}`
+                        : activeMovementPerson.balance_cents < 0
+                          ? `Situação: Você deve ${money(Math.abs(activeMovementPerson.balance_cents))} para ${activeMovementPerson.nickname}`
+                          : 'Situação: As contas estão em dia (R$ 0,00)'}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div>
-                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Movimentação com {activeMovementPerson?.nickname || 'pessoa'}
-                </h2>
-                {activeMovementPerson && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {activeMovementPerson.balance_cents > 0
-                      ? `Situação atual: ${activeMovementPerson.nickname} te deve ${money(activeMovementPerson.balance_cents)}`
-                      : activeMovementPerson.balance_cents < 0
-                        ? `Situação atual: Você deve ${money(Math.abs(activeMovementPerson.balance_cents))} para ${activeMovementPerson.nickname}`
-                        : 'Situação atual: As contas estão em dia'}
-                  </p>
-                )}
-              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setMovementPersonId(null);
+                  setMovementAmount('');
+                }}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 transition"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setMovementPersonId(null)}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
-            >
-              <X size={18} />
-            </button>
-          </div>
 
-          {/* Person Selector (if user clicked from top bar without a person) */}
-          <div className="grid gap-2 sm:grid-cols-2">
+            {error && (
+              <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs sm:text-sm font-medium text-rose-800 dark:border-rose-900/60 dark:bg-rose-950 dark:text-rose-200">
+                <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                <p className="flex-1">{error}</p>
+                <button type="button" onClick={() => setError('')} className="text-rose-600 hover:opacity-80">
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Person Selector */}
             <div className="grid gap-1.5 text-sm">
-              <label htmlFor="movement-person" className="font-medium">
-                Pessoa da movimentação
+              <label htmlFor="movement-person" className="font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                Pessoa selecionada:
               </label>
               <select
                 id="movement-person"
@@ -2701,205 +2740,236 @@ export default function LedgerPeople({
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* Direction selector: 4 intuitive visual options */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              O que você deseja registrar?
-            </label>
-            <div className="grid gap-2 sm:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => setMovementDirection('receive')}
-                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
-                  movementDirection === 'receive'
-                    ? 'border-emerald-500 bg-emerald-50/80 font-semibold text-emerald-950 ring-2 ring-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-                  <ArrowDownLeft size={16} />
-                  <span className="text-sm font-bold">Receber</span>
-                </div>
-                <span className="text-xs font-normal text-slate-600 dark:text-slate-400">
-                  A pessoa me pagou / devolveu
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMovementDirection('pay')}
-                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
-                  movementDirection === 'pay'
-                    ? 'border-rose-500 bg-rose-50/80 font-semibold text-rose-950 ring-2 ring-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400">
-                  <ArrowUpRight size={16} />
-                  <span className="text-sm font-bold">Pagar</span>
-                </div>
-                <span className="text-xs font-normal text-slate-600 dark:text-slate-400">
-                  Paguei o que devia à pessoa
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMovementDirection('lend')}
-                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
-                  movementDirection === 'lend'
-                    ? 'border-brand-500 bg-brand-50/80 font-semibold text-brand-950 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 text-brand-700 dark:text-brand-400">
-                  <ArrowUpRight size={16} />
-                  <span className="text-sm font-bold">Emprestar</span>
-                </div>
-                <span className="text-xs font-normal text-slate-600 dark:text-slate-400">
-                  Emprestei dinheiro à pessoa
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMovementDirection('borrow')}
-                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ${
-                  movementDirection === 'borrow'
-                    ? 'border-amber-500 bg-amber-50/80 font-semibold text-amber-950 ring-2 ring-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-                  <ArrowDownLeft size={16} />
-                  <span className="text-sm font-bold">Pegar emprestado</span>
-                </div>
-                <span className="text-xs font-normal text-slate-600 dark:text-slate-400">
-                  Recebi emprestado da pessoa
-                </span>
-              </button>
-            </div>
-            {/* Context explanation */}
-            <p className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
-              {movementDirection === 'receive' && 'O dinheiro entra na sua conta bancária e reduz o valor que esta pessoa te devia.'}
-              {movementDirection === 'pay' && 'O dinheiro sai da sua conta bancária e reduz o valor que você devia para esta pessoa.'}
-              {movementDirection === 'lend' && 'O dinheiro sai da sua conta bancária e cria uma dívida que a pessoa terá a te pagar.'}
-              {movementDirection === 'borrow' && 'O dinheiro entra na sua conta bancária e cria uma dívida que você terá a pagar à pessoa.'}
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-1.5 text-sm">
-              <label htmlFor="movement-account" className="font-medium">
-                Conta bancária da movimentação *
+            {/* Direction selector: 4 intuitive visual options */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Tipo do acerto / movimentação:
               </label>
-              <select
-                id="movement-account"
-                name="account"
-                aria-label="Conta da movimentação com pessoa"
-                required
-                className={input}
-              >
-                <option value="">Selecione uma conta</option>
-                {cashAccounts.map(account => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <div className="grid gap-2 sm:grid-cols-4">
+                <button
+                  type="button"
+                  onClick={() => setMovementDirection('receive')}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
+                    movementDirection === 'receive'
+                      ? 'border-emerald-500 bg-emerald-50/90 font-semibold text-emerald-950 ring-2 ring-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+                    <ArrowDownLeft size={16} />
+                    <span className="text-xs font-bold">Receber</span>
+                  </div>
+                  <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
+                    A pessoa me pagou
+                  </span>
+                </button>
 
-            <div className="grid gap-1.5 text-sm">
-              <div className="flex items-center justify-between">
-                <label htmlFor="movement-amount" className="font-medium">
-                  Valor *
-                </label>
-                {activeMovementPerson && activeMovementPerson.balance_cents !== 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const cents = Math.abs(activeMovementPerson.balance_cents);
-                      setMovementAmount((cents / 100).toFixed(2).replace('.', ','));
-                    }}
-                    className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    Usar saldo total ({money(Math.abs(activeMovementPerson.balance_cents))})
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setMovementDirection('pay')}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
+                    movementDirection === 'pay'
+                      ? 'border-rose-500 bg-rose-50/90 font-semibold text-rose-950 ring-2 ring-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400">
+                    <ArrowUpRight size={16} />
+                    <span className="text-xs font-bold">Pagar</span>
+                  </div>
+                  <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
+                    Paguei à pessoa
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMovementDirection('lend')}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
+                    movementDirection === 'lend'
+                      ? 'border-brand-500 bg-brand-50/90 font-semibold text-brand-950 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-brand-700 dark:text-brand-400">
+                    <ArrowUpRight size={16} />
+                    <span className="text-xs font-bold">Emprestar</span>
+                  </div>
+                  <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
+                    Emprestei dinheiro
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMovementDirection('borrow')}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
+                    movementDirection === 'borrow'
+                      ? 'border-amber-500 bg-amber-50/90 font-semibold text-amber-950 ring-2 ring-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                    <ArrowDownLeft size={16} />
+                    <span className="text-xs font-bold">Pegar emprestado</span>
+                  </div>
+                  <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
+                    Recebi emprestado
+                  </span>
+                </button>
               </div>
-              <CurrencyInput
-                id="movement-amount"
-                name="amount"
-                aria-label="Valor com pessoas"
-                value={movementAmount}
-                onChange={e => setMovementAmount(e.target.value)}
-                required
-                placeholder="0,00"
-                className={input}
-              />
+              <p className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
+                {movementDirection === 'receive' && 'O dinheiro entra na sua conta bancária e reduz o valor que esta pessoa te devia.'}
+                {movementDirection === 'pay' && 'O dinheiro sai da sua conta bancária e reduz o valor que você devia para esta pessoa.'}
+                {movementDirection === 'lend' && 'O dinheiro sai da sua conta bancária e cria uma dívida que a pessoa terá a te pagar.'}
+                {movementDirection === 'borrow' && 'O dinheiro entra na sua conta bancária e cria uma dívida que você terá a pagar à pessoa.'}
+              </p>
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-1.5 text-sm">
+                <label htmlFor="movement-account" className="font-medium text-xs text-slate-700 dark:text-slate-300">
+                  Conta bancária *
+                </label>
+                <select
+                  id="movement-account"
+                  name="account"
+                  aria-label="Conta da movimentação com pessoa"
+                  required
+                  defaultValue={cashAccounts[0]?.id}
+                  className={input}
+                >
+                  <option value="">Selecione uma conta</option>
+                  {cashAccounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-1.5 text-sm">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="movement-amount" className="font-medium text-xs text-slate-700 dark:text-slate-300">
+                    Valor *
+                  </label>
+                  {activeMovementPerson && activeMovementPerson.balance_cents !== 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cents = Math.abs(activeMovementPerson.balance_cents);
+                        setMovementAmount((cents / 100).toFixed(2).replace('.', ','));
+                      }}
+                      className="text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      Saldo total ({money(Math.abs(activeMovementPerson.balance_cents))})
+                    </button>
+                  )}
+                </div>
+                <CurrencyInput
+                  id="movement-amount"
+                  name="amount"
+                  aria-label="Valor com pessoas"
+                  value={movementAmount}
+                  onChange={e => setMovementAmount(e.target.value)}
+                  required
+                  placeholder="0,00"
+                  className={input}
+                />
+              </div>
+
+              <div className="grid gap-1.5 text-sm">
+                <label htmlFor="movement-date" className="font-medium text-xs text-slate-700 dark:text-slate-300">
+                  Data do acerto *
+                </label>
+                <input
+                  id="movement-date"
+                  name="date"
+                  aria-label="Data da movimentação com pessoa"
+                  type="date"
+                  required
+                  value={movementDate}
+                  onChange={e => setMovementDate(e.target.value)}
+                  className={input}
+                />
+              </div>
+            </div>
+
+            {['receive','pay'].includes(movementDirection) && (
+              <div className="grid gap-3 sm:grid-cols-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40">
+                <label className="grid gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                  <span>Desse valor, quanto é juros?</span>
+                  <CurrencyInput name="interest" aria-label="Juros incluídos no pagamento" placeholder="0,00" className={input}/>
+                  <span className="text-[10px] text-slate-500">O valor total acima é o total pago. Só a parte sem juros reduz o principal da dívida.</span>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                  <span>Categoria dos juros</span>
+                  <select name="interest_category" aria-label="Categoria dos juros" className={input}>
+                    <option value="">Selecione se houver juros</option>
+                    {workspace.categories.filter(category => category.ledger_account_id && category.kind === (movementDirection === 'receive' ? 'income' : 'expense')).map(category => (
+                      <option key={category.id} value={category.id}>{category.name}</option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] text-slate-500">Juros recebidos contam como receita; juros pagos contam como despesa.</span>
+                </label>
+              </div>
+            )}
+
             <div className="grid gap-1.5 text-sm">
-              <label htmlFor="movement-date" className="font-medium">
-                Data da movimentação *
+              <label htmlFor="movement-description" className="font-medium text-xs text-slate-700 dark:text-slate-300">
+                Descrição no extrato (opcional)
               </label>
               <input
-                id="movement-date"
-                name="date"
-                aria-label="Data da movimentação com pessoa"
-                type="date"
-                required
-                value={movementDate}
-                onChange={e => setMovementDate(e.target.value)}
+                id="movement-description"
+                name="description"
+                aria-label="Descrição da movimentação com pessoa"
+                maxLength={100}
+                placeholder={
+                  movementDirection === 'lend'
+                    ? `Padrão: Empréstimo para ${activeMovementPerson?.nickname || 'pessoa'}`
+                    : movementDirection === 'borrow'
+                    ? `Padrão: Empréstimo de ${activeMovementPerson?.nickname || 'pessoa'}`
+                    : movementDirection === 'receive'
+                    ? `Padrão: Recebimento de ${activeMovementPerson?.nickname || 'pessoa'}`
+                    : `Padrão: Pagamento para ${activeMovementPerson?.nickname || 'pessoa'}`
+                }
                 className={input}
               />
             </div>
-          </div>
 
-          {['receive','pay'].includes(movementDirection)&&<div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-sm"><span>Desse valor, quanto é juros?</span><CurrencyInput name="interest" aria-label="Juros incluídos no pagamento" placeholder="0,00" className={input}/><span className="text-xs text-slate-500">O valor acima é o total pago. Só a parte sem juros reduz a dívida.</span></label><label className="grid gap-1.5 text-sm"><span>Categoria dos juros</span><select name="interest_category" aria-label="Categoria dos juros" className={input}><option value="">Selecione se houver juros</option>{workspace.categories.filter(category=>category.ledger_account_id&&category.kind===(movementDirection==='receive'?'income':'expense')).map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select><span className="text-xs text-slate-500">Juros recebidos são receita; juros pagos são despesa.</span></label></div>}
-          <div className="grid gap-1.5 text-sm">
-            <label htmlFor="movement-description" className="font-medium text-slate-700 dark:text-slate-300">
-              Descrição no extrato (opcional)
-            </label>
-            <input
-              id="movement-description"
-              name="description"
-              aria-label="Descrição da movimentação com pessoa"
-              maxLength={100}
-              placeholder={
-                movementDirection === 'lend'
-                  ? `Padrão: Empréstimo para ${activeMovementPerson?.nickname || 'pessoa'}`
-                  : movementDirection === 'borrow'
-                  ? `Padrão: Empréstimo de ${activeMovementPerson?.nickname || 'pessoa'}`
-                  : movementDirection === 'receive'
-                  ? `Padrão: Recebimento de ${activeMovementPerson?.nickname || 'pessoa'}`
-                  : `Padrão: Pagamento para ${activeMovementPerson?.nickname || 'pessoa'}`
-              }
-              className={input}
-            />
-          </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              disabled={busy || cashAccounts.length === 0}
-              className="btn-primary px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {busy ? 'Salvando…' : 'Confirmar movimentação'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMovementPersonId(null);
-                setMovementAmount('');
-              }}
-              className="text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setMovementPersonId(null);
+                  setMovementAmount('');
+                }}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={busy || cashAccounts.length === 0}
+                className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50"
+              >
+                {busy ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Salvando…</span>
+                  </>
+                ) : (
+                  <>
+                    <HandCoins size={16} />
+                    <span>Confirmar movimentação</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {/* 5. Shared Expense Form (Dividir despesa paga por você) */}
