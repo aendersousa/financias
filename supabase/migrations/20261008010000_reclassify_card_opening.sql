@@ -85,7 +85,7 @@ begin
     status = 'closed',
     closed_at = now(),
     closing_amount_cents = v_amount,
-    dates_overridden = true,
+    dates_overridden = false,
     version = version + 1,
     updated_at = now()
   where id = stmt.id;
@@ -93,10 +93,6 @@ begin
   update finance.ledger_transactions set
     description = 'Saldo inicial: fatura ' || to_char(v_due, 'MM/YYYY')
   where id = tx_row.tx_id;
-
-  update finance.ledger_entries set
-    description = 'Saldo inicial: fatura ' || to_char(v_due, 'MM/YYYY')
-  where ledger_transaction_id = tx_row.tx_id;
 
   open_stmt_id := private.ensure_card_statement(p_space, p_card, today_date);
 

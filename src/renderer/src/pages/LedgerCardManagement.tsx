@@ -94,7 +94,7 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
       await load(); await onChanged(); request.current=null; setNotice(message);
     } catch(failure) {
       const text=failure instanceof Error ? failure.message : '';
-      const translated=text.includes('Administrator permission') ? 'Somente proprietários e administradores podem alterar este cadastro.' : text.includes('changed; reload') ? 'Esse cadastro mudou. Atualize os dados antes de tentar novamente.' : text.includes('future entries, authorizations or payment plans') ? 'Antes de arquivar, zere a dívida ou crédito, resolva autorizações e redirecione compromissos e recorrências. Parcelas futuras também precisam terminar.' : text.includes('collide') || text.includes('already exists') ? 'Essa data coincide com um registro existente. Confira as faturas ou o histórico do limite.' : text.includes('month is closed') ? 'Reabra o mês antes de alterar a abertura inicial.' : text.includes('Closed statement') ? 'O período de uma fatura fechada está protegido.' : text.includes('Paid statement') ? 'A fatura já está quitada e seu vencimento está protegido.' : text.includes('unused active card') ? 'A abertura inicial exige um cartão ativo que ainda não tenha lançamentos.' : 'Não foi possível salvar. Confira os dados e tente novamente.';
+      const translated=text.includes('Administrator permission') ? 'Somente proprietários e administradores podem alterar este cadastro.' : text.includes('changed; reload') ? 'Esse cadastro mudou. Atualize os dados antes de tentar novamente.' : text.includes('future entries, authorizations or payment plans') ? 'Antes de arquivar, zere a dívida ou crédito, resolva autorizações e redirecione compromissos e recorrências. Parcelas futuras também precisam terminar.' : text.includes('collide') || text.includes('already exists') ? 'Essa data coincide com um registro existente. Confira as faturas ou o histórico do limite.' : text.includes('month is closed') ? 'Reabra o mês antes de alterar a abertura inicial.' : text.includes('Closed statement') ? 'O período de uma fatura fechada está protegido.' : text.includes('Paid statement') ? 'A fatura já está quitada e seu vencimento está protegido.' : text.includes('unused active card') ? 'A abertura inicial exige um cartão ativo que ainda não tenha lançamentos.' : text || 'Não foi possível salvar. Confira os dados e tente novamente.';
       setError(translated);
     } finally { pending.current=false; setBusy(false); }
   }
@@ -129,8 +129,8 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
   };
   const details=card ? <section className={`${panel} space-y-5`} aria-label="Gestão dos cartões">
     <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{card.name}</h2><p className="mt-1 text-sm text-slate-500">Configure portadores, datas, limite e compras em processamento.</p></div><button type="button" disabled={busy} onClick={() => selectCard(card.id)} className="text-sm text-slate-500">Fechar</button></div>
-    {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
-    {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
+    {error && <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50/80 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"><span className="text-base">⚠️</span><span>{error}</span></div>}
+    {notice && <div role="status" className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm font-semibold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200"><span className="text-base">✓</span><span>{notice}</span></div>}
     {card.card_type === 'debit' && (
       <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-xs sm:text-sm text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200">
         Cartão cadastrado na modalidade <strong>Apenas Débito</strong>. As compras no débito debitam na hora da conta bancária vinculada.
@@ -140,20 +140,26 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     {card.status==='cancelled' && (card.recurrences.length>0 || card.commitments.length>0) && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Redirecione os pagamentos deste cartão na Agenda e nas recorrências.</p>{[...card.recurrences,...card.commitments].map((item,index) => <p key={`${item.id}-${index}`} className="mt-1">{item.title}</p>)}</div>}
     {card.out_of_period_purchases.length>0 && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Confira as compras fora do novo período da fatura.</p>{card.out_of_period_purchases.map(item => <p key={item.transaction_id} className="mt-1">{date(item.on)} · {item.description}</p>)}<p className="mt-2">Ajuste a fatura do lançamento enquanto as faturas de origem e destino estiverem abertas.</p></div>}
     {administrator && card.status==='active' && card.statements.some(s => s.status==='open' && s.remaining_cents > 0) && (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-        <div>
-          <p className="font-semibold">Correção de fatura inicial:</p>
-          <p className="text-xs text-amber-800 dark:text-amber-300">
-            Se o saldo atual vence em {card.due_day ?? 10}/{workspace.space.today.slice(5, 7)} (fatura já fechada), clique para transferir o saldo inicial da fatura aberta para a fatura fechada.
-          </p>
+      <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-amber-400/20 dark:bg-amber-400/5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-600 dark:bg-amber-400/20 dark:text-amber-300">
+            <span className="text-base">📅</span>
+          </div>
+          <div>
+            <p className="font-semibold text-slate-900 dark:text-white">Ajustar vencimento da fatura inicial</p>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+              Seus {money(card.used_cents)} vencem em {card.due_day ?? 10}/{workspace.space.today.slice(5, 7)}? Transfira esse valor da fatura aberta para a fatura já fechada com 1 clique.
+            </p>
+          </div>
         </div>
         <button
           type="button"
           disabled={busy}
           onClick={() => void mutate('reclassify_card_opening', { p_card: card.id }, 'Saldo inicial reclassificado para a fatura fechada com sucesso!')}
-          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-slate-950 shadow-sm transition hover:bg-amber-400 active:scale-95 disabled:opacity-50 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300"
         >
-          ⚡ Corrigir para fatura fechada ({card.due_day ?? 10}/{workspace.space.today.slice(5, 7)})
+          <span>⚡</span>
+          <span>Corrigir para {card.due_day ?? 10}/{workspace.space.today.slice(5, 7)}</span>
         </button>
       </div>
     )}
