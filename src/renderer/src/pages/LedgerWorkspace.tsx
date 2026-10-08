@@ -5,7 +5,7 @@ import PeopleTable from '../components/PeopleTable';
 import CategoryPanels from '../components/CategoryPanels';
 import PageHeader from '../components/PageHeader';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Bell, CalendarDays, CreditCard, Eye, EyeOff, History, LayoutDashboard, LogOut, RefreshCw, Repeat, Settings, Tags, Users, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Bell, CalendarDays, CreditCard, Eye, EyeOff, Sun, Moon, History, LayoutDashboard, LogOut, RefreshCw, Repeat, Settings, Tags, Users, Wallet } from 'lucide-react';
 import { formatBrlCents } from '../../../shared/finance/money';
 import { ledgerRpc, loadLedgerWorkspace, selectFinancialSpace, type FinancialSpace, type LedgerWorkspace as Workspace, type UserSettings } from '../lib/ledgerRepository';
 import LedgerExtras, { type ExtraSection } from './LedgerExtras';
@@ -15,6 +15,7 @@ import LedgerClosing from './LedgerClosing';
 import LedgerTransactions from './LedgerTransactions';
 import LedgerReserves, { type ReserveSummary } from './LedgerReserves';
 import LedgerNotifications from './LedgerNotifications';
+import LedgerNotificationPopup from '../components/LedgerNotificationPopup';
 import LedgerFreeToSpend from './LedgerFreeToSpend';
 import LedgerEntryManagement from './LedgerEntryManagement';
 import LedgerManagement from './LedgerManagement';
@@ -103,9 +104,20 @@ export default function LedgerWorkspace() {
   const [online,setOnline]=useState(navigator.onLine),[cacheTime,setCacheTime]=useState<string | null>(null),[usingCache,setUsingCache]=useState(false);
   const [logoutCount,setLogoutCount]=useState<number | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const preferencesInitialized = useRef(false);
   const workspaceLoadSequence = useRef(0);
   const privacy = useAppStore(s => s.privacyMode);
+  const theme=useAppStore(s=>s.theme);
+  const [savingTheme,setSavingTheme]=useState(false);
+  async function switchTheme(){
+    if(savingTheme)return;
+    const previous=useAppStore.getState().theme,next=previous==='dark'?'light':'dark';
+    useAppStore.getState().setTheme(next);setSavingTheme(true);
+    try{const settings=await ledgerRpc<UserSettings>('get_user_settings',{});await ledgerRpc('update_user_settings',{p_version:settings.version,p_changes:{theme:next}});}
+    catch{setError('O tema foi alterado neste aparelho, mas não foi possível salvar a preferência na conta.');}
+    finally{setSavingTheme(false);}
+  }
   const togglePrivacy = useAppStore(s => s.togglePrivacyMode);
   const money = (value: number) => privacy ? 'R$ ••••' : formatBrlCents(value);
   const disabledPages = useAppStore(s => s.disabledPages);
@@ -209,24 +221,41 @@ export default function LedgerWorkspace() {
         )}
       </div>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => navigate('notifications')}
-          aria-label={`Notificações${unreadNotifications > 0 ? ` (${unreadNotifications} não lidas)` : ''}`}
-          title="Central de notificações"
-          className={`relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800 ${
-            section === 'notifications'
-              ? 'border-brand-500 text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : ''
-          }`}
-        >
-          <Bell size={15} />
-          {unreadNotifications > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white shadow ring-1 ring-white dark:ring-slate-900">
-              {unreadNotifications > 99 ? '99+' : unreadNotifications}
-            </span>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setNotificationsOpen(open => !open)}
+            aria-label={`Notificações${unreadNotifications > 0 ? ` (${unreadNotifications} não lidas)` : ''}`}
+            aria-expanded={notificationsOpen}
+            aria-haspopup="dialog"
+            title="Central de notificações"
+            className={`relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800 ${
+              notificationsOpen
+                ? 'border-brand-500 text-brand-600 ring-2 ring-brand-500/20 dark:border-brand-400 dark:text-brand-400'
+                : ''
+            }`}
+          >
+            <Bell size={15} />
+            {unreadNotifications > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white shadow ring-1 ring-white dark:ring-slate-900">
+                {unreadNotifications > 99 ? '99+' : unreadNotifications}
+              </span>
+            )}
+          </button>
+          {notificationsOpen && workspace && (
+            <LedgerNotificationPopup
+              workspace={workspace}
+              money={money}
+              onNavigate={dest => {
+                setNotificationsOpen(false);
+                navigate(dest as Section);
+              }}
+              onClose={() => setNotificationsOpen(false)}
+              onUpdateUnread={setUnreadNotifications}
+            />
           )}
-        </button>
+        </div>
+        <button type="button" onClick={()=>void switchTheme()} disabled={savingTheme} aria-label={theme==='dark'?'Ativar modo claro':'Ativar modo escuro'} title={theme==='dark'?'Ativar modo claro':'Ativar modo escuro'} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-sm transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800">{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</button>
         <button
           onClick={togglePrivacy}
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"

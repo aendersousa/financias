@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Plus, Repeat2, X } from 'lucide-react';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { nthBankingDay } from '../../../shared/finance/calendar';
 import { ledgerRpc, type LedgerWorkspace, type WorkspaceMetadata } from '../lib/ledgerRepository';
@@ -48,7 +49,7 @@ function RecurrenceForm({ workspace, rule, busy, onSave, onCancel }: {
       setPaymentMethod('account');
     }
   }
-  return <form aria-label={rule ? `Editar recorrência ${rule.title}` : 'Adicionar recorrência'} onSubmit={event => void submit(event)} className={rule ? 'min-w-0 space-y-4' : `${panel} space-y-5`}>
+  return <form aria-label={rule ? `Editar recorrência ${rule.title}` : 'Adicionar recorrência'} onSubmit={event => void submit(event)} className="min-w-0 space-y-4">
     {!rule && (
       <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
         <div>
@@ -58,7 +59,7 @@ function RecurrenceForm({ workspace, rule, busy, onSave, onCancel }: {
       </div>
     )}
     <fieldset disabled={busy} className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
         {!rule && (
           <div className="flex w-full min-w-0 flex-col gap-1 sm:col-span-2">
             <label htmlFor={`${prefix}-name`} className="field-label">Descrição</label>
@@ -241,9 +242,9 @@ function RecurrenceForm({ workspace, rule, busy, onSave, onCancel }: {
           )}
         </div>
         <div className="flex items-center justify-end gap-3">
-          {rule && onCancel && (
+          {onCancel && (
             <button type="button" onClick={onCancel} className={secondary}>
-              Cancelar edição
+              Cancelar
             </button>
           )}
           <button disabled={busy} className={primary}>
@@ -263,6 +264,25 @@ export default function LedgerRecurrences({ workspace, money, onChanged }: {
   const [metadata, setMetadata] = useState<WorkspaceMetadata | null>(null);
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [expandedRule, setExpandedRule] = useState<string | null>(null), [editingRule, setEditingRule] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showCreate) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) setShowCreate(false);
+      if (event.key !== 'Tab') return;
+      const fields = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []).filter(el => el.getClientRects().length > 0);
+      const first = fields[0], last = fields[fields.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); previous?.focus(); };
+  }, [showCreate, busy]);
   const pending = useRef(false);
   const canWrite = workspace.role !== 'viewer';
   async function load() { setMetadata(await ledgerRpc<WorkspaceMetadata>('workspace_metadata', { p_space: workspace.space.id })); }
@@ -331,13 +351,24 @@ export default function LedgerRecurrences({ workspace, money, onChanged }: {
       };
       const saved = rule ? await run('change_recurrence_rule', { p_rule: rule.id, p_version: rule.version, p_from_period: startsOn, p_scope: text('scope'), p_changes: changes }) : await run('create_recurrence_rule', { p_payload: payload });
       if (saved && rule) setEditingRule(null);
+      if (saved && !rule) setShowCreate(false);
       return saved;
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Verifique os campos.'); return false; }
   }
   return <div className="min-w-0 space-y-6">
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    {canWrite && <RecurrenceForm key={workspace.space.id} workspace={workspace} busy={busy || !metadata} onSave={saveRecurrence}/>}
+    <section className={`${panel} flex flex-wrap items-center justify-between gap-4`}>
+      <div className="flex items-center gap-3"><span className="rounded-xl bg-brand-500/10 p-3 text-brand-600 dark:text-brand-400"><Repeat2 size={22}/></span><div><h2 className="font-semibold">Suas recorrências</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Acompanhe receitas e despesas que se repetem.</p></div></div>
+      {canWrite && <button type="button" disabled={busy || !metadata} className={`${primary} inline-flex items-center gap-2`} onClick={() => { setError(''); setShowCreate(true); }}><Plus size={18}/>Nova recorrência</button>}
+    </section>
+    {showCreate && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-sm sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setShowCreate(false); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Nova recorrência" className={`${panel} relative max-h-[90dvh] w-full max-w-2xl overflow-y-auto shadow-2xl`}>
+        <button type="button" aria-label="Fechar nova recorrência" disabled={busy} onClick={() => setShowCreate(false)} className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 hover:bg-slate-500/10"><X size={18}/></button>
+        {error && <p role="alert" className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <RecurrenceForm workspace={workspace} busy={busy || !metadata} onSave={saveRecurrence} onCancel={() => setShowCreate(false)}/>
+      </div>
+    </div>}
     {!metadata && !error && <p className="text-sm text-slate-500 dark:text-slate-400">Carregando recorrências…</p>}
     {metadata && <RecurrenceTable rules={metadata.recurrences} money={money}
       renderActions={rule => <button type="button" disabled={busy} onClick={() => { setExpandedRule(expandedRule === rule.id ? null : rule.id); setEditingRule(null); }} aria-label={`Ver detalhes de ${rule.title}`} aria-expanded={expandedRule === rule.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400 disabled:opacity-50">Detalhes</button>}
