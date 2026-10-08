@@ -323,6 +323,11 @@ export interface PersonLoanTerms extends PersonLoanDates {
   installmentsBadge: string | null;
   installmentsText: string | null;
   installmentDetail: string | null;
+  principalRemainingCents: number;
+  interestRemainingCents: number;
+  totalRemainingCents: number;
+  recurringInterestCents: number | null;
+  interestKnown: boolean;
 }
 
 export function getPersonLoanTerms(
@@ -338,6 +343,9 @@ export function getPersonLoanTerms(
   },
   todayIso: string
 ): PersonLoanTerms {
+  // New configurations are appended to the notes; the latest agreement wins.
+  const agreements = person.notes?.split(/(?=\[Empréstimo)/i);
+  if (agreements && agreements.length > 1) person = { ...person, notes: agreements[agreements.length - 1] };
   let startDate: string | null = person.opening_on || null;
 
   if (!startDate && person.notes) {
@@ -438,7 +446,8 @@ export function getPersonLoanTerms(
   if (!payMode && person.notes) {
     const notes = person.notes;
 
-    if (/(?:prazo indefinido|data indefinida|sem data final)/i.test(notes)) {
+    if (/(?:prazo indefinido|data indefinida|sem data final|juro[s]?[^\n]*correndo todo mês)/i.test(notes)
+      || (!/\d+\s*(?:parcelas|x|meses|dias|semanas)/i.test(notes) && /(?:%|R\$\s*[\d.,]+)\s*\/(?:mês|mes|dia)/i.test(notes))) {
       payMode = 'indefinite';
       frequency = /(?:di[aá]ri[ao]|por dia)/i.test(notes) ? 'daily' : 'monthly';
     } else if (/(?:pagamento [uú]nico|parcela [uú]nica|[aà] vista)/i.test(notes)) {
@@ -495,6 +504,40 @@ export function getPersonLoanTerms(
     }
   }
 
+  const readMoney = (match: RegExpMatchArray | null) => match ? parseBrlCents(match[1]) : null;
+  const principalRemainingCents = Math.abs(person.balance_cents);
+  const isBorrowed = person.balance_cents < 0 || (person.balance_cents === 0 && /pegou emprestado de/i.test(person.notes ?? ''));
+  const received = isBorrowed ? person.paid_cents ?? 0 : person.received_cents ?? 0;
+  const interestPaid = isBorrowed ? person.interest_paid_cents ?? 0 : person.interest_received_cents ?? 0;
+  const originalPrincipal = readMoney(person.notes?.match(/principal\s+R\$\s*([\d.,]+)/i) ?? null)
+    ?? principalRemainingCents + received - interestPaid;
+  let agreedTotal = readMoney(person.notes?.match(/\btotal\s+R\$\s*([\d.,]+)/i) ?? null)
+    ?? readMoney(person.notes?.match(/pagamento\s+[uú]nico\s+de\s+R\$\s*([\d.,]+)/i) ?? null);
+  if (agreedTotal === null && totalInstallments && installmentAmountCents) agreedTotal = totalInstallments * installmentAmountCents;
+  let recurringInterestCents: number | null = null;
+  let interestDue = agreedTotal === null ? 0 : Math.max(0, agreedTotal - originalPrincipal);
+  if (payMode === 'indefinite') {
+    const rate = person.notes?.match(/([\d.,]+)%\s*\/(mês|mes|dia)/i);
+    const fixed = person.notes?.match(/R\$\s*([\d.,]+)\s*\/(mês|mes|dia)/i);
+    if (rate || fixed) {
+      frequency = (rate?.[2] ?? fixed?.[2]) === 'dia' ? 'daily' : 'monthly';
+      recurringInterestCents = rate
+        ? Math.round(originalPrincipal * Number(rate[1].replace(',', '.')) / 100)
+        : readMoney(fixed ?? null);
+    } else {
+      const reminder = person.reminders?.find(r => /juros|juro/i.test(r.title));
+      recurringInterestCents = readMoney(reminder?.title.match(/R\$\s*([\d.,]+)/i) ?? null);
+    }
+    if (recurringInterestCents !== null && startDate) {
+      const elapsed = frequency === 'daily' ? calculateDaysElapsed(startDate, todayIso) : calculateMonthsElapsed(startDate, todayIso);
+      interestDue = recurringInterestCents * elapsed;
+    }
+    if (principalRemainingCents === 0) interestDue = interestPaid;
+  }
+  const interestRemainingCents = Math.max(0, interestDue - interestPaid);
+  const totalRemainingCents = principalRemainingCents + interestRemainingCents;
+  const interestKnown = agreedTotal !== null || recurringInterestCents !== null || /sem juros/i.test(person.notes ?? '') || principalRemainingCents === 0;
+
   // Fallback for installmentAmountCents from balance if not parsed directly
   if (installmentAmountCents === null && totalInstallments && totalInstallments > 0 && person.balance_cents !== 0) {
     const paid = person.balance_cents < 0 ? person.paid_cents : person.received_cents;
@@ -510,7 +553,7 @@ export function getPersonLoanTerms(
     const paidCents = person.balance_cents < 0 ? person.paid_cents : person.balance_cents > 0 ? person.received_cents : Math.max(person.paid_cents ?? 0, person.received_cents ?? 0);
     const paidCount = Math.min(totalInstallments, Math.floor((paidCents ?? 0) / installmentAmountCents));
     const completedCount = totalInstallments - (remainingInstallments ?? totalInstallments);
-    const settledCount = person.balance_cents === 0 ? totalInstallments : Math.max(paidCount, completedCount);
+    const settledCount = totalRemainingCents === 0 ? totalInstallments : Math.max(paidCount, completedCount);
     remainingInstallments = totalInstallments - settledCount;
     currentInstallment = Math.min(settledCount + 1, totalInstallments);
     if (remainingInstallments === 0) {
@@ -537,8 +580,9 @@ export function getPersonLoanTerms(
       }
     }
   }
-  const isOverdue = !!(nextDueDate && nextDueDate < todayIso && person.balance_cents !== 0);
-  const isToday = !!(nextDueDate && nextDueDate === todayIso && person.balance_cents !== 0);
+  if (totalRemainingCents === 0) nextDueDate = null;
+  const isOverdue = !!(nextDueDate && nextDueDate < todayIso && totalRemainingCents !== 0);
+  const isToday = !!(nextDueDate && nextDueDate === todayIso && totalRemainingCents !== 0);
 
   // Format display labels
   let installmentsBadge: string | null = null;
@@ -548,7 +592,9 @@ export function getPersonLoanTerms(
   if (payMode === 'indefinite') {
     installmentsBadge = 'Indefinido';
     installmentsText = 'Prazo indefinido';
-    installmentDetail = frequency === 'daily' ? 'Juros diários' : 'Juros mensais';
+    installmentDetail = recurringInterestCents === null
+      ? (frequency === 'daily' ? 'Juros diários: não informados' : 'Juros mensais: não informados')
+      : `${formatBrlCents(recurringInterestCents)} ${frequency === 'daily' ? '/dia' : '/mês'}`;
   } else if (payMode === 'single' || totalInstallments === 1) {
     installmentsBadge = '1x';
     installmentsText = '1x (à vista)';
@@ -585,7 +631,12 @@ export function getPersonLoanTerms(
     installmentAmountCents,
     installmentsBadge,
     installmentsText,
-    installmentDetail
+    installmentDetail,
+    principalRemainingCents,
+    interestRemainingCents,
+    totalRemainingCents,
+    recurringInterestCents,
+    interestKnown
   };
 }
 

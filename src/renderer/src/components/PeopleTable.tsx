@@ -55,9 +55,9 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
           const editor = renderEditor?.(person)
           const isReceivable = person.balance_cents > 0
           const isPayable = person.balance_cents < 0
-          const hasDebt = person.balance_cents !== 0
           const initial = (person.nickname.trim()[0] || 'P').toUpperCase()
           const loanTerms = getPersonLoanTerms(person, effectiveToday)
+          const hasDebt = loanTerms.totalRemainingCents !== 0
           const loanDates = loanTerms
 
           return <Fragment key={person.id}>
@@ -186,6 +186,7 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                               {loanTerms.installmentDetail}
                             </span>
                           )}
+                          {loanTerms.payMode === 'installments' && loanTerms.installmentsText && <span className="text-[11px] text-slate-500 dark:text-slate-400">{loanTerms.installmentsText}</span>}
                         </button>
                       ) : (
                         <>
@@ -204,6 +205,7 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                               {loanTerms.installmentDetail}
                             </span>
                           )}
+                          {loanTerms.payMode === 'installments' && loanTerms.installmentsText && <span className="text-[11px] text-slate-500 dark:text-slate-400">{loanTerms.installmentsText}</span>}
                         </>
                       )}
                     </div>
@@ -214,7 +216,7 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                       className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400"
                       title="Definir quantas parcelas e juros para esta dívida"
                     >
-                      <span>+ Definir</span>
+                      <span>Não informado · Definir</span>
                     </button>
                   ) : (
                     <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -254,8 +256,9 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                       ? 'text-rose-700 dark:text-rose-400'
                       : 'text-slate-500 dark:text-slate-400'
                 }`}>
-                  {money(Math.abs(person.balance_cents))}
+                  {money(loanTerms.totalRemainingCents)}
                 </span>
+                {hasDebt && <span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">Principal: {money(loanTerms.principalRemainingCents)}<br/>Juros a pagar: {loanTerms.interestKnown ? money(loanTerms.interestRemainingCents) : 'Não informado'}{loanTerms.payMode === 'indefinite' && loanTerms.interestKnown && <><br/>Acumulados até {displayDate(effectiveToday)}</>}</span>}
                 <span className="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400 xl:hidden">Já pago: {person.received_cents===undefined?'—':money(isPayable?person.paid_cents??0:hasDebt?person.received_cents:person.received_cents+(person.paid_cents??0))}</span>
                 {isPayable&&<span className="mt-1 block text-xs font-normal text-slate-500">Por você</span>}
               </td>

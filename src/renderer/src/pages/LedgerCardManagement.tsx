@@ -139,6 +139,24 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     <dl className="grid gap-3 sm:grid-cols-3">{[['Limite concedido',card.granted_cents],['Limite utilizado',card.used_cents],['Limite livre',card.free_cents]].map(([label,value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-xl font-semibold">{money(value as number)}</dd></div>)}</dl>
     {card.status==='cancelled' && (card.recurrences.length>0 || card.commitments.length>0) && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Redirecione os pagamentos deste cartão na Agenda e nas recorrências.</p>{[...card.recurrences,...card.commitments].map((item,index) => <p key={`${item.id}-${index}`} className="mt-1">{item.title}</p>)}</div>}
     {card.out_of_period_purchases.length>0 && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"><p className="font-semibold">Confira as compras fora do novo período da fatura.</p>{card.out_of_period_purchases.map(item => <p key={item.transaction_id} className="mt-1">{date(item.on)} · {item.description}</p>)}<p className="mt-2">Ajuste a fatura do lançamento enquanto as faturas de origem e destino estiverem abertas.</p></div>}
+    {administrator && card.status==='active' && card.statements.some(s => s.status==='open' && s.remaining_cents > 0) && (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+        <div>
+          <p className="font-semibold">Correção de fatura inicial:</p>
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            Se o saldo atual vence em {card.due_day ?? 10}/{workspace.space.today.slice(5, 7)} (fatura já fechada), clique para transferir o saldo inicial da fatura aberta para a fatura fechada.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void mutate('reclassify_card_opening', { p_card: card.id }, 'Saldo inicial reclassificado para a fatura fechada com sucesso!')}
+          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+        >
+          ⚡ Corrigir para fatura fechada ({card.due_day ?? 10}/{workspace.space.today.slice(5, 7)})
+        </button>
+      </div>
+    )}
     {writer && <>
       <div className="flex flex-wrap gap-2">{card.status!=='archived' && ([['settings','Regras'],['holder','Portadores'],['authorization','Autorizações'],['limit','Limite'],['statement','Datas de fatura']] as const).filter(([value]) => administrator || value==='authorization').map(([value,label]) => <button key={value} disabled={busy} onClick={() => changeMode(value)} className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${mode===value ? 'bg-brand-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{label}</button>)}{administrator && card.status==='active' && card.started_on===null && card.balance_cents===0 && <button disabled={busy} onClick={() => changeMode('opening')} className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${mode==='opening' ? 'bg-brand-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>Cartão já em uso</button>}</div>
       {(administrator || mode==='authorization') && card.status!=='archived' && !(mode==='opening' && card.started_on!==null) && <form key={`${card.id}-${mode}-${holderId}-${authorizationId}-${statementId}-${card.version}`} onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
@@ -210,7 +228,19 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
       </form>}
       {holder && mode==='holder' && holder.kind!=='main' && <button disabled={busy} onClick={() => void mutate('manage_card_holder',{p_card:card.id,p_holder:holder.id,p_version:holder.version,p_action:holder.is_active ? 'deactivate' : 'activate'},holder.is_active ? 'Portador desativado. O histórico foi preservado.' : 'Portador reativado.')} className="text-sm font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-300">{holder.is_active ? 'Desativar portador' : 'Reativar portador'}</button>}
       {authorization && mode==='authorization' && <button disabled={busy} onClick={() => void mutate('manage_card_authorization',{p_card:card.id,p_authorization:authorization.id,p_version:authorization.version,p_action:'cancel'},'Autorização cancelada. O limite foi atualizado.')} className="text-sm font-semibold text-red-700 disabled:opacity-50 dark:text-red-300">Cancelar autorização</button>}
-      {administrator && <div className="flex flex-wrap gap-4 border-t border-slate-200 pt-4 dark:border-slate-800">{(card.status==='active' ? [['cancel','Cancelar cartão']] : card.status==='cancelled' ? [['reactivate','Reativar cartão'],['archive','Arquivar cartão']] : [['restore','Desarquivar cartão']]).map(([action,label]) => <button key={action} disabled={busy} onClick={() => void mutate('manage_card',{p_card:card.id,p_version:card.version,p_action:action},action==='cancel' ? 'Cartão cancelado. Redirecione as recorrências e contas da Agenda que o utilizam.' : action==='restore' ? 'Cartão desarquivado no estado cancelado.' : 'Estado do cartão atualizado.')} className="text-sm font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-300">{label}</button>)}</div>}
+      {administrator && <div className="flex flex-wrap items-center gap-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+        {(card.status==='active' ? [['cancel','Cancelar cartão']] : card.status==='cancelled' ? [['reactivate','Reativar cartão'],['archive','Arquivar cartão']] : [['restore','Desarquivar cartão']]).map(([action,label]) => <button key={action} disabled={busy} onClick={() => void mutate('manage_card',{p_card:card.id,p_version:card.version,p_action:action},action==='cancel' ? 'Cartão cancelado. Redirecione as recorrências e contas da Agenda que o utilizam.' : action==='restore' ? 'Cartão desarquivado no estado cancelado.' : 'Estado do cartão atualizado.')} className="text-sm font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-300">{label}</button>)}
+        {card.statements.some(s => s.status==='open' && s.remaining_cents > 0) && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void mutate('reclassify_card_opening', { p_card: card.id }, 'Saldo inicial reclassificado para a fatura fechada com sucesso!')}
+            className="text-sm font-semibold text-amber-700 hover:underline disabled:opacity-50 dark:text-amber-400"
+          >
+            ⚡ Mover saldo inicial para fatura fechada
+          </button>
+        )}
+      </div>}
     </>}
     {mode==='opening' && <label className="grid gap-1.5 text-sm">Limite utilizado informado pelo banco, sem compras em processamento (para conferir)<CurrencyInput value={bankUsed} onChange={event => setBankUsed(event.target.value)} placeholder="0,00" className={input}/><span className="text-xs text-slate-500">No app: {money(card.used_cents)}. Compare os valores após registrar a dívida inicial.</span></label>}
     {card.opening_bank_used_cents!==null && <div className="rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800"><p>Limite utilizado informado na abertura: {money(card.opening_bank_used_cents)}.</p><p className="mt-1">Diferença em relação à posição atual: {money(card.opening_difference_cents!)}.</p><p className="mt-2 text-xs text-slate-500">Depois da abertura, compras e pagamentos alteram a posição atual.</p></div>}

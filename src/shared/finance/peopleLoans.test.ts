@@ -48,6 +48,48 @@ describe('installment progress after settlement', () => {
   });
 });
 
+describe('principal and interest remaining', () => {
+  it('includes the interest in two installments of 180 on a principal of 300', () => {
+    const terms = getPersonLoanTerms({ balance_cents: 30000, notes: 'Principal R$ 300,00 | 2 parcelas mensais de R$ 180,00 (total R$ 360,00)', received_cents: 0 }, '2026-10-08');
+    expect(terms.principalRemainingCents).toBe(30000);
+    expect(terms.interestRemainingCents).toBe(6000);
+    expect(terms.totalRemainingCents).toBe(36000);
+  });
+  it('subtracts the paid interest without subtracting the principal twice', () => {
+    const terms = getPersonLoanTerms({ balance_cents: 15000, received_cents: 18000, interest_received_cents: 3000, notes: 'Principal R$ 300,00 | 2 parcelas mensais de R$ 180,00 (total R$ 360,00)' }, '2026-10-08');
+    expect(terms.totalRemainingCents).toBe(18000);
+    expect(terms.interestRemainingCents).toBe(3000);
+    expect(terms.remainingInstallments).toBe(1);
+  });
+  it('includes interest in a single payment agreement', () => {
+    const terms = getPersonLoanTerms({ balance_cents: -30000, notes: 'Principal R$ 300,00 | pagamento único de R$ 330,00 em 07/11/2026' }, '2026-10-08');
+    expect(terms.totalRemainingCents).toBe(33000);
+    expect(terms.interestRemainingCents).toBe(3000);
+  });
+  it('calculates recurring interest using the same periods as the loan calculator', () => {
+    const terms = getPersonLoanTerms({ balance_cents: 150000, opening_on: '2026-08-11', interest_received_cents: 7500, notes: 'Principal R$ 1.500,00 | prazo indefinido, juro de 5% /mês' }, '2026-10-08');
+    expect(terms.recurringInterestCents).toBe(7500);
+    expect(terms.interestRemainingCents).toBe(7500);
+    expect(terms.totalRemainingCents).toBe(157500);
+  });
+  it('does not invent an interest rate when the agreement is missing', () => {
+    const terms = getPersonLoanTerms({ balance_cents: 150000 }, '2026-10-08');
+    expect(terms.interestKnown).toBe(false);
+    expect(terms.totalRemainingCents).toBe(150000);
+    expect(terms.payMode).toBeNull();
+  });
+  it('uses the latest saved agreement instead of obsolete notes', () => {
+    const terms = getPersonLoanTerms({ balance_cents: 30000, notes: '[Empréstimo] Principal R$ 300,00 | 2 parcelas mensais de R$ 150,00 (total R$ 300,00)\n\n[Empréstimo] Principal R$ 300,00 | 2 parcelas mensais de R$ 180,00 (total R$ 360,00)' }, '2026-10-08');
+    expect(terms.totalRemainingCents).toBe(36000);
+    expect(terms.installmentAmountCents).toBe(18000);
+  });
+  it('does not accrue new interest after an indefinite loan is settled', () => {
+    const terms = getPersonLoanTerms({ balance_cents: 0, opening_on: '2026-08-11', received_cents: 165000, interest_received_cents: 15000, notes: 'Principal R$ 1.500,00 | prazo indefinido, juro de 5% /mês' }, '2026-12-08');
+    expect(terms.totalRemainingCents).toBe(0);
+    expect(terms.nextDueDate).toBeNull();
+  });
+});
+
 describe('peopleLoans calculations', () => {
   it('correctly clamps dates across month and year boundaries', () => {
     expect(addMonthsClamped('2026-01-31', 1)).toBe('2026-02-28');
@@ -395,7 +437,7 @@ describe('peopleLoans calculations', () => {
     expect(terms.payMode).toBe('indefinite');
     expect(terms.installmentsBadge).toBe('Indefinido');
     expect(terms.installmentsText).toBe('Prazo indefinido');
-    expect(terms.installmentDetail).toBe('Juros mensais');
+    expect(terms.installmentDetail).toBe('R$ 75,00 /mês');
   });
 
   it('identifies single payment from notes', () => {
@@ -425,4 +467,3 @@ describe('peopleLoans calculations', () => {
     expect(terms.installmentsText).toBe('3x de R$ 500,00');
   });
 });
-

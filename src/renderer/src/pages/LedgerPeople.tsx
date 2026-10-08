@@ -67,6 +67,7 @@ interface Contact {
   borrowed_cents?: number;
   interest_received_cents?: number;
   interest_paid_cents?: number;
+  reminders?: { id: string; title: string; due_on: string; completed_at: string | null }[];
 }
 
 interface PersonDetail {
@@ -107,6 +108,7 @@ export default function LedgerPeople({
   const [movementPersonId, setMovementPersonId] = useState<string | null>(null);
   const [movementDirection, setMovementDirection] = useState<Direction>('receive');
   const [movementAmount, setMovementAmount] = useState<string>('');
+  const [movementInterest, setMovementInterest] = useState('');
   const [movementDate, setMovementDate] = useState<string>(workspace.space.today);
 
   // Add person with initial debt state
@@ -144,7 +146,6 @@ export default function LedgerPeople({
   const [loanMoveCash, setLoanMoveCash] = useState(true);
   const [loanAccountId, setLoanAccountId] = useState('');
   const [loanCreateReminders, setLoanCreateReminders] = useState(true);
-  const [loanSaveNotes, setLoanSaveNotes] = useState(true);
 
   // Shared expense
   const [showSharedExpense, setShowSharedExpense] = useState(false);
@@ -240,16 +241,16 @@ export default function LedgerPeople({
   // Calculations for summary cards
   const activeContacts = useMemo(() => contacts.filter(item => !item.archived_at), [contacts]);
   const totalReceivable = useMemo(
-    () => activeContacts.filter(c => c.balance_cents > 0).reduce((acc, c) => acc + c.balance_cents, 0),
-    [activeContacts]
+    () => activeContacts.filter(c => c.balance_cents > 0).reduce((acc, c) => acc + getPersonLoanTerms(c, workspace.space.today).totalRemainingCents, 0),
+    [activeContacts, workspace.space.today]
   );
   const countReceivable = useMemo(
     () => activeContacts.filter(c => c.balance_cents > 0).length,
     [activeContacts]
   );
   const totalPayable = useMemo(
-    () => activeContacts.filter(c => c.balance_cents < 0).reduce((acc, c) => acc + Math.abs(c.balance_cents), 0),
-    [activeContacts]
+    () => activeContacts.filter(c => c.balance_cents < 0).reduce((acc, c) => acc + getPersonLoanTerms(c, workspace.space.today).totalRemainingCents, 0),
+    [activeContacts, workspace.space.today]
   );
   const countPayable = useMemo(
     () => activeContacts.filter(c => c.balance_cents < 0).length,
@@ -286,6 +287,7 @@ export default function LedgerPeople({
       const interest = text('interest') ? safeParseBrlCents(text('interest')) : 0;
       if (amount <= 0) throw new Error('Informe um valor maior que zero.');
       if (interest < 0 || interest > amount) throw new Error('Os juros devem estar entre zero e o valor total pago.');
+      if (interest > 0 && !text('interest_category')) throw new Error('Selecione a categoria dos juros antes de confirmar o pagamento.');
       const targetPerson = text('person') || movementPersonId;
       if (!targetPerson) throw new Error('Selecione uma pessoa.');
       const accountId = text('account') || cashAccounts[0]?.id;
@@ -491,21 +493,30 @@ export default function LedgerPeople({
       }
     }
 
+    const terms = target ? getPersonLoanTerms(target, workspace.space.today) : null;
+    const isSettlement = !preferredDirection || preferredDirection === 'receive' || preferredDirection === 'pay';
     if (preferredAmount !== undefined) {
       setMovementAmount(preferredAmount);
     } else if (target && target.balance_cents !== 0) {
-      const terms = getPersonLoanTerms(target, workspace.space.today);
-      const isSettlement = !preferredDirection || preferredDirection === 'receive' || preferredDirection === 'pay';
-      const installment = terms.payMode === 'installments' && terms.remainingInstallments !== 0
+      const installment = terms?.payMode === 'installments' && terms.remainingInstallments !== 0
         ? terms.installmentAmountCents
+        : terms?.payMode === 'indefinite' ? terms.recurringInterestCents
         : null;
       const cents = isSettlement && installment && installment > 0
-        ? installment
-        : Math.abs(target.balance_cents);
+        ? Math.min(installment, terms?.totalRemainingCents ?? installment)
+        : isSettlement ? terms?.totalRemainingCents ?? Math.abs(target.balance_cents) : Math.abs(target.balance_cents);
       setMovementAmount((cents / 100).toFixed(2).replace('.', ','));
     } else {
       setMovementAmount('');
     }
+    const suggestedInterest = isSettlement && terms
+      ? terms.payMode === 'installments'
+        ? Math.round(terms.interestRemainingCents / Math.max(1, terms.remainingInstallments ?? 1))
+        : terms.payMode === 'indefinite' ? Math.min(terms.recurringInterestCents ?? 0, terms.interestRemainingCents)
+          : terms.interestRemainingCents
+      : 0;
+    const interest = preferredAmount !== undefined ? Math.min(safeParseBrlCents(preferredAmount), suggestedInterest) : suggestedInterest;
+    setMovementInterest(interest > 0 ? (interest / 100).toFixed(2).replace('.', ',') : '');
 
     if (preferredDate) {
       setMovementDate(preferredDate);
@@ -656,8 +667,8 @@ export default function LedgerPeople({
         });
       }
 
-      // 2. If saving notes, append summary
-      if (loanSaveNotes) {
+      // 2. Always persist the agreement: the balance display needs these terms.
+      {
         const isIndefinite = loanPayMode === 'indefinite';
         const freqLabel = loanCalc.frequency === 'daily'
           ? (loanCalc.count === 1 ? 'dia' : 'dias')
@@ -869,6 +880,7 @@ export default function LedgerPeople({
   }, [sharedTotalInput, sharedSelectedPeople]);
 
   const activeMovementPerson = contacts.find(c => c.id === movementPersonId);
+  const activeMovementTerms = activeMovementPerson ? getPersonLoanTerms(activeMovementPerson, workspace.space.today) : null;
   const activeSelectedPerson = contacts.find(c => c.id === selectedPersonId);
 
   return (
@@ -2607,15 +2619,9 @@ export default function LedgerPeople({
               <span>Criar lembretes de cobrança na Agenda para cada vencimento</span>
             </label>
 
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={loanSaveNotes}
-                onChange={e => setLoanSaveNotes(e.target.checked)}
-                className="rounded text-brand-600 focus:ring-brand-500"
-              />
-              <span>Salvar resumo das condições combinadas nas observações da pessoa</span>
-            </label>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              As condições combinadas, incluindo taxa de juros e prazo, serão salvas com a pessoa.
+            </p>
           </div>
 
           {/* Submit */}
@@ -2697,9 +2703,9 @@ export default function LedgerPeople({
                   {activeMovementPerson && (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {activeMovementPerson.balance_cents > 0
-                        ? `Situação: ${activeMovementPerson.nickname} te deve ${money(activeMovementPerson.balance_cents)}`
+                        ? `Situação: ${activeMovementPerson.nickname} te deve ${money(activeMovementTerms?.totalRemainingCents ?? activeMovementPerson.balance_cents)}`
                         : activeMovementPerson.balance_cents < 0
-                          ? `Situação: Você deve ${money(Math.abs(activeMovementPerson.balance_cents))} para ${activeMovementPerson.nickname}`
+                          ? `Situação: Você deve ${money(activeMovementTerms?.totalRemainingCents ?? Math.abs(activeMovementPerson.balance_cents))} para ${activeMovementPerson.nickname}`
                           : 'Situação: As contas estão em dia (R$ 0,00)'}
                     </p>
                   )}
@@ -2866,12 +2872,13 @@ export default function LedgerPeople({
                     <button
                       type="button"
                       onClick={() => {
-                        const cents = Math.abs(activeMovementPerson.balance_cents);
+                        const cents = activeMovementTerms?.totalRemainingCents ?? Math.abs(activeMovementPerson.balance_cents);
                         setMovementAmount((cents / 100).toFixed(2).replace('.', ','));
+                        setMovementInterest(((activeMovementTerms?.interestRemainingCents ?? 0) / 100).toFixed(2).replace('.', ','));
                       }}
                       className="text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
                     >
-                      Saldo total ({money(Math.abs(activeMovementPerson.balance_cents))})
+                      Saldo total ({money(activeMovementTerms?.totalRemainingCents ?? Math.abs(activeMovementPerson.balance_cents))})
                     </button>
                   )}
                 </div>
@@ -2908,7 +2915,7 @@ export default function LedgerPeople({
               <div className="grid gap-3 sm:grid-cols-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40">
                 <label className="grid gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
                   <span>Desse valor, quanto é juros?</span>
-                  <CurrencyInput name="interest" aria-label="Juros incluídos no pagamento" placeholder="0,00" className={input}/>
+                  <CurrencyInput name="interest" aria-label="Juros incluídos no pagamento" value={movementInterest} onChange={e => setMovementInterest(e.target.value)} placeholder="0,00" className={input}/>
                   <span className="text-[10px] text-slate-500">O valor total acima é o total pago. Só a parte sem juros reduz o principal da dívida.</span>
                 </label>
                 <label className="grid gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
@@ -3505,7 +3512,7 @@ function PersonDetailPanel({
     return getPersonLoanTerms(
       {
         ...person,
-        reminders: detail?.reminders ?? (person as any).reminders
+        reminders: detail?.reminders.map(reminder => ({ ...reminder, due_on: reminder.effective_due_on })) ?? person.reminders
       },
       today
     );
@@ -3563,9 +3570,9 @@ function PersonDetailPanel({
                 }`}
               >
                 {person.balance_cents > 0
-                  ? `Te deve ${money(person.balance_cents)}`
+                  ? `Te deve ${money(loanTerms.totalRemainingCents)}`
                   : person.balance_cents < 0
-                    ? `Você deve ${money(Math.abs(person.balance_cents))}`
+                    ? `Você deve ${money(loanTerms.totalRemainingCents)}`
                     : 'Contas em dia'}
               </span>
               {loanDates.startDate && (
@@ -3611,6 +3618,8 @@ function PersonDetailPanel({
                   </span>
                 </>
               )}
+              <span>Principal restante: {money(loanTerms.principalRemainingCents)}</span>
+              <span>Juros a pagar: {loanTerms.interestKnown ? money(loanTerms.interestRemainingCents) : 'Não informado'}</span>
               {person.scheduled_balance_cents !== 0 && (
                 <>
                   <span>•</span>
