@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates } from './peopleLoans';
+import { addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates, getPersonLoanTerms } from './peopleLoans';
 
 describe('peopleLoans calculations', () => {
   it('correctly clamps dates across month and year boundaries', () => {
@@ -285,6 +285,97 @@ describe('peopleLoans calculations', () => {
     expect(result.schedule[0].dueDate).toBe('2026-11-07');
     expect(result.schedule[1].amountCents).toBe(12000);
     expect(result.schedule[1].dueDate).toBe('2026-12-07');
+  });
+
+  it('extracts installment terms from reminders with Parcela X/Y', () => {
+    const terms = getPersonLoanTerms({
+      opening_on: '2026-10-07',
+      balance_cents: 30000,
+      reminders: [
+        { id: '1', title: 'Cobrar João: Parcela 1/3 (R$ 100,00)', due_on: '2026-11-07', completed_at: null },
+        { id: '2', title: 'Cobrar João: Parcela 2/3 (R$ 100,00)', due_on: '2026-12-07', completed_at: null },
+        { id: '3', title: 'Cobrar João: Parcela 3/3 (R$ 100,00)', due_on: '2027-01-07', completed_at: null }
+      ]
+    }, '2026-10-07');
+
+    expect(terms.totalInstallments).toBe(3);
+    expect(terms.currentInstallment).toBe(1);
+    expect(terms.remainingInstallments).toBe(3);
+    expect(terms.installmentAmountCents).toBe(10000);
+    expect(terms.installmentsBadge).toBe('3x');
+    expect(terms.installmentsText).toBe('3x de R$ 100,00');
+    expect(terms.installmentDetail).toBe('~R$ 100,00 /mês');
+  });
+
+  it('tracks progress when installments are partially completed in reminders', () => {
+    const terms = getPersonLoanTerms({
+      opening_on: '2026-10-07',
+      balance_cents: 20000,
+      reminders: [
+        { id: '1', title: 'Cobrar João: Parcela 1/3 (R$ 100,00)', due_on: '2026-11-07', completed_at: '2026-11-07T12:00:00Z' },
+        { id: '2', title: 'Cobrar João: Parcela 2/3 (R$ 100,00)', due_on: '2026-12-07', completed_at: null },
+        { id: '3', title: 'Cobrar João: Parcela 3/3 (R$ 100,00)', due_on: '2027-01-07', completed_at: null }
+      ]
+    }, '2026-11-10');
+
+    expect(terms.totalInstallments).toBe(3);
+    expect(terms.currentInstallment).toBe(2);
+    expect(terms.remainingInstallments).toBe(2);
+    expect(terms.installmentsBadge).toBe('3x');
+    expect(terms.installmentDetail).toBe('Parcela 2 de 3');
+  });
+
+  it('extracts installment terms from notes when no reminders are present', () => {
+    const terms = getPersonLoanTerms({
+      opening_on: '2026-09-07',
+      balance_cents: 24000,
+      notes: '📌 [Empréstimo em 07/09/2026] Emprestado para Madu: Principal R$ 240,00 | Devolução em 2 meses (2 parcelas mensais de ~R$ 120,00 (total R$ 240,00)).'
+    }, '2026-10-07');
+
+    expect(terms.totalInstallments).toBe(2);
+    expect(terms.installmentsBadge).toBe('2x');
+    expect(terms.installmentsText).toBe('2x de R$ 120,00');
+    expect(terms.installmentDetail).toBe('~R$ 120,00 /mês');
+  });
+
+  it('identifies indefinite agreement from notes', () => {
+    const terms = getPersonLoanTerms({
+      opening_on: '2026-08-11',
+      balance_cents: 150000,
+      notes: '📌 [Empréstimo por Prazo Indefinido iniciado em 11/08/2026] Emprestado para Regina: Principal R$ 1.500,00 | prazo indefinido (sem data final), juro de 5% /mês correndo todo mês com próximo vencimento em 11/10/2026.'
+    }, '2026-10-07');
+
+    expect(terms.payMode).toBe('indefinite');
+    expect(terms.installmentsBadge).toBe('Indefinido');
+    expect(terms.installmentsText).toBe('Prazo indefinido');
+    expect(terms.installmentDetail).toBe('Juros mensais');
+  });
+
+  it('identifies single payment from notes', () => {
+    const terms = getPersonLoanTerms({
+      opening_on: '2026-10-01',
+      balance_cents: 100000,
+      notes: '📌 [Empréstimo em 01/10/2026] Emprestado para Tatiele: Principal R$ 1.000,00 | Devolução em 1 mês (pagamento único de R$ 1.000,00 em 01/11/2026).'
+    }, '2026-10-07');
+
+    expect(terms.payMode).toBe('single');
+    expect(terms.totalInstallments).toBe(1);
+    expect(terms.installmentsBadge).toBe('1x');
+    expect(terms.installmentsText).toBe('1x (à vista)');
+    expect(terms.installmentDetail).toBe('Pagamento único');
+  });
+
+  it('infers installment amount from total balance when count is in notes without explicit amount', () => {
+    const terms = getPersonLoanTerms({
+      opening_on: '2026-10-07',
+      balance_cents: 150000,
+      notes: 'Combinado em 3 parcelas mensais.'
+    }, '2026-10-07');
+
+    expect(terms.totalInstallments).toBe(3);
+    expect(terms.installmentAmountCents).toBe(50000);
+    expect(terms.installmentsBadge).toBe('3x');
+    expect(terms.installmentsText).toBe('3x de R$ 500,00');
   });
 });
 

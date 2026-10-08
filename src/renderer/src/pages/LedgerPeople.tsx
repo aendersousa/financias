@@ -30,7 +30,7 @@ import {
 import PeopleTable from '../components/PeopleTable';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
-import { addDays, addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
+import { addDays, addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates, getPersonLoanTerms, type PeopleLoanFrequency, type PeopleLoanPayMode } from '../../../shared/finance/peopleLoans';
 import CurrencyInput from '../components/CurrencyInput';
 
 const panel = 'card p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900';
@@ -3368,6 +3368,7 @@ export default function LedgerPeople({
           people={visibleContacts}
           money={money}
           today={workspace.space.today}
+          onConfigureLoan={item => openLoanForPerson(item.id, true)}
           renderName={item => (
             <button
               type="button"
@@ -3492,8 +3493,8 @@ function PersonDetailPanel({
   const [editingTxDesc, setEditingTxDesc] = useState('');
 
   const pendingRemindersCount = detail?.reminders.filter(r => !r.completed_at).length ?? 0;
-  const loanDates = useMemo(() => {
-    return getPersonLoanDates(
+  const loanTerms = useMemo(() => {
+    return getPersonLoanTerms(
       {
         ...person,
         reminders: detail?.reminders ?? (person as any).reminders
@@ -3501,6 +3502,7 @@ function PersonDetailPanel({
       today
     );
   }, [person, detail?.reminders, today]);
+  const loanDates = loanTerms;
 
   return (
     <section
@@ -3586,6 +3588,18 @@ function PersonDetailPanel({
                         Hoje
                       </span>
                     )}
+                  </span>
+                </>
+              )}
+              {loanTerms.installmentsText && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Coins size={12} className="text-slate-400" />
+                    Parcelas:{' '}
+                    <strong className="font-semibold text-slate-700 dark:text-slate-200">
+                      {loanTerms.installmentsText}
+                    </strong>
                   </span>
                 </>
               )}

@@ -1,4 +1,4 @@
-import { parseBrlCents } from './money';
+import { formatBrlCents, parseBrlCents } from './money';
 
 export type PeopleLoanFrequency = 'monthly' | 'daily' | 'weekly';
 export type PeopleLoanPayMode = 'installments' | 'single' | 'indefinite';
@@ -313,7 +313,19 @@ export interface PersonLoanDates {
   isToday?: boolean;
 }
 
-export function getPersonLoanDates(
+export interface PersonLoanTerms extends PersonLoanDates {
+  payMode: PeopleLoanPayMode | null;
+  frequency: PeopleLoanFrequency | null;
+  totalInstallments: number | null;
+  currentInstallment: number | null;
+  remainingInstallments: number | null;
+  installmentAmountCents: number | null;
+  installmentsBadge: string | null;
+  installmentsText: string | null;
+  installmentDetail: string | null;
+}
+
+export function getPersonLoanTerms(
   person: {
     notes?: string | null;
     opening_on?: string | null;
@@ -321,7 +333,7 @@ export function getPersonLoanDates(
     reminders?: { id: string; title: string; due_on: string; completed_at: string | null }[];
   },
   todayIso: string
-): PersonLoanDates {
+): PersonLoanTerms {
   let startDate: string | null = person.opening_on || null;
 
   if (!startDate && person.notes) {
@@ -357,10 +369,193 @@ export function getPersonLoanDates(
   const isOverdue = !!(nextDueDate && nextDueDate < todayIso && person.balance_cents !== 0);
   const isToday = !!(nextDueDate && nextDueDate === todayIso && person.balance_cents !== 0);
 
+  // Installment parsing
+  let payMode: PeopleLoanPayMode | null = null;
+  let frequency: PeopleLoanFrequency | null = null;
+  let totalInstallments: number | null = null;
+  let currentInstallment: number | null = null;
+  let remainingInstallments: number | null = null;
+  let installmentAmountCents: number | null = null;
+
+  // A. Check reminders
+  if (person.reminders && person.reminders.length > 0) {
+    const installmentReminders: {
+      instNum: number;
+      total: number;
+      amountCents: number | null;
+      completed: boolean;
+      dueOn: string;
+    }[] = [];
+
+    let hasIndefiniteReminder = false;
+
+    for (const r of person.reminders) {
+      if (/vencimento mensal/i.test(r.title) || /juros de .*\(vencimento mensal\)/i.test(r.title)) {
+        hasIndefiniteReminder = true;
+      }
+      const match = r.title.match(/parcela\s+(\d+)\/(\d+)(?:\s*\((?:r\$\s*)?([\d.,]+)\))?/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        const tot = parseInt(match[2], 10);
+        let amt: number | null = null;
+        if (match[3]) {
+          try {
+            amt = parseBrlCents(match[3]);
+          } catch {
+            amt = null;
+          }
+        }
+        installmentReminders.push({
+          instNum: num,
+          total: tot,
+          amountCents: amt,
+          completed: Boolean(r.completed_at),
+          dueOn: r.due_on
+        });
+      }
+    }
+
+    if (hasIndefiniteReminder) {
+      payMode = 'indefinite';
+      frequency = 'monthly';
+    } else if (installmentReminders.length > 0) {
+      installmentReminders.sort((a, b) => a.instNum - b.instNum);
+      totalInstallments = installmentReminders[0].total || installmentReminders.length;
+      payMode = totalInstallments === 1 ? 'single' : 'installments';
+      frequency = 'monthly';
+
+      const pending = installmentReminders.filter(r => !r.completed);
+      remainingInstallments = pending.length;
+      currentInstallment = pending.length > 0 ? pending[0].instNum : totalInstallments;
+      installmentAmountCents = pending.length > 0 && pending[0].amountCents !== null
+        ? pending[0].amountCents
+        : (installmentReminders[0].amountCents ?? null);
+    }
+  }
+
+  // B. Check notes if payMode not established from reminders
+  if (!payMode && person.notes) {
+    const notes = person.notes;
+
+    if (/(?:prazo indefinido|data indefinida|sem data final)/i.test(notes)) {
+      payMode = 'indefinite';
+      frequency = /(?:di[aá]ri[ao]|por dia)/i.test(notes) ? 'daily' : 'monthly';
+    } else if (/(?:pagamento [uú]nico|parcela [uú]nica|[aà] vista)/i.test(notes)) {
+      payMode = 'single';
+      totalInstallments = 1;
+      currentInstallment = 1;
+      remainingInstallments = 1;
+    } else {
+      const matchParcelas = notes.match(/(\d+)\s+parcelas(?:\s+(mensais|di[aá]rias|semanais))?(?:\s+de\s+~?(?:r\$\s*)?([\d.,]+))?/i);
+      const matchX = notes.match(/(?:em|de\s+)?(\d+)\s*x(?:\s+de\s+~?(?:r\$\s*)?([\d.,]+))?/i);
+      const matchDevolucao = notes.match(/devolu[cç][aã]o em\s+(\d+)\s+(m[eê]s(?:es)?|dias?|semanas?)/i);
+      const matchVezes = notes.match(/(?:em|de)\s+(\d+)\s+(?:vezes|parcelas)/i);
+
+      let count: number | null = null;
+      let freqStr: string | null = null;
+      let amtStr: string | null = null;
+
+      if (matchParcelas) {
+        count = parseInt(matchParcelas[1], 10);
+        freqStr = matchParcelas[2] || null;
+        amtStr = matchParcelas[3] || null;
+      } else if (matchX) {
+        count = parseInt(matchX[1], 10);
+        amtStr = matchX[2] || null;
+      } else if (matchDevolucao) {
+        count = parseInt(matchDevolucao[1], 10);
+        freqStr = matchDevolucao[2] || null;
+      } else if (matchVezes) {
+        count = parseInt(matchVezes[1], 10);
+      }
+
+      if (count && count > 0) {
+        totalInstallments = count;
+        currentInstallment = 1;
+        remainingInstallments = count;
+        payMode = count === 1 ? 'single' : 'installments';
+
+        if (freqStr) {
+          if (/di[aá]ri/i.test(freqStr) || /dias?/i.test(freqStr)) frequency = 'daily';
+          else if (/semana/i.test(freqStr)) frequency = 'weekly';
+          else frequency = 'monthly';
+        } else {
+          frequency = 'monthly';
+        }
+
+        if (amtStr) {
+          try {
+            installmentAmountCents = parseBrlCents(amtStr);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback for installmentAmountCents from balance if not parsed directly
+  if (installmentAmountCents === null && totalInstallments && totalInstallments > 0 && person.balance_cents !== 0) {
+    installmentAmountCents = Math.round(Math.abs(person.balance_cents) / (remainingInstallments || totalInstallments));
+  }
+
+  // Format display labels
+  let installmentsBadge: string | null = null;
+  let installmentsText: string | null = null;
+  let installmentDetail: string | null = null;
+
+  if (payMode === 'indefinite') {
+    installmentsBadge = 'Indefinido';
+    installmentsText = 'Prazo indefinido';
+    installmentDetail = frequency === 'daily' ? 'Juros diários' : 'Juros mensais';
+  } else if (payMode === 'single' || totalInstallments === 1) {
+    installmentsBadge = '1x';
+    installmentsText = '1x (à vista)';
+    installmentDetail = 'Pagamento único';
+  } else if (payMode === 'installments' && totalInstallments && totalInstallments > 1) {
+    installmentsBadge = `${totalInstallments}x`;
+    const freqSuffix = frequency === 'daily' ? '/dia' : frequency === 'weekly' ? '/sem' : '/mês';
+    
+    if (installmentAmountCents) {
+      installmentsText = `${totalInstallments}x de ${formatBrlCents(installmentAmountCents)}`;
+    } else {
+      installmentsText = `${totalInstallments} parcelas`;
+    }
+
+    if (remainingInstallments !== null && currentInstallment !== null && remainingInstallments < totalInstallments) {
+      installmentDetail = `Parcela ${currentInstallment} de ${totalInstallments}`;
+    } else if (installmentAmountCents) {
+      installmentDetail = `~${formatBrlCents(installmentAmountCents)} ${freqSuffix}`;
+    } else {
+      installmentDetail = frequency === 'daily' ? 'diárias' : frequency === 'weekly' ? 'semanais' : 'mensais';
+    }
+  }
+
   return {
     startDate,
     nextDueDate,
     isOverdue,
-    isToday
+    isToday,
+    payMode,
+    frequency,
+    totalInstallments,
+    currentInstallment,
+    remainingInstallments,
+    installmentAmountCents,
+    installmentsBadge,
+    installmentsText,
+    installmentDetail
   };
+}
+
+export function getPersonLoanDates(
+  person: {
+    notes?: string | null;
+    opening_on?: string | null;
+    balance_cents: number;
+    reminders?: { id: string; title: string; due_on: string; completed_at: string | null }[];
+  },
+  todayIso: string
+): PersonLoanDates {
+  return getPersonLoanTerms(person, todayIso);
 }

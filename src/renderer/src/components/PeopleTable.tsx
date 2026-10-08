@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
 import { ArrowDownLeft, ArrowUpRight, Calendar, Check, Clock } from 'lucide-react'
-import { getPersonLoanDates } from '../../../shared/finance/peopleLoans'
+import { getPersonLoanTerms } from '../../../shared/finance/peopleLoans'
 
 export interface PersonItem {
   id: string
@@ -25,13 +25,14 @@ export interface PersonItem {
 
 const displayDate = (value: string) => value.split('-').reverse().join('/')
 
-export default function PeopleTable<T extends PersonItem>({ people, money, today, renderName, renderActions, renderEditor }: {
+export default function PeopleTable<T extends PersonItem>({ people, money, today, renderName, renderActions, renderEditor, onConfigureLoan }: {
   people: T[]
   money: (cents: number) => string
   today?: string
   renderName?: (person: T) => ReactNode
   renderActions?: (person: T) => ReactNode
   renderEditor?: (person: T) => ReactNode
+  onConfigureLoan?: (person: T) => void
 }) {
   const effectiveToday = today || new Date().toISOString().split('T')[0]
 
@@ -39,13 +40,14 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
     <table aria-label="Pessoas" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50">
         <tr>
-          <th scope="col" className="w-[36%] px-3 py-2.5 sm:w-[22%] sm:px-4">Pessoa</th>
-          <th scope="col" className="hidden lg:table-cell lg:w-[13%] px-3 py-2.5">Início</th>
-          <th scope="col" className="hidden sm:table-cell sm:w-[16%] px-3 py-2.5">Próx. Pagamento</th>
-          <th scope="col" className="hidden md:table-cell md:w-[13%] px-3 py-2.5">Situação</th>
+          <th scope="col" className="w-[34%] px-3 py-2.5 sm:w-[20%] sm:px-4">Pessoa</th>
+          <th scope="col" className="hidden lg:table-cell lg:w-[11%] px-3 py-2.5">Início</th>
+          <th scope="col" className="hidden sm:table-cell sm:w-[15%] px-3 py-2.5">Próx. Pagamento</th>
+          <th scope="col" className="hidden sm:table-cell sm:w-[13%] px-3 py-2.5">Parcelas</th>
+          <th scope="col" className="hidden md:table-cell md:w-[11%] px-3 py-2.5">Situação</th>
           <th scope="col" className="hidden w-[13%] px-3 py-2.5 text-right xl:table-cell">Emprestado / pago</th>
-          <th scope="col" className="w-[32%] px-3 py-2.5 text-right sm:w-[16%] sm:px-4">Falta pagar</th>
-          <th scope="col" className="w-[32%] px-3 text-right sm:w-[14%] sm:px-4"><span className="sr-only">Ações</span></th>
+          <th scope="col" className="w-[33%] px-3 py-2.5 text-right sm:w-[15%] sm:px-4">Falta pagar</th>
+          <th scope="col" className="w-[33%] px-3 text-right sm:w-[15%] sm:px-4"><span className="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -55,7 +57,8 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
           const isPayable = person.balance_cents < 0
           const hasDebt = person.balance_cents !== 0
           const initial = (person.nickname.trim()[0] || 'P').toUpperCase()
-          const loanDates = getPersonLoanDates(person, effectiveToday)
+          const loanTerms = getPersonLoanTerms(person, effectiveToday)
+          const loanDates = loanTerms
 
           return <Fragment key={person.id}>
             <tr className="table-row-hover transition-[background-color]">
@@ -96,7 +99,7 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                         </span>
                       )}
 
-                      {(loanDates.startDate || (hasDebt && loanDates.nextDueDate)) && (
+                      {(loanDates.startDate || (hasDebt && loanDates.nextDueDate) || (hasDebt && loanTerms.installmentsBadge)) && (
                         <div className="w-full flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
                           {loanDates.startDate && <span>Início: {displayDate(loanDates.startDate)}</span>}
                           {loanDates.startDate && hasDebt && loanDates.nextDueDate && <span>•</span>}
@@ -104,6 +107,14 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                             <span className={loanDates.isOverdue ? 'font-semibold text-rose-600 dark:text-rose-400' : loanDates.isToday ? 'font-semibold text-amber-600 dark:text-amber-400' : ''}>
                               Próx: {displayDate(loanDates.nextDueDate)}
                             </span>
+                          )}
+                          {hasDebt && loanTerms.installmentsBadge && (
+                            <>
+                              <span>•</span>
+                              <span className="font-semibold text-brand-700 dark:text-brand-300">
+                                {loanTerms.installmentsText || loanTerms.installmentsBadge}
+                              </span>
+                            </>
                           )}
                         </div>
                       )}
@@ -142,6 +153,71 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                       <Clock size={13} className="shrink-0 text-brand-600 dark:text-brand-400" />
                       <span>{displayDate(loanDates.nextDueDate)}</span>
                     </span>
+                  )
+                ) : (
+                  <span className="text-slate-300 dark:text-slate-600">—</span>
+                )}
+              </td>
+
+              {/* Parcelas (quantas vezes vai pagar) */}
+              <td className="hidden sm:table-cell px-3 py-3 text-xs">
+                {hasDebt ? (
+                  loanTerms.installmentsBadge ? (
+                    <div className="flex flex-col items-start gap-0.5">
+                      {onConfigureLoan ? (
+                        <button
+                          type="button"
+                          onClick={() => onConfigureLoan(person)}
+                          className="group flex flex-col items-start gap-0.5 text-left transition hover:opacity-85"
+                          title="Clique para ver ou alterar as condições de parcelamento e juros"
+                        >
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold transition group-hover:ring-2 group-hover:ring-brand-500/30 ${
+                            loanTerms.payMode === 'indefinite'
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                              : loanTerms.payMode === 'single'
+                                ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                : 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300'
+                          }`}>
+                            {loanTerms.payMode === 'indefinite' && <Clock size={11} className="shrink-0" />}
+                            <span>{loanTerms.installmentsBadge}</span>
+                          </span>
+                          {loanTerms.installmentDetail && (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {loanTerms.installmentDetail}
+                            </span>
+                          )}
+                        </button>
+                      ) : (
+                        <>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${
+                            loanTerms.payMode === 'indefinite'
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                              : loanTerms.payMode === 'single'
+                                ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                : 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300'
+                          }`}>
+                            {loanTerms.payMode === 'indefinite' && <Clock size={11} className="shrink-0" />}
+                            <span>{loanTerms.installmentsBadge}</span>
+                          </span>
+                          {loanTerms.installmentDetail && (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {loanTerms.installmentDetail}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ) : onConfigureLoan ? (
+                    <button
+                      type="button"
+                      onClick={() => onConfigureLoan(person)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400"
+                      title="Definir quantas parcelas e juros para esta dívida"
+                    >
+                      <span>+ Definir</span>
+                    </button>
+                  ) : (
+                    <span className="text-slate-300 dark:text-slate-600">—</span>
                   )
                 ) : (
                   <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -189,10 +265,10 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                 {renderActions?.(person)}
               </td>
             </tr>
-            {editor && <tr><td colSpan={7} className="p-3 sm:p-4">{editor}</td></tr>}
+            {editor && <tr><td colSpan={8} className="p-3 sm:p-4">{editor}</td></tr>}
           </Fragment>
         })}
-        {!people.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">Nenhuma pessoa encontrada com os filtros atuais.</td></tr>}
+        {!people.length && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">Nenhuma pessoa encontrada com os filtros atuais.</td></tr>}
       </tbody>
     </table>
   </div>
