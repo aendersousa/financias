@@ -588,21 +588,94 @@ export default function LedgerAgenda({
         <div ref={dayDialog} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800"><div className="flex items-center gap-3"><CalendarDays className="text-brand-500"/><div><h2 className="font-semibold">Compromissos de {dateLabel(popupDay)}</h2><p className="mt-1 text-xs text-slate-500">Todos os itens registrados para este dia</p></div></div><button type="button" aria-label="Fechar compromissos do dia" onClick={()=>setPopupDay('')} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button></div>
           <div className="space-y-3">
-            {(calendar?.items??[]).filter(item=>item.on===popupDay).map(item=><article key={itemKey(item)} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-              <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold [overflow-wrap:anywhere]">{item.title}</h3>{item.remaining_cents!==null&&<span className={'font-semibold tabular-nums '+(item.direction==='inflow'?'text-brand-600 dark:text-brand-400':item.direction==='outflow'?'text-red-500':'')}>{money(item.remaining_cents)}</span>}</div>
-              {(() => {
-                const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
-                const statusLabel = isInterestAccrual && item.settlement_status !== 'settled' ? 'Acumulado no mês' : (statuses[item.settlement_status] ?? item.settlement_status);
-                return (
-                  <p className="mt-1 text-xs text-slate-500">
-                    {isInterestAccrual ? 'Acúmulo de juros' : (itemTypes[item.type] ?? item.type)} · {statusLabel}{item.direction==='inflow'?' · A receber':item.direction==='outflow'?' · A pagar':''}
+            {(calendar?.items??[]).filter(item=>item.on===popupDay).map(item=>{
+              const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
+              const overdue = !isInterestAccrual && ['pending','partial','scheduled'].includes(item.settlement_status)&&item.on<(calendar?.today??workspace.space.today);
+              const settled = item.settlement_status==='settled';
+              const label = settled
+                ? (item.direction==='inflow'||/^Cobrar /i.test(item.title)?'Recebido':item.type==='reminder'&&!/^Pagar /i.test(item.title)?'Concluído':'Pago')
+                : isInterestAccrual
+                  ? 'Acumulado no mês'
+                  : item.settlement_status==='partial'
+                    ? 'Parcial'
+                    : overdue
+                      ? 'Vencido'
+                      : statuses[item.settlement_status]??'Pendente';
+              const tone = settled
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
+                : isInterestAccrual
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-200 dark:border-blue-800'
+                  : overdue
+                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-200 border-rose-200 dark:border-rose-800'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200 border-amber-200 dark:border-amber-800';
+
+              return (
+                <article key={itemKey(item)} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800 space-y-2.5">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold [overflow-wrap:anywhere]">{item.title}</h3>
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold border ${tone}`}>
+                        {label}
+                      </span>
+                    </div>
+                    {item.remaining_cents!==null&&<span className={'font-semibold tabular-nums '+(item.direction==='inflow'?'text-emerald-600 dark:text-emerald-400':item.direction==='outflow'?'text-rose-500':'')}>{money(item.remaining_cents)}</span>}
+                  </div>
+
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {isInterestAccrual ? 'Acúmulo de juros' : (itemTypes[item.type] ?? item.type)}{item.direction==='inflow'?' · A receber':item.direction==='outflow'?' · A pagar':''}
                   </p>
-                );
-              })()}
-              {(item.payment_name||item.category_name)&&<p className="mt-3 text-sm text-slate-500">{[item.payment_name,item.category_name].filter(Boolean).join(' · ')}</p>}
-              {Boolean(item.paid_cents)&&<p className="mt-2 text-xs text-slate-500">Já pago: {money(item.paid_cents??0)}</p>}
-              {item.notes&&<p className="mt-3 whitespace-pre-wrap text-sm text-slate-500 [overflow-wrap:anywhere]">{item.notes}</p>}
-            </article>)}
+
+                  {(item.payment_name||item.category_name)&&<p className="text-sm text-slate-600 dark:text-slate-300">{[item.payment_name,item.category_name].filter(Boolean).join(' · ')}</p>}
+                  {Boolean(item.paid_cents)&&<p className="text-xs text-slate-500">Já pago: {money(item.paid_cents??0)}</p>}
+                  {item.notes&&<p className="whitespace-pre-wrap text-sm text-slate-500 [overflow-wrap:anywhere]">{item.notes}</p>}
+
+                  {canWrite && ['one_off', 'occurrence', 'reminder'].includes(item.type) && item.settlement_status !== 'cancelled' && (
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      {item.type === 'reminder' ? (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void run('complete_reminder', {
+                              p_commitment: item.id,
+                              p_version: item.version,
+                              p_completed: item.settlement_status !== 'settled'
+                            })
+                          }
+                          className="btn-primary px-3 py-1.5 text-xs font-semibold"
+                        >
+                          {item.settlement_status === 'settled' ? 'Reabrir lembrete' : isInterestAccrual ? 'Marcar como ciente' : 'Concluir lembrete'}
+                        </button>
+                      ) : ['pending', 'partial'].includes(item.settlement_status) ? (
+                        <>
+                          <button
+                            disabled={busy}
+                            onClick={() => void payIntegral(item)}
+                            className="btn-primary px-3.5 py-1.5 text-xs font-semibold"
+                          >
+                            {item.direction === 'inflow' ? 'Confirmar recebimento integral' : 'Confirmar pagamento integral'}
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => { setPopupDay(''); choose(item, 'pay'); }}
+                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          >
+                            Informar valor e data
+                          </button>
+                        </>
+                      ) : null}
+
+                      <button
+                        disabled={busy}
+                        onClick={() => { setPopupDay(''); choose(item, 'edit'); }}
+                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
             {!(calendar?.items??[]).some(item=>item.on===popupDay)&&<p className="py-6 text-center text-sm text-slate-500">Nenhum compromisso registrado para este dia.</p>}
           </div>
           <div className="mt-4 flex justify-end border-t border-slate-200 pt-4 dark:border-slate-800"><button type="button" onClick={()=>setPopupDay('')} className={primary}>Fechar</button></div>
