@@ -328,6 +328,10 @@ export interface PersonLoanTerms extends PersonLoanDates {
   totalRemainingCents: number;
   recurringInterestCents: number | null;
   interestKnown: boolean;
+  interestType?: 'percent' | 'fixed' | 'none' | null;
+  interestRate?: string | null;
+  interestFixed?: string | null;
+  interestPeriod?: 'daily' | 'monthly' | 'total' | null;
 }
 
 export function getPersonLoanTerms(
@@ -360,16 +364,32 @@ export function getPersonLoanTerms(
   let notesFrequency: PeopleLoanFrequency | null = null;
   let notesTotalInstallments: number | null = null;
   let notesInstallmentAmountCents: number | null = null;
+  let interestType: 'percent' | 'fixed' | 'none' | null = null;
+  let interestRate: string | null = null;
+  let interestFixed: string | null = null;
+  let interestPeriod: 'daily' | 'monthly' | 'total' | null = null;
 
   if (person.notes) {
     const notes = person.notes;
-    if (/(?:prazo indefinido|data indefinida|sem data final|juro[s]?[^\n]*correndo todo mês)/i.test(notes)
-      || (!/\d+\s*(?:parcelas|x|meses|dias|semanas)/i.test(notes) && /(?:%|R\$\s*[\d.,]+)\s*\/(?:mês|mes|dia)/i.test(notes))) {
-      notesPayMode = 'indefinite';
-      notesFrequency = /(?:di[aá]ri[ao]|por dia)/i.test(notes) ? 'daily' : 'monthly';
-    } else if (/(?:pagamento [uú]nico|parcela [uú]nica|[aà] vista)/i.test(notes)) {
+    // Check single payment first: "pagamento único", "parcela única", "à vista", "pagar só no final", "no final"
+    if (/(?:pagamento\s+[uú]nico|parcela\s+[uú]nica|[aà]\s*vista|pagar\s+s[oó]\s+no\s+final|s[oó]\s+no\s+final|no\s+final)/i.test(notes)) {
       notesPayMode = 'single';
       notesTotalInstallments = 1;
+      const matchDevolucao = notes.match(/devolu[cç][aã]o em\s+(\d+)\s+(m[eê]s(?:es)?|dias?|semanas?)/i);
+      if (matchDevolucao) {
+        const count = parseInt(matchDevolucao[1], 10);
+        if (count && count > 0) notesTotalInstallments = count;
+        const freq = matchDevolucao[2].toLowerCase();
+        if (/di[aá]ri|dia/i.test(freq)) notesFrequency = 'daily';
+        else if (/semana/i.test(freq)) notesFrequency = 'weekly';
+        else notesFrequency = 'monthly';
+      } else {
+        notesFrequency = /di[aá]ri/i.test(notes) ? 'daily' : /semana/i.test(notes) ? 'weekly' : 'monthly';
+      }
+    } else if (/(?:prazo indefinido|data indefinida|sem data final|juro[s]?[^\n]*correndo todo mês)/i.test(notes)
+      || (!/\d+\s*(?:parcelas?|x|m[eê]s(?:es)?|dias?|semanas?)/i.test(notes) && /(?:%|R\$\s*[\d.,]+)\s*\/(?:mês|mes|dia)/i.test(notes))) {
+      notesPayMode = 'indefinite';
+      notesFrequency = /(?:di[aá]ri[ao]|por dia)/i.test(notes) ? 'daily' : 'monthly';
     } else {
       const matchParcelas = notes.match(/(\d+)\s+parcelas(?:\s+(mensais|di[aá]rias|semanais))?(?:\s+de\s+~?(?:r\$\s*)?([\d.,]+))?/i);
       const matchX = notes.match(/(?:em|de\s+)?(\d+)\s*x(?:\s+de\s+~?(?:r\$\s*)?([\d.,]+))?/i);
@@ -411,6 +431,30 @@ export function getPersonLoanTerms(
             // ignore
           }
         }
+      }
+    }
+
+    // Parse interest details from notes
+    if (/sem juros/i.test(notes)) {
+      interestType = 'none';
+    } else {
+      const matchPercent = notes.match(/([\d.,]+)\s*%(?:\s+de\s+juros?)?\s*(?:\/|\s+(?:por|ao)\s+)?(m[eê]s|dia|ano|total)?/i);
+      const matchFixed = notes.match(/(?:\+?\s*Juros:|\bjuro\s+de)\s*R\$\s*([\d.,]+)\s*(?:\/|\s+(?:por|ao)\s+)?(m[eê]s|dia|ano|total)?/i);
+
+      if (matchPercent) {
+        interestType = 'percent';
+        interestRate = matchPercent[1];
+        const p = (matchPercent[2] || '').toLowerCase();
+        if (p.includes('dia')) interestPeriod = 'daily';
+        else if (p.includes('total')) interestPeriod = 'total';
+        else interestPeriod = 'monthly';
+      } else if (matchFixed) {
+        interestType = 'fixed';
+        interestFixed = matchFixed[1];
+        const p = (matchFixed[2] || '').toLowerCase();
+        if (p.includes('dia')) interestPeriod = 'daily';
+        else if (p.includes('total')) interestPeriod = 'total';
+        else interestPeriod = 'monthly';
       }
     }
   }
@@ -670,7 +714,11 @@ export function getPersonLoanTerms(
     interestRemainingCents,
     totalRemainingCents,
     recurringInterestCents,
-    interestKnown
+    interestKnown,
+    interestType,
+    interestRate,
+    interestFixed,
+    interestPeriod
   };
 }
 

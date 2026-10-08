@@ -170,21 +170,24 @@ export default function LedgerPeople({
   const pending = useRef(false);
   const movementDialog = useRef<HTMLDivElement>(null);
   const sharedDialog = useRef<HTMLDivElement>(null);
+  const loanDialog = useRef<HTMLDivElement>(null);
   const requestKey = useRef<{ key: string; id: string } | null>(null);
 
   const canWrite = workspace.role !== 'viewer';
   const cashAccounts = workspace.accounts.filter(account => account.liquidity === 'cash');
 
   useEffect(() => {
-    if (!movementPersonId && !showSharedExpense) return;
-    const activeDialog=showSharedExpense?sharedDialog:movementDialog;
+    if (!movementPersonId && !showSharedExpense && !showLoanForm) return;
+    const activeDialog = showLoanForm ? loanDialog : showSharedExpense ? sharedDialog : movementDialog;
     const previousFocus = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     activeDialog.current?.querySelector<HTMLElement>('input:not([type="hidden"]),select')?.focus();
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !pending.current) {
-        setMovementPersonId(null);setShowSharedExpense(false);
+        setMovementPersonId(null);
+        setShowSharedExpense(false);
+        setShowLoanForm(false);
       }
       if (event.key !== 'Tab') return;
       const elements = activeDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex="0"]');
@@ -202,7 +205,7 @@ export default function LedgerPeople({
       document.removeEventListener('keydown', handleKey);
       previousFocus?.focus();
     };
-  }, [movementPersonId,showSharedExpense]);
+  }, [movementPersonId, showSharedExpense, showLoanForm]);
 
   // Initialize account for loan if needed
   useEffect(() => {
@@ -612,9 +615,20 @@ export default function LedgerPeople({
         if (terms.totalInstallments && terms.totalInstallments > 0) {
           setLoanMonths(terms.totalInstallments);
           setLoanInstallmentsCount(terms.totalInstallments);
+        } else if (terms.payMode === 'single') {
+          setLoanMonths(1);
+          setLoanInstallmentsCount(1);
         }
         if (terms.startDate) setLoanStartDate(terms.startDate);
         if (terms.nextDueDate) setLoanFirstDueDate(terms.nextDueDate);
+        if (terms.interestType) {
+          setLoanInterestType(terms.interestType);
+        } else {
+          setLoanInterestType('none');
+        }
+        if (terms.interestRate) setLoanInterestRate(terms.interestRate);
+        if (terms.interestFixed) setLoanInterestFixed(terms.interestFixed);
+        if (terms.interestPeriod) setLoanInterestPeriod(terms.interestPeriod);
       }
     } else if (activeContacts.length > 0 && !loanPersonId) {
       const first = activeContacts[0];
@@ -1935,151 +1949,167 @@ export default function LedgerPeople({
         </form>
       )}
 
-      {/* 4. Loan Form: Empréstimo com juros, prazos e simulação */}
+      {/* 4. Loan Form: Empréstimo com juros, prazos e simulação - Modal Dialog */}
       {canWrite && showLoanForm && (
-        <form
-          aria-label="Registrar empréstimo com juros e prazos"
-          onSubmit={submitLoan}
-          className={`${panel} space-y-4 border-2 border-brand-500 shadow-lg dark:border-brand-600`}
+        <div
+          ref={loanDialog}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Condições do empréstimo (juros, parcelas e prazos)"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4"
+          onClick={event => {
+            if (event.target === event.currentTarget && !busy) setShowLoanForm(false);
+          }}
         >
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
-                <Coins size={18} />
+          <form
+            aria-label="Registrar empréstimo com juros e prazos"
+            onSubmit={submitLoan}
+            className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 space-y-4"
+          >
+            {/* Header */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                  <Coins size={18} />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                    Empréstimo com juros e prazos
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Defina juros combinados, quantidade de meses, forma de devolução e crie lembretes de cobrança na Agenda.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Empréstimo com juros e prazos
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Defina juros combinados, quantidade de meses, forma de devolução e crie lembretes de cobrança na Agenda.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowLoanForm(false)}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          {error && (
-            <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs sm:text-sm font-medium text-rose-800 dark:border-rose-900/60 dark:bg-rose-950 dark:text-rose-200">
-              <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-              <p className="flex-1">{error}</p>
-              <button type="button" onClick={() => setError('')} className="text-rose-600 hover:opacity-80">
-                <X size={16} />
+              <button
+                type="button"
+                onClick={() => setShowLoanForm(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
               </button>
             </div>
-          )}
 
-          {/* Contact selector & Direction */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5 text-sm">
-              <label htmlFor="loan-person-select" className="font-medium text-slate-700 dark:text-slate-300">
-                Pessoa do empréstimo *
-              </label>
-              <select
-                id="loan-person-select"
-                value={loanPersonId}
-                onChange={e => {
-                  const selectedId = e.target.value;
-                  setLoanPersonId(selectedId);
-                  const found = contacts.find(c => c.id === selectedId);
-                  if (found) {
-                    if (found.balance_cents !== 0) {
-                      setLoanDirection(found.balance_cents > 0 ? 'lend' : 'borrow');
-                    }
-                    const sDate = found.opening_on || workspace.space.today;
-                    setLoanStartDate(sDate);
-                    setLoanFirstDueDate(calculateNextMonthlyDueDate(sDate, workspace.space.today));
-                    setLoanElapsedMonthsOverride(null);
-                  }
-                }}
-                required
-                className={input}
-              >
-                <option value="">Selecione uma pessoa</option>
-                {activeContacts.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.nickname} {c.balance_cents > 0 ? `(te deve ${money(c.balance_cents)})` : c.balance_cents < 0 ? `(você deve ${money(Math.abs(c.balance_cents))})` : '(em dia)'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-1.5 text-sm">
-              <label className="font-medium text-slate-700 dark:text-slate-300">
-                Quem emprestou para quem? *
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLoanDirection('lend')}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-bold transition ${
-                    loanDirection === 'lend'
-                      ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
-                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
-                  }`}
-                >
-                  <ArrowUpRight size={14} className="text-brand-600 dark:text-brand-400" />
-                  <span>Eu emprestei (vou receber)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLoanDirection('borrow')}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-bold transition ${
-                    loanDirection === 'borrow'
-                      ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200'
-                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
-                  }`}
-                >
-                  <ArrowDownLeft size={14} className="text-amber-600 dark:text-amber-400" />
-                  <span>Peguei emprestado (vou pagar)</span>
+            {error && (
+              <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs sm:text-sm font-medium text-rose-800 dark:border-rose-900/60 dark:bg-rose-950 dark:text-rose-200">
+                <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                <p className="flex-1">{error}</p>
+                <button type="button" onClick={() => setError('')} className="text-rose-600 hover:opacity-80">
+                  <X size={16} />
                 </button>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Prompt se a pessoa selecionada já tiver dívida existente */}
-          {(() => {
-            const currentContact = contacts.find(c => c.id === loanPersonId);
-            if (!currentContact || currentContact.balance_cents === 0) return null;
-            const owesYou = currentContact.balance_cents > 0;
-            const balanceAbs = Math.abs(currentContact.balance_cents);
-            return (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/60 dark:bg-amber-950/30">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <span className="font-bold text-amber-900 dark:text-amber-200">
-                      Saldo pendente existente: {currentContact.nickname} {owesYou ? `já te deve ${money(balanceAbs)}` : `você já deve ${money(balanceAbs)}`}.
-                    </span>
-                    <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                      Deseja parcelar ou adicionar juros a este saldo existente sem movimentar o banco novamente?
-                    </p>
-                  </div>
+            {/* Contact selector & Direction */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5 text-sm">
+                <label htmlFor="loan-person-select" className="font-medium text-slate-700 dark:text-slate-300">
+                  Pessoa do empréstimo *
+                </label>
+                <select
+                  id="loan-person-select"
+                  value={loanPersonId}
+                  onChange={e => {
+                    const selectedId = e.target.value;
+                    setLoanPersonId(selectedId);
+                    if (selectedId) {
+                      openLoanForPerson(selectedId, true);
+                    }
+                  }}
+                  required
+                  className={input}
+                >
+                  <option value="">Selecione uma pessoa</option>
+                  {activeContacts.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nickname} {c.balance_cents > 0 ? `(te deve ${money(c.balance_cents)})` : c.balance_cents < 0 ? `(você deve ${money(Math.abs(c.balance_cents))})` : '(em dia)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-1.5 text-sm">
+                <label className="font-medium text-slate-700 dark:text-slate-300">
+                  Quem emprestou para quem? *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setLoanPrincipal((balanceAbs / 100).toFixed(2).replace('.', ','));
-                      setLoanDirection(owesYou ? 'lend' : 'borrow');
-                      setLoanMoveCash(false);
-                      const sDate = currentContact.opening_on || workspace.space.today;
-                      setLoanStartDate(sDate);
-                      setLoanFirstDueDate(calculateNextMonthlyDueDate(sDate, workspace.space.today));
-                      setLoanElapsedMonthsOverride(null);
-                    }}
-                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
+                    onClick={() => setLoanDirection('lend')}
+                    className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-bold transition ${
+                      loanDirection === 'lend'
+                        ? 'border-brand-500 bg-brand-50 text-brand-900 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                    }`}
                   >
-                    Usar saldo de {money(balanceAbs)}
+                    <ArrowUpRight size={14} className="text-brand-600 dark:text-brand-400" />
+                    <span>Eu emprestei (vou receber)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLoanDirection('borrow')}
+                    className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 text-xs font-bold transition ${
+                      loanDirection === 'borrow'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400'
+                    }`}
+                  >
+                    <ArrowDownLeft size={14} className="text-amber-600 dark:text-amber-400" />
+                    <span>Peguei emprestado (vou pagar)</span>
                   </button>
                 </div>
               </div>
-            );
-          })()}
+            </div>
+
+            {/* Prompt se a pessoa selecionada já tiver dívida existente */}
+            {(() => {
+              const currentContact = contacts.find(c => c.id === loanPersonId);
+              if (!currentContact || currentContact.balance_cents === 0) return null;
+              const owesYou = currentContact.balance_cents > 0;
+              const balanceAbs = Math.abs(currentContact.balance_cents);
+              const isUsingExisting = !loanMoveCash && safeParseBrlCents(loanPrincipal) === balanceAbs;
+              if (isUsingExisting) {
+                return (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                    <div className="flex items-center gap-2 font-semibold text-emerald-900 dark:text-emerald-200">
+                      <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>
+                        Usando saldo existente de {money(balanceAbs)} ({owesYou ? 'a receber' : 'a pagar'}) sem movimentar o banco.
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/60 dark:bg-amber-950/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="font-bold text-amber-900 dark:text-amber-200">
+                        Saldo pendente existente: {currentContact.nickname} {owesYou ? `já te deve ${money(balanceAbs)}` : `você já deve ${money(balanceAbs)}`}.
+                      </span>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                        Deseja parcelar ou adicionar juros a este saldo existente sem movimentar o banco novamente?
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoanPrincipal((balanceAbs / 100).toFixed(2).replace('.', ','));
+                        setLoanDirection(owesYou ? 'lend' : 'borrow');
+                        setLoanMoveCash(false);
+                        const sDate = currentContact.opening_on || workspace.space.today;
+                        setLoanStartDate(sDate);
+                        setLoanFirstDueDate(calculateNextMonthlyDueDate(sDate, workspace.space.today));
+                        setLoanElapsedMonthsOverride(null);
+                      }}
+                      className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
+                    >
+                      Usar saldo de {money(balanceAbs)}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
           {/* Periodicidade de pagamento */}
           <div className="space-y-1.5">
@@ -2739,7 +2769,8 @@ export default function LedgerPeople({
             </div>
           </div>
         </form>
-      )}
+      </div>
+    )}
 
       {/* 4. Movement Form (Acerto, Empréstimo, Pagamento, Recebimento) - Modal Dialog */}
       {canWrite && movementPersonId && (

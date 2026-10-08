@@ -88,6 +88,18 @@ describe('principal and interest remaining', () => {
     expect(terms.totalRemainingCents).toBe(0);
     expect(terms.nextDueDate).toBeNull();
   });
+  it('correctly parses single payment agreement with percentage interest (e.g. Regina)', () => {
+    const notes = '📌 [Empréstimo em 11/08/2026] Emprestado para Regina: Principal R$ 1.500,00 (+ Juros: 5% /mês) | Devolução em 1 mês (pagamento único de R$ 1.575,00 em 11/09/2026).';
+    const terms = getPersonLoanTerms({ balance_cents: 150000, notes, opening_on: '2026-08-11' }, '2026-10-08');
+    expect(terms.payMode).toBe('single');
+    expect(terms.totalInstallments).toBe(1);
+    expect(terms.interestType).toBe('percent');
+    expect(terms.interestRate).toBe('5');
+    expect(terms.interestPeriod).toBe('monthly');
+    expect(terms.principalRemainingCents).toBe(150000);
+    expect(terms.interestRemainingCents).toBe(7500);
+    expect(terms.totalRemainingCents).toBe(157500);
+  });
 });
 
 describe('peopleLoans calculations', () => {
