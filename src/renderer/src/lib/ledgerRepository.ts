@@ -8,6 +8,7 @@ export interface LedgerTransactionEntry { account_name: string; owner_type: stri
 export interface LedgerTransaction { id: string; description: string; occurred_on: string; kind: string; status: string; version: number; amount_cents?: number; entries?: LedgerTransactionEntry[]; notes?: string | null }
 export interface LedgerBudget { id: string; category_id: string; amount_cents: number; consumed_cents: number; predicted_cents: number; remaining_cents: number }
 export interface LedgerWorkspace {
+  loadedForUserId?: string;
   totals: { cash_cents: number; benefit_cents: number; investment_cents: number; property_cents: number; card_used_cents: number; commitment_outflows_cents: number };
   space: { id: string; name: string; today: string; timezone?: string }; role: 'owner' | 'admin' | 'member' | 'viewer';
   accounts: LedgerAccount[]; categories: LedgerCategory[]; cards: LedgerCard[]; commitments: LedgerCommitment[];

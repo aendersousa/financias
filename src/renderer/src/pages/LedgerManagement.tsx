@@ -23,6 +23,7 @@ import {
   CalendarDays
 } from 'lucide-react';
 import LedgerExtras from './LedgerExtras';
+import HolidayLocation from '../components/HolidayLocation';
 
 function formatHolidayDate(dateStr: string) {
   try {
@@ -635,16 +636,19 @@ export default function LedgerManagement({ section, workspace, money, onChanged 
                   </span>
                 </div>
 
+                <HolidayLocation spaceId={workspace.space.id} today={workspace.space.today} canManage={canManage} holidays={data.holidays} onSaved={async () => { await load(); await onChanged(); }}/>
+
                 {canManage && (
                   <form
                     onSubmit={async event => {
                       event.preventDefault();
-                      const form = new FormData(event.currentTarget);
+                      const element = event.currentTarget;
+                      const form = new FormData(element);
                       const date = String(form.get('date')).trim();
                       const name = String(form.get('name')).trim();
                       if (!date || !name) return;
                       const ok = await run('manage_local_holiday', { p_on: date, p_name: name });
-                      if (ok) event.currentTarget.reset();
+                      if (ok) element.reset();
                     }}
                     className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/30"
                   >

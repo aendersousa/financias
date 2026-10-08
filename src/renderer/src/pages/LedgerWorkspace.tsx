@@ -301,7 +301,7 @@ export default function LedgerWorkspace() {
         {workspace && section === 'transactions' && <LedgerTransactions initialOpen={newTransaction} key={workspace.space.id} workspace={workspace} money={money} reserves={reserveSummary} online={online&&!usingCache} onChanged={reloadData}/>}
         {workspace && online && !usingCache && <>
           {['accounts','categories','settings'].includes(section) && <LedgerManagement key={`management-${workspace.space.id}-${section}`} section={section as 'accounts' | 'categories' | 'settings'} workspace={workspace} money={money} onChanged={refresh}/>}
-          {['tags', 'recurrences'].includes(section) && <LedgerExtras key={`${workspace.space.id}-${section}`} section={section as ExtraSection} workspace={workspace} money={money} onChanged={refresh}/>}
+          {['tags', 'recurrences', 'audit'].includes(section) && <LedgerExtras key={`${workspace.space.id}-${section}`} section={section as ExtraSection} workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'budgets' && <LedgerBudgets key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/>}
           {section === 'people' && <LedgerPeople key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh} onAgenda={()=>navigate('agenda')}/>}
           {section === 'foreign_currency' && <LedgerForeignCurrency key={workspace.space.id} workspace={workspace} money={money} onChanged={refresh}/>}

@@ -1,0 +1,1693 @@
+{
+  "source": "date-holidays",
+  "version": "3.37.0",
+  "license": "CC-BY-SA-3.0",
+  "sourceUrl": "https://github.com/commenthol/date-holidays/blob/master/data/countries/BR.yaml",
+  "years": [
+    2026,
+    2027,
+    2028,
+    2029,
+    2030,
+    2031
+  ],
+  "states": {
+    "AC": {
+      "name": "Acre",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-01-12",
+            "name": "Dia do evangélico"
+          },
+          {
+            "date": "2026-03-08",
+            "name": "Alusivo ao Dia Internacional da Mulher"
+          },
+          {
+            "date": "2026-06-15",
+            "name": "Aniversário do estado"
+          },
+          {
+            "date": "2026-09-05",
+            "name": "Dia da Amazônia"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-01-12",
+            "name": "Dia do evangélico"
+          },
+          {
+            "date": "2027-03-08",
+            "name": "Alusivo ao Dia Internacional da Mulher"
+          },
+          {
+            "date": "2027-06-15",
+            "name": "Aniversário do estado"
+          },
+          {
+            "date": "2027-09-05",
+            "name": "Dia da Amazônia"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-01-12",
+            "name": "Dia do evangélico"
+          },
+          {
+            "date": "2028-03-08",
+            "name": "Alusivo ao Dia Internacional da Mulher"
+          },
+          {
+            "date": "2028-09-05",
+            "name": "Dia da Amazônia"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-01-12",
+            "name": "Dia do evangélico"
+          },
+          {
+            "date": "2029-03-08",
+            "name": "Alusivo ao Dia Internacional da Mulher"
+          },
+          {
+            "date": "2029-06-15",
+            "name": "Aniversário do estado"
+          },
+          {
+            "date": "2029-09-05",
+            "name": "Dia da Amazônia"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-01-12",
+            "name": "Dia do evangélico"
+          },
+          {
+            "date": "2030-03-08",
+            "name": "Alusivo ao Dia Internacional da Mulher"
+          },
+          {
+            "date": "2030-06-15",
+            "name": "Aniversário do estado"
+          },
+          {
+            "date": "2030-09-05",
+            "name": "Dia da Amazônia"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-01-12",
+            "name": "Dia do evangélico"
+          },
+          {
+            "date": "2031-03-08",
+            "name": "Alusivo ao Dia Internacional da Mulher"
+          },
+          {
+            "date": "2031-06-15",
+            "name": "Aniversário do estado"
+          },
+          {
+            "date": "2031-09-05",
+            "name": "Dia da Amazônia"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "AL": {
+      "name": "Alagoas",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-06-24",
+            "name": "São João"
+          },
+          {
+            "date": "2026-06-29",
+            "name": "São Pedro"
+          },
+          {
+            "date": "2026-09-16",
+            "name": "Emancipação política"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-06-24",
+            "name": "São João"
+          },
+          {
+            "date": "2027-06-29",
+            "name": "São Pedro"
+          },
+          {
+            "date": "2027-09-16",
+            "name": "Emancipação política"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-06-24",
+            "name": "São João"
+          },
+          {
+            "date": "2028-06-29",
+            "name": "São Pedro"
+          },
+          {
+            "date": "2028-09-16",
+            "name": "Emancipação política"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-06-24",
+            "name": "São João"
+          },
+          {
+            "date": "2029-06-29",
+            "name": "São Pedro"
+          },
+          {
+            "date": "2029-09-16",
+            "name": "Emancipação política"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-06-24",
+            "name": "São João"
+          },
+          {
+            "date": "2030-06-29",
+            "name": "São Pedro"
+          },
+          {
+            "date": "2030-09-16",
+            "name": "Emancipação política"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-06-24",
+            "name": "São João"
+          },
+          {
+            "date": "2031-06-29",
+            "name": "São Pedro"
+          },
+          {
+            "date": "2031-09-16",
+            "name": "Emancipação política"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "AM": {
+      "name": "Amazonas",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-09-05",
+            "name": "Elevação do Amazonas à categoria de província"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-09-05",
+            "name": "Elevação do Amazonas à categoria de província"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-09-05",
+            "name": "Elevação do Amazonas à categoria de província"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-09-05",
+            "name": "Elevação do Amazonas à categoria de província"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-09-05",
+            "name": "Elevação do Amazonas à categoria de província"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-09-05",
+            "name": "Elevação do Amazonas à categoria de província"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "AP": {
+      "name": "Amapá",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-03-19",
+            "name": "Dia de São José"
+          },
+          {
+            "date": "2026-09-13",
+            "name": "Criação do Território Federal"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-03-19",
+            "name": "Dia de São José"
+          },
+          {
+            "date": "2027-09-13",
+            "name": "Criação do Território Federal"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-03-19",
+            "name": "Dia de São José"
+          },
+          {
+            "date": "2028-09-13",
+            "name": "Criação do Território Federal"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-03-19",
+            "name": "Dia de São José"
+          },
+          {
+            "date": "2029-09-13",
+            "name": "Criação do Território Federal"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-03-19",
+            "name": "Dia de São José"
+          },
+          {
+            "date": "2030-09-13",
+            "name": "Criação do Território Federal"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-03-19",
+            "name": "Dia de São José"
+          },
+          {
+            "date": "2031-09-13",
+            "name": "Criação do Território Federal"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "BA": {
+      "name": "Bahia",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-07-02",
+            "name": "Independência da Bahia"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-07-02",
+            "name": "Independência da Bahia"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-07-02",
+            "name": "Independência da Bahia"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-07-02",
+            "name": "Independência da Bahia"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-07-02",
+            "name": "Independência da Bahia"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-07-02",
+            "name": "Independência da Bahia"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "CE": {
+      "name": "Ceará",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-03-25",
+            "name": "Data magna do estado"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-03-25",
+            "name": "Data magna do estado"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-03-25",
+            "name": "Data magna do estado"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-03-25",
+            "name": "Data magna do estado"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-03-25",
+            "name": "Data magna do estado"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-03-25",
+            "name": "Data magna do estado"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "DF": {
+      "name": "Distrito Federal",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-11-30",
+            "name": "Dia do Evangélico"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-11-30",
+            "name": "Dia do Evangélico"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-11-30",
+            "name": "Dia do Evangélico"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-11-30",
+            "name": "Dia do Evangélico"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-11-30",
+            "name": "Dia do Evangélico"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-11-30",
+            "name": "Dia do Evangélico"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "ES": {
+      "name": "Espírito Santo",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-04-13",
+            "name": "Dia de Nossa Senhora da Penha"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-04-05",
+            "name": "Dia de Nossa Senhora da Penha"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-04-24",
+            "name": "Dia de Nossa Senhora da Penha"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-04-09",
+            "name": "Dia de Nossa Senhora da Penha"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-04-29",
+            "name": "Dia de Nossa Senhora da Penha"
+          }
+        ],
+        "2031": []
+      },
+      "cities": {}
+    },
+    "GO": {
+      "name": "Goiás",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-07-26",
+            "name": "Fundação da Cidade de Goiás"
+          },
+          {
+            "date": "2026-10-24",
+            "name": "Lançamento da pedra fundamental de Goiânia"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-07-26",
+            "name": "Fundação da Cidade de Goiás"
+          },
+          {
+            "date": "2027-10-24",
+            "name": "Lançamento da pedra fundamental de Goiânia"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-07-26",
+            "name": "Fundação da Cidade de Goiás"
+          },
+          {
+            "date": "2028-10-24",
+            "name": "Lançamento da pedra fundamental de Goiânia"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-07-26",
+            "name": "Fundação da Cidade de Goiás"
+          },
+          {
+            "date": "2029-10-24",
+            "name": "Lançamento da pedra fundamental de Goiânia"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-07-26",
+            "name": "Fundação da Cidade de Goiás"
+          },
+          {
+            "date": "2030-10-24",
+            "name": "Lançamento da pedra fundamental de Goiânia"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-07-26",
+            "name": "Fundação da Cidade de Goiás"
+          },
+          {
+            "date": "2031-10-24",
+            "name": "Lançamento da pedra fundamental de Goiânia"
+          }
+        ]
+      },
+      "cities": {
+        "GOIANIA": {
+          "name": "Goiânia",
+          "holidays": {
+            "2026": [
+              {
+                "date": "2026-05-24",
+                "name": "Nossa Senhora Auxiliadora"
+              }
+            ],
+            "2027": [
+              {
+                "date": "2027-05-24",
+                "name": "Nossa Senhora Auxiliadora"
+              }
+            ],
+            "2028": [
+              {
+                "date": "2028-05-24",
+                "name": "Nossa Senhora Auxiliadora"
+              }
+            ],
+            "2029": [
+              {
+                "date": "2029-05-24",
+                "name": "Nossa Senhora Auxiliadora"
+              }
+            ],
+            "2030": [
+              {
+                "date": "2030-05-24",
+                "name": "Nossa Senhora Auxiliadora"
+              }
+            ],
+            "2031": [
+              {
+                "date": "2031-05-24",
+                "name": "Nossa Senhora Auxiliadora"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "MA": {
+      "name": "Maranhão",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-07-28",
+            "name": "Adesão do Maranhão à independência do Brasil"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-07-28",
+            "name": "Adesão do Maranhão à independência do Brasil"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-07-28",
+            "name": "Adesão do Maranhão à independência do Brasil"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-07-28",
+            "name": "Adesão do Maranhão à independência do Brasil"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-07-28",
+            "name": "Adesão do Maranhão à independência do Brasil"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-07-28",
+            "name": "Adesão do Maranhão à independência do Brasil"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "MG": {
+      "name": "Minas Gerais",
+      "holidays": {
+        "2026": [],
+        "2027": [],
+        "2028": [],
+        "2029": [],
+        "2030": [],
+        "2031": []
+      },
+      "cities": {
+        "BH": {
+          "name": "Belo Horizonte",
+          "holidays": {
+            "2026": [
+              {
+                "date": "2026-08-15",
+                "name": "Assunção de Nossa Senhora"
+              },
+              {
+                "date": "2026-12-08",
+                "name": "Imaculada Conceição"
+              }
+            ],
+            "2027": [
+              {
+                "date": "2027-08-15",
+                "name": "Assunção de Nossa Senhora"
+              },
+              {
+                "date": "2027-12-08",
+                "name": "Imaculada Conceição"
+              }
+            ],
+            "2028": [
+              {
+                "date": "2028-08-15",
+                "name": "Assunção de Nossa Senhora"
+              },
+              {
+                "date": "2028-12-08",
+                "name": "Imaculada Conceição"
+              }
+            ],
+            "2029": [
+              {
+                "date": "2029-08-15",
+                "name": "Assunção de Nossa Senhora"
+              },
+              {
+                "date": "2029-12-08",
+                "name": "Imaculada Conceição"
+              }
+            ],
+            "2030": [
+              {
+                "date": "2030-08-15",
+                "name": "Assunção de Nossa Senhora"
+              },
+              {
+                "date": "2030-12-08",
+                "name": "Imaculada Conceição"
+              }
+            ],
+            "2031": [
+              {
+                "date": "2031-08-15",
+                "name": "Assunção de Nossa Senhora"
+              },
+              {
+                "date": "2031-12-08",
+                "name": "Imaculada Conceição"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "MS": {
+      "name": "Mato Grosso do Sul",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-10-11",
+            "name": "Criação do estado"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-10-11",
+            "name": "Criação do estado"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-10-11",
+            "name": "Criação do estado"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-10-11",
+            "name": "Criação do estado"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-10-11",
+            "name": "Criação do estado"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-10-11",
+            "name": "Criação do estado"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "MT": {
+      "name": "Mato Grosso",
+      "holidays": {
+        "2026": [],
+        "2027": [],
+        "2028": [],
+        "2029": [],
+        "2030": [],
+        "2031": []
+      },
+      "cities": {}
+    },
+    "PA": {
+      "name": "Pará",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-08-15",
+            "name": "Adesão do Grão-Pará à independência do Brasil"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-08-15",
+            "name": "Adesão do Grão-Pará à independência do Brasil"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-08-15",
+            "name": "Adesão do Grão-Pará à independência do Brasil"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-08-15",
+            "name": "Adesão do Grão-Pará à independência do Brasil"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-08-15",
+            "name": "Adesão do Grão-Pará à independência do Brasil"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-08-15",
+            "name": "Adesão do Grão-Pará à independência do Brasil"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "PB": {
+      "name": "Paraíba",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-07-26",
+            "name": "Homenagem à memória do ex-presidente João Pessoa"
+          },
+          {
+            "date": "2026-08-05",
+            "name": "Nossa Senhora das Neves"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-07-26",
+            "name": "Homenagem à memória do ex-presidente João Pessoa"
+          },
+          {
+            "date": "2027-08-05",
+            "name": "Nossa Senhora das Neves"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-07-26",
+            "name": "Homenagem à memória do ex-presidente João Pessoa"
+          },
+          {
+            "date": "2028-08-05",
+            "name": "Nossa Senhora das Neves"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-07-26",
+            "name": "Homenagem à memória do ex-presidente João Pessoa"
+          },
+          {
+            "date": "2029-08-05",
+            "name": "Nossa Senhora das Neves"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-07-26",
+            "name": "Homenagem à memória do ex-presidente João Pessoa"
+          },
+          {
+            "date": "2030-08-05",
+            "name": "Nossa Senhora das Neves"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-07-26",
+            "name": "Homenagem à memória do ex-presidente João Pessoa"
+          },
+          {
+            "date": "2031-08-05",
+            "name": "Nossa Senhora das Neves"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "PE": {
+      "name": "Pernambuco",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-03-01",
+            "name": "Revolução Pernambucana de 1817"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-03-07",
+            "name": "Revolução Pernambucana de 1817"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-03-05",
+            "name": "Revolução Pernambucana de 1817"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-03-04",
+            "name": "Revolução Pernambucana de 1817"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-03-03",
+            "name": "Revolução Pernambucana de 1817"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-03-02",
+            "name": "Revolução Pernambucana de 1817"
+          }
+        ]
+      },
+      "cities": {
+        "RE": {
+          "name": "Recife",
+          "holidays": {
+            "2026": [
+              {
+                "date": "2026-06-24",
+                "name": "São João"
+              },
+              {
+                "date": "2026-07-16",
+                "name": "Nossa Senhora do Carmo"
+              },
+              {
+                "date": "2026-12-08",
+                "name": "Nossa Senhora da Conceição"
+              }
+            ],
+            "2027": [
+              {
+                "date": "2027-06-24",
+                "name": "São João"
+              },
+              {
+                "date": "2027-07-16",
+                "name": "Nossa Senhora do Carmo"
+              },
+              {
+                "date": "2027-12-08",
+                "name": "Nossa Senhora da Conceição"
+              }
+            ],
+            "2028": [
+              {
+                "date": "2028-06-24",
+                "name": "São João"
+              },
+              {
+                "date": "2028-07-16",
+                "name": "Nossa Senhora do Carmo"
+              },
+              {
+                "date": "2028-12-08",
+                "name": "Nossa Senhora da Conceição"
+              }
+            ],
+            "2029": [
+              {
+                "date": "2029-06-24",
+                "name": "São João"
+              },
+              {
+                "date": "2029-07-16",
+                "name": "Nossa Senhora do Carmo"
+              },
+              {
+                "date": "2029-12-08",
+                "name": "Nossa Senhora da Conceição"
+              }
+            ],
+            "2030": [
+              {
+                "date": "2030-06-24",
+                "name": "São João"
+              },
+              {
+                "date": "2030-07-16",
+                "name": "Nossa Senhora do Carmo"
+              },
+              {
+                "date": "2030-12-08",
+                "name": "Nossa Senhora da Conceição"
+              }
+            ],
+            "2031": [
+              {
+                "date": "2031-06-24",
+                "name": "São João"
+              },
+              {
+                "date": "2031-07-16",
+                "name": "Nossa Senhora do Carmo"
+              },
+              {
+                "date": "2031-12-08",
+                "name": "Nossa Senhora da Conceição"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "PI": {
+      "name": "Piauí",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-10-19",
+            "name": "Dia do Piauí"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-10-19",
+            "name": "Dia do Piauí"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-10-19",
+            "name": "Dia do Piauí"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-10-19",
+            "name": "Dia do Piauí"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-10-19",
+            "name": "Dia do Piauí"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-10-19",
+            "name": "Dia do Piauí"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "PR": {
+      "name": "Paraná",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-12-19",
+            "name": "Emancipação política do estado do Paraná"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-12-19",
+            "name": "Emancipação política do estado do Paraná"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-12-19",
+            "name": "Emancipação política do estado do Paraná"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-12-19",
+            "name": "Emancipação política do estado do Paraná"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-12-19",
+            "name": "Emancipação política do estado do Paraná"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-12-19",
+            "name": "Emancipação política do estado do Paraná"
+          }
+        ]
+      },
+      "cities": {
+        "CU": {
+          "name": "Curitiba",
+          "holidays": {
+            "2026": [
+              {
+                "date": "2026-09-08",
+                "name": "Nossa Senhora da Luz dos Pinhais"
+              }
+            ],
+            "2027": [
+              {
+                "date": "2027-09-08",
+                "name": "Nossa Senhora da Luz dos Pinhais"
+              }
+            ],
+            "2028": [
+              {
+                "date": "2028-09-08",
+                "name": "Nossa Senhora da Luz dos Pinhais"
+              }
+            ],
+            "2029": [
+              {
+                "date": "2029-09-08",
+                "name": "Nossa Senhora da Luz dos Pinhais"
+              }
+            ],
+            "2030": [
+              {
+                "date": "2030-09-08",
+                "name": "Nossa Senhora da Luz dos Pinhais"
+              }
+            ],
+            "2031": [
+              {
+                "date": "2031-09-08",
+                "name": "Nossa Senhora da Luz dos Pinhais"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "RJ": {
+      "name": "Rio de Janeiro",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-04-23",
+            "name": "Dia de São Jorge"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-04-23",
+            "name": "Dia de São Jorge"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-04-23",
+            "name": "Dia de São Jorge"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-04-23",
+            "name": "Dia de São Jorge"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-04-23",
+            "name": "Dia de São Jorge"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-04-23",
+            "name": "Dia de São Jorge"
+          }
+        ]
+      },
+      "cities": {
+        "RJ": {
+          "name": "Rio de Janeiro",
+          "holidays": {
+            "2026": [
+              {
+                "date": "2026-01-20",
+                "name": "Dia de São Sebastião"
+              }
+            ],
+            "2027": [
+              {
+                "date": "2027-01-20",
+                "name": "Dia de São Sebastião"
+              }
+            ],
+            "2028": [
+              {
+                "date": "2028-01-20",
+                "name": "Dia de São Sebastião"
+              }
+            ],
+            "2029": [
+              {
+                "date": "2029-01-20",
+                "name": "Dia de São Sebastião"
+              }
+            ],
+            "2030": [
+              {
+                "date": "2030-01-20",
+                "name": "Dia de São Sebastião"
+              }
+            ],
+            "2031": [
+              {
+                "date": "2031-01-20",
+                "name": "Dia de São Sebastião"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "RN": {
+      "name": "Rio Grande do Norte",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-10-03",
+            "name": "Mártires de Cunhaú e Uruaçu"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-10-03",
+            "name": "Mártires de Cunhaú e Uruaçu"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-10-03",
+            "name": "Mártires de Cunhaú e Uruaçu"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-10-03",
+            "name": "Mártires de Cunhaú e Uruaçu"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-10-03",
+            "name": "Mártires de Cunhaú e Uruaçu"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-10-03",
+            "name": "Mártires de Cunhaú e Uruaçu"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "RO": {
+      "name": "Rondônia",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-01-04",
+            "name": "Criação do estado"
+          },
+          {
+            "date": "2026-06-18",
+            "name": "Dia do evangélico"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-01-04",
+            "name": "Criação do estado"
+          },
+          {
+            "date": "2027-06-18",
+            "name": "Dia do evangélico"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-01-04",
+            "name": "Criação do estado"
+          },
+          {
+            "date": "2028-06-18",
+            "name": "Dia do evangélico"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-01-04",
+            "name": "Criação do estado"
+          },
+          {
+            "date": "2029-06-18",
+            "name": "Dia do evangélico"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-01-04",
+            "name": "Criação do estado"
+          },
+          {
+            "date": "2030-06-18",
+            "name": "Dia do evangélico"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-01-04",
+            "name": "Criação do estado"
+          },
+          {
+            "date": "2031-06-18",
+            "name": "Dia do evangélico"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "RR": {
+      "name": "Roraima",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-10-05",
+            "name": "Criação do estado"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "RS": {
+      "name": "Rio Grande do Sul",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-09-20",
+            "name": "Proclamação da República Rio-Grandense"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-09-20",
+            "name": "Proclamação da República Rio-Grandense"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-09-20",
+            "name": "Proclamação da República Rio-Grandense"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-09-20",
+            "name": "Proclamação da República Rio-Grandense"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-09-20",
+            "name": "Proclamação da República Rio-Grandense"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-09-20",
+            "name": "Proclamação da República Rio-Grandense"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "SC": {
+      "name": "Santa Catarina",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-08-16",
+            "name": "Dia de Santa Catarina"
+          },
+          {
+            "date": "2026-11-29",
+            "name": "Dia de Santa Catarina de Alexandria"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-08-15",
+            "name": "Dia de Santa Catarina"
+          },
+          {
+            "date": "2027-11-28",
+            "name": "Dia de Santa Catarina de Alexandria"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-08-13",
+            "name": "Dia de Santa Catarina"
+          },
+          {
+            "date": "2028-11-26",
+            "name": "Dia de Santa Catarina de Alexandria"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-08-12",
+            "name": "Dia de Santa Catarina"
+          },
+          {
+            "date": "2029-11-25",
+            "name": "Dia de Santa Catarina de Alexandria"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-08-11",
+            "name": "Dia de Santa Catarina"
+          },
+          {
+            "date": "2030-12-01",
+            "name": "Dia de Santa Catarina de Alexandria"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-08-17",
+            "name": "Dia de Santa Catarina"
+          },
+          {
+            "date": "2031-11-30",
+            "name": "Dia de Santa Catarina de Alexandria"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "SE": {
+      "name": "Sergipe",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-07-08",
+            "name": "Emancipação política de Sergipe"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-07-08",
+            "name": "Emancipação política de Sergipe"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-07-08",
+            "name": "Emancipação política de Sergipe"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-07-08",
+            "name": "Emancipação política de Sergipe"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-07-08",
+            "name": "Emancipação política de Sergipe"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-07-08",
+            "name": "Emancipação política de Sergipe"
+          }
+        ]
+      },
+      "cities": {}
+    },
+    "SP": {
+      "name": "São Paulo",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-07-09",
+            "name": "Revolução Constitucionalista"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-07-09",
+            "name": "Revolução Constitucionalista"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-07-09",
+            "name": "Revolução Constitucionalista"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-07-09",
+            "name": "Revolução Constitucionalista"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-07-09",
+            "name": "Revolução Constitucionalista"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-07-09",
+            "name": "Revolução Constitucionalista"
+          }
+        ]
+      },
+      "cities": {
+        "SP": {
+          "name": "São Paulo",
+          "holidays": {
+            "2026": [
+              {
+                "date": "2026-01-25",
+                "name": "Aniversário da Cidade"
+              }
+            ],
+            "2027": [
+              {
+                "date": "2027-01-25",
+                "name": "Aniversário da Cidade"
+              }
+            ],
+            "2028": [
+              {
+                "date": "2028-01-25",
+                "name": "Aniversário da Cidade"
+              }
+            ],
+            "2029": [
+              {
+                "date": "2029-01-25",
+                "name": "Aniversário da Cidade"
+              }
+            ],
+            "2030": [
+              {
+                "date": "2030-01-25",
+                "name": "Aniversário da Cidade"
+              }
+            ],
+            "2031": [
+              {
+                "date": "2031-01-25",
+                "name": "Aniversário da Cidade"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "TO": {
+      "name": "Tocantins",
+      "holidays": {
+        "2026": [
+          {
+            "date": "2026-03-18",
+            "name": "Autonomia do Estado"
+          },
+          {
+            "date": "2026-09-08",
+            "name": "Nossa Senhora da Natividade"
+          },
+          {
+            "date": "2026-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2027": [
+          {
+            "date": "2027-03-18",
+            "name": "Autonomia do Estado"
+          },
+          {
+            "date": "2027-09-08",
+            "name": "Nossa Senhora da Natividade"
+          },
+          {
+            "date": "2027-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2028": [
+          {
+            "date": "2028-03-18",
+            "name": "Autonomia do Estado"
+          },
+          {
+            "date": "2028-09-08",
+            "name": "Nossa Senhora da Natividade"
+          },
+          {
+            "date": "2028-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2029": [
+          {
+            "date": "2029-03-18",
+            "name": "Autonomia do Estado"
+          },
+          {
+            "date": "2029-09-08",
+            "name": "Nossa Senhora da Natividade"
+          },
+          {
+            "date": "2029-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2030": [
+          {
+            "date": "2030-03-18",
+            "name": "Autonomia do Estado"
+          },
+          {
+            "date": "2030-09-08",
+            "name": "Nossa Senhora da Natividade"
+          },
+          {
+            "date": "2030-10-05",
+            "name": "Criação do estado"
+          }
+        ],
+        "2031": [
+          {
+            "date": "2031-03-18",
+            "name": "Autonomia do Estado"
+          },
+          {
+            "date": "2031-09-08",
+            "name": "Nossa Senhora da Natividade"
+          },
+          {
+            "date": "2031-10-05",
+            "name": "Criação do estado"
+          }
+        ]
+      },
+      "cities": {}
+    }
+  }
+}

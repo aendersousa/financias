@@ -2,7 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ledgerRpc, type LedgerWorkspace, type UserSettings, type WorkspaceMetadata } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { useAppStore } from '../store/useAppStore';
+import LedgerTags from './LedgerTags';
 import LedgerRecurrences from './LedgerRecurrences';
+import LedgerAuditHistory from '../components/LedgerAuditHistory';
 import { Sliders, ShieldCheck, Wallet } from 'lucide-react';
 
 export type ExtraSection = 'tags' | 'recurrences' | 'settings' | 'audit';
@@ -275,17 +277,7 @@ function LedgerExtraTools({ section, workspace, money, onChanged }: ExtrasProps)
         )}
       </div>
     )}
-    {section === 'tags' && metadata && <>
-      {canWrite && <form onSubmit={submitTag} className={`${panel} flex flex-wrap items-end gap-3`}><div className="grid flex-1 gap-2">{label('Nome da tag','tag-name')}<input id="tag-name" name="name" maxLength={100} required className={input}/></div><button disabled={busy} className="btn-primary px-4 py-2.5 font-semibold text-white">Criar tag</button></form>}
-      <div className={`${panel} space-y-4`}>{metadata.tags.length === 0 && <p className="text-sm text-slate-500">Nenhuma tag cadastrada.</p>}{metadata.tags.map(tag => <form key={`${tag.id}-${tag.version}`} onSubmit={event => { event.preventDefault(); void run('manage_tag',{ p_tag:tag.id,p_version:tag.version,p_action:'rename',p_name:String(new FormData(event.currentTarget).get('name')) }); }} className="flex flex-wrap items-center gap-3 border-b border-slate-100 pb-4 last:border-0 dark:border-slate-800">
-        <input name="name" aria-label={`Nome da tag ${tag.name}`} defaultValue={tag.name} disabled={!canManage} maxLength={100} required className={`${input} max-w-xs`}/><span className="text-xs text-slate-500">{tag.archived_at ? 'Arquivada' : 'Ativa'}</span>
-        {canManage && <><button disabled={busy} className="text-sm text-brand-600">Renomear</button><button type="button" disabled={busy} onClick={() => void run('manage_tag',{ p_tag:tag.id,p_version:tag.version,p_action:tag.archived_at ? 'restore' : 'archive' })} className="text-sm">{tag.archived_at ? 'Restaurar' : 'Arquivar'}</button><button type="button" disabled={busy} onClick={() => void run('manage_tag',{ p_tag:tag.id,p_version:tag.version,p_action:'delete' })} className="text-sm text-red-600">Excluir</button>
-          <select aria-label={`Mesclar ${tag.name} em outra tag`} defaultValue="" className={`${input} max-w-xs`} disabled={busy} onChange={event => { if (event.target.value) void run('manage_tag',{ p_tag:tag.id,p_version:tag.version,p_action:'merge',p_destination:event.target.value }); }}><option value="">Mesclar em…</option>{metadata.tags.filter(t => t.id !== tag.id && !t.archived_at).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
-      </form>)}</div>
-      {canWrite && <div className={`${panel} space-y-4`}><h2 className="font-semibold">Marcar um lançamento</h2>{label('Lançamento','tag-transaction')}<select id="tag-transaction" value={transaction} onChange={event => setTransaction(event.target.value)} className={input}><option value="">Selecione</option>{workspace.transactions.map(t => <option key={t.id} value={t.id}>{t.occurred_on} · {t.description}</option>)}</select>
-        {transaction && <><div className="flex flex-wrap gap-4">{metadata.tags.filter(t => !t.archived_at || selectedTags.includes(t.id)).map(tag => <label key={tag.id} className="flex gap-2"><input type="checkbox" checked={selectedTags.includes(tag.id)} onChange={event => setSelectedTags(event.target.checked ? [...selectedTags,tag.id] : selectedTags.filter(id => id !== tag.id))}/>{tag.name}</label>)}</div><button disabled={busy} onClick={() => void run('set_transaction_tags',{ p_transaction:transaction,p_tags:selectedTags,p_expected_tags:metadata.transaction_tags.filter(t => t.ledger_transaction_id === transaction).map(t => t.tag_id) })} className="btn-primary px-4 py-2.5 font-semibold text-white">Salvar tags do lançamento</button></>}
-      </div>}
-    </>}
-    {section === 'audit' && metadata && <div className={`${panel} space-y-4`}><p className="text-sm text-slate-500">Últimas 200 alterações do espaço. Os registros são preservados.</p>{metadata.audit.map(a => <div key={a.id} className="grid gap-1 border-b border-slate-100 pb-3 dark:border-slate-800"><p className="text-sm font-medium">{({ created:'Cadastro criado',edited:'Lançamento editado',cancelled:'Cancelamento',tags_changed:'Tags alteradas',rename:'Tag renomeada',merge:'Tags mescladas',archive:'Arquivamento',restore:'Restauração',delete:'Tag excluída',charges_confirmed:'Encargos confirmados',version_created:'Recorrência atualizada',ended:'Recorrência encerrada',updated:'Atualização',cycle_changed:'Ciclo de fatura atualizado' } as Record<string,string>)[a.action] ?? 'Alteração registrada'}</p><p className="text-xs text-slate-500">{new Date(a.created_at).toLocaleString('pt-BR')} · {a.actor_id ? 'Membro do espaço' : 'Sistema'}</p></div>)}</div>}
+    {section === 'tags' && metadata && <LedgerTags workspace={workspace} metadata={metadata} busy={busy} canWrite={canWrite} canManage={canManage} run={run} submitTag={submitTag} transaction={transaction} setTransaction={setTransaction} selectedTags={selectedTags} setSelectedTags={setSelectedTags}/>}
+    {section === 'audit' && <LedgerAuditHistory workspace={workspace} metadata={metadata} />}
   </div>;
 }
