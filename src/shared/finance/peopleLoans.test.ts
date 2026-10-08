@@ -1,6 +1,53 @@
 import { describe, expect, it } from 'vitest';
 import { addMonthsClamped, calculateNextMonthlyDueDate, calculatePeopleLoan, getPersonLoanDates, getPersonLoanTerms } from './peopleLoans';
 
+describe('installment progress after settlement', () => {
+  const person = {
+    opening_on: '2026-09-07', balance_cents: 12000, received_cents: 12000,
+    notes: '2 parcelas mensais de R$ 120,00',
+    reminders: [
+      { id: 'first', title: 'Receber parcela 1/2 (R$ 120,00)', due_on: '2026-10-07', completed_at: null },
+      { id: 'second', title: 'Receber parcela 2/2 (R$ 120,00)', due_on: '2026-11-07', completed_at: null }
+    ]
+  };
+  it('advances the due date and installment after receiving a full payment', () => {
+    const terms = getPersonLoanTerms(person, '2026-10-08');
+    expect(terms.nextDueDate).toBe('2026-11-07');
+    expect(terms.currentInstallment).toBe(2);
+    expect(terms.remainingInstallments).toBe(1);
+    expect(terms.installmentDetail).toBe('Parcela 2 de 2');
+    expect(terms.isOverdue).toBe(false);
+  });
+  it('keeps a partially paid installment overdue', () => {
+    const terms = getPersonLoanTerms({ ...person, received_cents: 6000, balance_cents: 18000 }, '2026-10-08');
+    expect(terms.nextDueDate).toBe('2026-10-07');
+    expect(terms.currentInstallment).toBe(1);
+    expect(terms.isOverdue).toBe(true);
+  });
+  it('uses payments made for a borrowed amount', () => {
+    const terms = getPersonLoanTerms({ ...person, balance_cents: -12000, received_cents: 0, paid_cents: 12000 }, '2026-10-08');
+    expect(terms.nextDueDate).toBe('2026-11-07');
+    expect(terms.remainingInstallments).toBe(1);
+  });
+  it('does not count a completed reminder and its payment twice', () => {
+    const terms = getPersonLoanTerms({ ...person, reminders: person.reminders.map((r, i) => ({ ...r, completed_at: i === 0 ? '2026-10-07' : null })) }, '2026-10-08');
+    expect(terms.remainingInstallments).toBe(1);
+    expect(terms.nextDueDate).toBe('2026-11-07');
+  });
+  it('clears the next due date when fully settled', () => {
+    const terms = getPersonLoanTerms({ ...person, balance_cents: 0, received_cents: 24000 }, '2026-10-08');
+    expect(terms.remainingInstallments).toBe(0);
+    expect(terms.nextDueDate).toBeNull();
+    expect(terms.isOverdue).toBe(false);
+  });
+  it('keeps the inferred installment stable after payment without reminders', () => {
+    const terms = getPersonLoanTerms({ opening_on: '2026-09-07', notes: '2 parcelas mensais', balance_cents: 12000, received_cents: 12000 }, '2026-10-08');
+    expect(terms.installmentAmountCents).toBe(12000);
+    expect(terms.nextDueDate).toBe('2026-11-07');
+    expect(terms.remainingInstallments).toBe(1);
+  });
+});
+
 describe('peopleLoans calculations', () => {
   it('correctly clamps dates across month and year boundaries', () => {
     expect(addMonthsClamped('2026-01-31', 1)).toBe('2026-02-28');
@@ -378,5 +425,4 @@ describe('peopleLoans calculations', () => {
     expect(terms.installmentsText).toBe('3x de R$ 500,00');
   });
 });
-
 

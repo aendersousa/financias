@@ -4,6 +4,7 @@ import { parseBrlCents } from '../../../shared/finance/money';
 import { shiftDays } from '../../../shared/finance/calendar';
 import CardTable from '../components/CardTable';
 import CurrencyInput from '../components/CurrencyInput';
+import { nextCardInvoice } from '../lib/cardInvoice';
 
 type Holder = { id:string; name:string; kind:string; last_digits:string | null; person_id:string | null; is_active:boolean; version:number };
 type Authorization = { id:string; description:string; amount_cents:number; authorized_on:string; expires_on:string | null; release_on:string | null; kind:string; status:string; version:number };
@@ -174,14 +175,37 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
           <label className="grid gap-1.5 text-sm sm:col-span-2">Fatura<select aria-label="Fatura" value={statementId} required onChange={event => setStatementId(event.target.value)} className={input}><option value="">Selecione</option>{card.statements.map(item => <option key={item.id} value={item.id}>{item.reference_month.slice(0,7)} · {item.status==='closed' ? 'fechada' : item.status==='open' ? 'aberta' : 'futura'} · {money(item.remaining_cents)}</option>)}</select></label>
           {statement && <>{field('Início do período','period_start',statement.period_start,'date',true)}{field('Fechamento','closing_on',statement.closing_on,'date',true)}{field('Vencimento nominal','due_on',statement.due_on,'date',true)}{field('Vencimento efetivo','effective_due_on',statement.effective_due_on,'date',true)}<p className="text-xs text-slate-500 sm:col-span-2">O período de uma fatura fechada permanece protegido. Seu vencimento só pode mudar enquanto houver saldo.</p></>}
         </>}
-        {mode==='opening' && <>
-          {field('Data de início no app','date',workspace.space.today,'date',true)}{field('Saldo da fatura aberta (R$)','open_amount','0,00','text',true)}
-          <p className="text-sm text-slate-500 sm:col-span-2">O saldo da fatura aberta já deve incluir as parcelas que caem nela. Abaixo cadastre só as parcelas seguintes.</p>
-          {closedRows.map((id,index) => <fieldset key={id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:col-span-2 sm:grid-cols-2 dark:border-slate-800"><legend className="text-sm font-semibold">Fatura fechada não paga {index+1}</legend>{field('Início do período',`start-${id}`,'','date',true)}{field('Fechamento',`close-${id}`,'','date',true)}{field('Vencimento nominal',`due-${id}`,'','date',true)}{field('Saldo restante (R$)',`amount-${id}`,'','text',true)}<button type="button" onClick={() => setClosedRows(rows => rows.filter(value => value!==id))} className="text-left text-sm text-red-700 dark:text-red-300">Remover fatura</button></fieldset>)}
-          <button type="button" onClick={() => setClosedRows(rows => [...rows,crypto.randomUUID()])} className="text-left text-sm font-semibold text-brand-700 dark:text-brand-300">Adicionar fatura fechada não paga</button>
-          {installmentRows.map((id,index) => <fieldset key={id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:col-span-2 sm:grid-cols-2 dark:border-slate-800"><legend className="text-sm font-semibold">Compra antiga parcelada {index+1}</legend>{field('Descrição',`description-${id}`,'','text',true)}{field('Valor da parcela (R$)',`part-${id}`,'','text',true)}{field('Próxima parcela depois da aberta (k)',`from-${id}`,'','number',true)}{field('Total de parcelas (N)',`count-${id}`,'','number',true)}<button type="button" onClick={() => setInstallmentRows(rows => rows.filter(value => value!==id))} className="text-left text-sm text-red-700 dark:text-red-300">Remover compra</button></fieldset>)}
-          <button type="button" onClick={() => setInstallmentRows(rows => [...rows,crypto.randomUUID()])} className="text-left text-sm font-semibold text-brand-700 dark:text-brand-300">Adicionar parcelamento em andamento</button><p className="text-xs text-slate-500 sm:col-span-2">A dívida inicial entra contra o saldo inicial e preserva seu consumo. Depois de salvar, compare o limite utilizado com o banco.</p>
-        </>}
+        {mode==='opening' && (() => {
+          const parts = workspace.space.today.split('-').map(Number);
+          const curY = parts[0], curM = parts[1], curD = parts[2];
+          const closingDay = card.closing_day || 1, dueDay = card.due_day || 10;
+          let closedM = curM, closedY = curY;
+          if (curD < closingDay) { closedM -= 1; if (closedM < 1) { closedM = 12; closedY -= 1; } }
+          const maxCloseDay = new Date(closedY, closedM, 0).getDate();
+          const dClose = Math.min(closingDay, maxCloseDay);
+          const defaultCloseDate = `${closedY}-${String(closedM).padStart(2, '0')}-${String(dClose).padStart(2, '0')}`;
+          let dueM = closedM, dueY = closedY;
+          if (dueDay <= closingDay) { dueM += 1; if (dueM > 12) { dueM = 1; dueY += 1; } }
+          const maxDueDay = new Date(dueY, dueM, 0).getDate();
+          const dDue = Math.min(dueDay, maxDueDay);
+          const defaultDueDate = `${dueY}-${String(dueM).padStart(2, '0')}-${String(dDue).padStart(2, '0')}`;
+          let startM = closedM - 1, startY = closedY;
+          if (startM < 1) { startM = 12; startY -= 1; }
+          const maxStartDay = new Date(startY, startM, 0).getDate();
+          const dStart = Math.min(closingDay + 1, maxStartDay);
+          const defaultStartDate = `${startY}-${String(startM).padStart(2, '0')}-${String(dStart).padStart(2, '0')}`;
+
+          return <>
+            {field('Data de início no app','date',workspace.space.today,'date',true)}{field('Saldo da fatura aberta (R$)','open_amount','0,00','text',true)}
+            <p className="text-sm text-slate-500 sm:col-span-2">
+              A fatura aberta vence apenas no próximo ciclo. Se você já tem uma fatura que fechou e vence nos próximos dias (ex: vence em {card.due_day}/{String(curM).padStart(2, '0')}), deixe o saldo da fatura aberta em 0,00 e clique em <strong>Adicionar fatura fechada não paga</strong> abaixo.
+            </p>
+            {closedRows.map((id,index) => <fieldset key={id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:col-span-2 sm:grid-cols-2 dark:border-slate-800"><legend className="text-sm font-semibold">Fatura fechada não paga {index+1}</legend>{field('Início do período',`start-${id}`,defaultStartDate,'date',true)}{field('Fechamento',`close-${id}`,defaultCloseDate,'date',true)}{field('Vencimento nominal',`due-${id}`,defaultDueDate,'date',true)}{field('Saldo restante (R$)',`amount-${id}`,'','text',true)}<button type="button" onClick={() => setClosedRows(rows => rows.filter(value => value!==id))} className="text-left text-sm text-red-700 dark:text-red-300">Remover fatura</button></fieldset>)}
+            <button type="button" onClick={() => setClosedRows(rows => [...rows,crypto.randomUUID()])} className="text-left text-sm font-semibold text-brand-700 dark:text-brand-300">Adicionar fatura fechada não paga</button>
+            {installmentRows.map((id,index) => <fieldset key={id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:col-span-2 sm:grid-cols-2 dark:border-slate-800"><legend className="text-sm font-semibold">Compra antiga parcelada {index+1}</legend>{field('Descrição',`description-${id}`,'','text',true)}{field('Valor da parcela (R$)',`part-${id}`,'','text',true)}{field('Próxima parcela depois da aberta (k)',`from-${id}`,'','number',true)}{field('Total de parcelas (N)',`count-${id}`,'','number',true)}<button type="button" onClick={() => setInstallmentRows(rows => rows.filter(value => value!==id))} className="text-left text-sm text-red-700 dark:text-red-300">Remover compra</button></fieldset>)}
+            <button type="button" onClick={() => setInstallmentRows(rows => [...rows,crypto.randomUUID()])} className="text-left text-sm font-semibold text-brand-700 dark:text-brand-300">Adicionar parcelamento em andamento</button><p className="text-xs text-slate-500 sm:col-span-2">A dívida inicial entra contra o saldo inicial e preserva seu consumo. Depois de salvar, compare o limite utilizado com o banco.</p>
+          </>;
+        })()}
         <div className="sm:col-span-2"><button disabled={busy || mode==='statement' && !statement || mode==='authorization' && card.status==='cancelled' && !authorization} className={button}>{busy ? 'Salvando…' : mode==='opening' ? 'Registrar dívida inicial' : 'Salvar'}</button></div>
       </form>}
       {holder && mode==='holder' && holder.kind!=='main' && <button disabled={busy} onClick={() => void mutate('manage_card_holder',{p_card:card.id,p_holder:holder.id,p_version:holder.version,p_action:holder.is_active ? 'deactivate' : 'activate'},holder.is_active ? 'Portador desativado. O histórico foi preservado.' : 'Portador reativado.')} className="text-sm font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-300">{holder.is_active ? 'Desativar portador' : 'Reativar portador'}</button>}
@@ -228,7 +252,8 @@ export default function LedgerCardManagement({ workspace,money,onChanged }: { wo
     <CardTable cards={(cards ?? workspace.cards).map(item => {
       const rules=cards?.find(value => value.id===item.id);
       const cardType = rules?.card_type ?? (item as any).card_type ?? 'both';
-      return {...item,cardType,limit:money(item.granted_cents),used:money(item.used_cents),available:money(item.free_cents),closingDay:rules?.closing_day,dueDay:rules?.due_day,status:rules?.status};
+      const invoice=nextCardInvoice(rules?.statements??workspace.statements.filter(statement=>statement.credit_card_id===item.id));
+      return {...item,cardType,limit:money(item.granted_cents),used:money(item.used_cents),available:money(item.free_cents),closingDay:rules?.closing_day,dueDay:rules?.due_day,status:rules?.status,invoiceAmount:money(Math.max(0,invoice?.remaining_cents??0)),invoiceDue:invoice?.effective_due_on,invoiceOpen:invoice?.status==='open'};
     })}
       renderName={item => writer ? <button type="button" disabled={busy || !cards} onClick={() => selectCard(item.id)} aria-label={`Editar cartão ${item.name}`} aria-expanded={selected===item.id} className="break-words text-left">{item.name}</button> : <span>{item.name}</span>}
       renderActions={item => <button type="button" disabled={busy || !cards} onClick={() => selectCard(item.id)} aria-label={`Ver detalhes do cartão ${item.name}`} aria-expanded={selected===item.id} className="text-xs font-semibold text-brand-700 disabled:opacity-50 dark:text-brand-400">Detalhes</button>}

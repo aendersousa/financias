@@ -11,6 +11,9 @@ export interface CardItem {
   dueDay?: number | null
   status?: string
   cardType?: 'both' | 'credit' | 'debit' | null
+  invoiceAmount?: ReactNode
+  invoiceDue?: string
+  invoiceOpen?: boolean
 }
 
 export default function CardTable<T extends CardItem>({ cards, renderName, renderActions, renderEditor }: {
@@ -23,10 +26,11 @@ export default function CardTable<T extends CardItem>({ cards, renderName, rende
     <table aria-label="Cartões" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50">
         <tr>
-          <th scope="col" className="w-[42%] px-4 py-2.5 sm:w-1/4">Cartão</th>
+          <th scope="col" className="w-[42%] px-4 py-2.5 sm:w-[24%]">Cartão</th>
           <th scope="col" className="hidden px-4 py-2.5 text-right sm:table-cell">Limite</th>
           <th scope="col" className="hidden px-4 py-2.5 text-right sm:table-cell">Utilizado</th>
           <th scope="col" className="w-[34%] px-4 py-2.5 text-right sm:w-auto">Disponível</th>
+          <th scope="col" className="hidden px-4 py-2.5 text-right sm:table-cell">Fatura a pagar</th>
           <th scope="col" className="hidden px-4 py-2.5 lg:table-cell">Fechamento</th>
           <th scope="col" className="hidden px-4 py-2.5 lg:table-cell">Vencimento</th>
           <th scope="col" className="w-[24%] sm:w-20"><span className="sr-only">Ações</span></th>
@@ -67,6 +71,7 @@ export default function CardTable<T extends CardItem>({ cards, renderName, rende
                         <>
                           <p>Limite<br />{card.limit}</p>
                           <p>Utilizado<br />{card.used}</p>
+                          {card.invoiceAmount!==undefined&&<p className="pt-1 font-semibold text-slate-900 dark:text-slate-100">Fatura a pagar: {card.invoiceAmount}{card.invoiceDue&&<span className="block font-normal text-slate-500">Vence {card.invoiceDue.split('-').reverse().join('/')}{card.invoiceOpen?' · Em aberto':''}</span>}</p>}
                         </>
                       )}
                     </div>
@@ -82,6 +87,7 @@ export default function CardTable<T extends CardItem>({ cards, renderName, rende
               <td className="break-normal whitespace-normal px-4 py-2.5 text-right font-medium [overflow-wrap:anywhere]">
                 {card.cardType === 'debit' ? <span className="text-xs font-normal text-slate-400 dark:text-slate-500">Saldo da conta</span> : card.available}
               </td>
+              <td className="hidden px-4 py-2.5 text-right font-semibold [overflow-wrap:anywhere] sm:table-cell">{card.cardType==='debit'?'—':card.invoiceAmount??'—'}{card.cardType!=='debit'&&card.invoiceDue&&<span className="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400">Vence {card.invoiceDue.split('-').reverse().join('/')}{card.invoiceOpen?' · Em aberto':''}</span>}</td>
               <td className="hidden px-4 py-2.5 text-slate-500 dark:text-slate-400 lg:table-cell">
                 {card.cardType === 'debit' ? '—' : card.closingDay == null ? '—' : `Dia ${card.closingDay}`}
               </td>
@@ -90,10 +96,10 @@ export default function CardTable<T extends CardItem>({ cards, renderName, rende
               </td>
               <td className="px-4 py-2.5 text-right">{renderActions?.(card)}</td>
             </tr>
-            {editor && <tr><td colSpan={7} className="p-4">{editor}</td></tr>}
+            {editor && <tr><td colSpan={8} className="p-4">{editor}</td></tr>}
           </Fragment>
         })}
-        {!cards.length && <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">Nenhum cartão cadastrado.</td></tr>}
+        {!cards.length && <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-400">Nenhum cartão cadastrado.</td></tr>}
       </tbody>
     </table>
   </div>

@@ -341,8 +341,8 @@ export default function LedgerPeople({
         ? 'Conta bancária não encontrada. Selecione uma conta válida.'
         : rawMsg.includes('month is closed')
         ? 'O mês da movimentação está fechado no sistema. Reabra o mês em Fechamentos ou escolha uma data no mês atual.'
-        : rawMsg.includes('occurred_on')
-        ? 'A data da movimentação não pode ser futura.'
+        : rawMsg.includes('Could not find the function') || rawMsg.includes('schema cache')
+        ? 'O serviço de acertos está desatualizado. Atualize a página e tente novamente.'
         : rawMsg;
       setError(friendlyMsg);
     } finally {
@@ -494,7 +494,15 @@ export default function LedgerPeople({
     if (preferredAmount !== undefined) {
       setMovementAmount(preferredAmount);
     } else if (target && target.balance_cents !== 0) {
-      setMovementAmount((Math.abs(target.balance_cents) / 100).toFixed(2).replace('.', ','));
+      const terms = getPersonLoanTerms(target, workspace.space.today);
+      const isSettlement = !preferredDirection || preferredDirection === 'receive' || preferredDirection === 'pay';
+      const installment = terms.payMode === 'installments' && terms.remainingInstallments !== 0
+        ? terms.installmentAmountCents
+        : null;
+      const cents = isSettlement && installment && installment > 0
+        ? installment
+        : Math.abs(target.balance_cents);
+      setMovementAmount((cents / 100).toFixed(2).replace('.', ','));
     } else {
       setMovementAmount('');
     }

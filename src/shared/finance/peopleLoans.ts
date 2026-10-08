@@ -330,6 +330,10 @@ export function getPersonLoanTerms(
     notes?: string | null;
     opening_on?: string | null;
     balance_cents: number;
+    received_cents?: number;
+    paid_cents?: number;
+    interest_received_cents?: number;
+    interest_paid_cents?: number;
     reminders?: { id: string; title: string; due_on: string; completed_at: string | null }[];
   },
   todayIso: string
@@ -365,9 +369,6 @@ export function getPersonLoanTerms(
   if (!nextDueDate && startDate && person.balance_cents !== 0) {
     nextDueDate = calculateNextMonthlyDueDate(startDate, todayIso);
   }
-
-  const isOverdue = !!(nextDueDate && nextDueDate < todayIso && person.balance_cents !== 0);
-  const isToday = !!(nextDueDate && nextDueDate === todayIso && person.balance_cents !== 0);
 
   // Installment parsing
   let payMode: PeopleLoanPayMode | null = null;
@@ -496,8 +497,48 @@ export function getPersonLoanTerms(
 
   // Fallback for installmentAmountCents from balance if not parsed directly
   if (installmentAmountCents === null && totalInstallments && totalInstallments > 0 && person.balance_cents !== 0) {
-    installmentAmountCents = Math.round(Math.abs(person.balance_cents) / (remainingInstallments || totalInstallments));
+    const paid = person.balance_cents < 0 ? person.paid_cents : person.received_cents;
+    const interest = person.balance_cents < 0 ? person.interest_paid_cents : person.interest_received_cents;
+    installmentAmountCents = paid !== undefined
+      ? Math.round((Math.abs(person.balance_cents) + paid - (interest ?? 0)) / totalInstallments)
+      : Math.round(Math.abs(person.balance_cents) / (remainingInstallments || totalInstallments));
   }
+
+  // Payments update the installment progress even when Agenda reminders have not
+  // been manually checked off. Partial payments must keep the same due date.
+  if (payMode === 'installments' && totalInstallments && installmentAmountCents && installmentAmountCents > 0) {
+    const paidCents = person.balance_cents < 0 ? person.paid_cents : person.balance_cents > 0 ? person.received_cents : Math.max(person.paid_cents ?? 0, person.received_cents ?? 0);
+    const paidCount = Math.min(totalInstallments, Math.floor((paidCents ?? 0) / installmentAmountCents));
+    const completedCount = totalInstallments - (remainingInstallments ?? totalInstallments);
+    const settledCount = person.balance_cents === 0 ? totalInstallments : Math.max(paidCount, completedCount);
+    remainingInstallments = totalInstallments - settledCount;
+    currentInstallment = Math.min(settledCount + 1, totalInstallments);
+    if (remainingInstallments === 0) {
+      nextDueDate = null;
+    } else if (paidCount > completedCount) {
+      const nextReminder = person.reminders?.find(r => {
+        const match = r.title.match(/parcela\s+(\d+)\/(\d+)/i);
+        return !r.completed_at && match && Number(match[1]) === currentInstallment && Number(match[2]) === totalInstallments;
+      });
+      if (nextReminder) {
+        nextDueDate = nextReminder.due_on;
+      } else if (!person.reminders?.length && startDate) {
+        nextDueDate = frequency === 'daily'
+          ? addDays(startDate, currentInstallment)
+          : frequency === 'weekly'
+            ? addDays(startDate, currentInstallment * 7)
+            : addMonthsClamped(startDate, currentInstallment);
+      } else if (nextDueDate) {
+        nextDueDate = frequency === 'daily'
+          ? addDays(nextDueDate, paidCount - completedCount)
+          : frequency === 'weekly'
+            ? addDays(nextDueDate, (paidCount - completedCount) * 7)
+            : addMonthsClamped(nextDueDate, paidCount - completedCount);
+      }
+    }
+  }
+  const isOverdue = !!(nextDueDate && nextDueDate < todayIso && person.balance_cents !== 0);
+  const isToday = !!(nextDueDate && nextDueDate === todayIso && person.balance_cents !== 0);
 
   // Format display labels
   let installmentsBadge: string | null = null;
