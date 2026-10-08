@@ -37,6 +37,7 @@ import { useAppStore } from '../store/useAppStore';
 type Section = 'dashboard' | 'accounts' | 'categories' | 'cards' | 'people' | 'transactions' | 'foreign_currency' | 'agenda' | 'forecast' | 'budgets' | 'reserves' | 'notifications' | 'portfolio' | 'closing' | 'reports' | 'health' | 'imports' | 'sharing' | ExtraSection;
 const navigation = [
   { id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
+  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'accounts', label: '1. Contas', icon: Wallet },
   { id: 'categories', label: '2. Categorias', icon: Tags },
   { id: 'cards', label: '3. Cartões', icon: CreditCard },
@@ -45,7 +46,6 @@ const navigation = [
   { id: 'transactions', label: 'Lançamentos', icon: ArrowLeftRight },
   { id: 'foreign_currency', label: 'Compras internacionais', icon: ArrowLeftRight },
   { id: 'imports', label: 'Importar extrato', icon: ArrowLeftRight },
-  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'forecast', label: 'Previsão de saldo', icon: CalendarDays },
   { id: 'budgets', label: 'Orçamentos', icon: Wallet },
   { id: 'reserves', label: 'Metas e provisões', icon: Wallet },
@@ -67,7 +67,6 @@ const itemGroupMap: Partial<Record<Section, string>> = {
   transactions: 'Movimentações',
   foreign_currency: 'Movimentações',
   imports: 'Movimentações',
-  agenda: 'Planejamento',
   forecast: 'Planejamento',
   budgets: 'Planejamento',
   reserves: 'Planejamento',
@@ -97,6 +96,7 @@ export default function LedgerWorkspace() {
   const [spaces, setSpaces] = useState<FinancialSpace[]>([]);
   const [reserveSummary,setReserveSummary] = useState<ReserveSummary | null>(null);
   const [section, setSection] = useState<Section>(() => location.hash.startsWith('#invite=') ? 'sharing' : new URLSearchParams(location.search).get('quick')==='expense' ? 'transactions' : 'dashboard');
+  const [newTransaction,setNewTransaction]=useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -178,7 +178,7 @@ export default function LedgerWorkspace() {
       await clearLocalData(); await supabase.auth.signOut();
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível sair.'); }
   }
-  function navigate(next: Section) { setSection(next); setNotice(''); }
+  function navigate(next: Section, compose=false) { setNewTransaction(compose); setSection(next); setNotice(''); }
   async function switchSpace(id: string) {
     ++workspaceLoadSequence.current;
     setBusy(true); setError('');
@@ -261,7 +261,7 @@ export default function LedgerWorkspace() {
         {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
         {!workspace && <div className={panelClass}>{busy ? 'Carregando…' : 'Não foi possível abrir seus dados. Use Atualizar para tentar novamente.'}</div>}
         {workspace && section === 'dashboard' && <>
-          <div className={panelClass}><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-500">Registre receitas, despesas e transferências em Lançamentos.</p><button type="button" onClick={()=>navigate('transactions')} className="btn-primary">Adicionar lançamento</button></div><div className="mt-3"><LedgerEntryManagement key={workspace.space.id} workspace={workspace} money={money} onChanged={reloadData}/></div></div>
+          <div className={panelClass}><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-500">Registre receitas, despesas e transferências em Lançamentos.</p><button type="button" onClick={()=>navigate('transactions',true)} className="btn-primary">Adicionar lançamento</button></div><div className="mt-3"><LedgerEntryManagement key={workspace.space.id} workspace={workspace} money={money} onChanged={reloadData}/></div></div>
           <LedgerFreeToSpend workspace={workspace} money={money} offline={!online || usingCache}/>
           {online && !usingCache && <LedgerDashboardSummary workspace={workspace} money={money} privacy={privacy}/>}
           <div className="grid gap-4 sm:grid-cols-3">{[{ label:'Saldo em contas',value:workspace.totals.cash_cents, detail:'Contas corrente, de pagamento e carteiras, até hoje.' },{ label:'Limite utilizado',value:workspace.totals.card_used_cents, detail:'Dívidas e autorizações pendentes dos cartões.' },{ label:'Contas a pagar',value:workspace.totals.commitment_outflows_cents, detail:'Compromissos pendentes e parcialmente pagos.' }].map(item => <div key={item.label} className={panelClass}><p className="text-sm text-slate-500">{item.label}</p><p className="mt-2 text-2xl font-semibold">{money(item.value)}</p><p className="mt-2 text-xs text-slate-500">{item.detail}</p></div>)}</div>
@@ -269,7 +269,7 @@ export default function LedgerWorkspace() {
           <div className={panelClass}><h2 className="font-semibold">Comece pelos cadastros</h2><p className="mt-2 text-sm text-slate-500">Cadastre suas contas e os saldos atuais. Depois organize as categorias, adicione seus cartões e registre as movimentações.</p><button onClick={() => navigate('accounts')} className="mt-4 btn-primary px-4 py-2 text-sm font-semibold text-white">Cadastrar uma conta</button></div>
         </>}
         {workspace && (!online || usingCache) && extraSection && <p className={panelClass}>{['sharing','foreign_currency','imports',...planningSections].includes(section) ? 'Sem conexão. Esta tela precisa de internet. Consulte os lançamentos salvos ou registre uma movimentação na aba Lançamentos.' : 'Sem conexão. Esta tela precisa de internet.'}</p>}
-        {workspace && section === 'transactions' && <LedgerTransactions key={workspace.space.id} workspace={workspace} money={money} reserves={reserveSummary} online={online&&!usingCache} onChanged={reloadData}/>}
+        {workspace && section === 'transactions' && <LedgerTransactions initialOpen={newTransaction} key={workspace.space.id} workspace={workspace} money={money} reserves={reserveSummary} online={online&&!usingCache} onChanged={reloadData}/>}
         {workspace && online && !usingCache && <>
           {['accounts','categories','settings'].includes(section) && <LedgerManagement key={`management-${workspace.space.id}-${section}`} section={section as 'accounts' | 'categories' | 'settings'} workspace={workspace} money={money} onChanged={refresh}/>}
           {['tags', 'recurrences'].includes(section) && <LedgerExtras key={`${workspace.space.id}-${section}`} section={section as ExtraSection} workspace={workspace} money={money} onChanged={refresh}/>}

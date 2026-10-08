@@ -50,6 +50,12 @@ function safeParseBrlCents(value: string | number | null | undefined): number {
 }
 
 type Direction = 'receive' | 'pay' | 'lend' | 'borrow';
+const movementActions = [
+  { direction: 'receive', label: 'Receber', Icon: ArrowDownLeft },
+  { direction: 'pay', label: 'Pagar', Icon: ArrowUpRight },
+  { direction: 'lend', label: 'Emprestar', Icon: ArrowUpRight },
+  { direction: 'borrow', label: 'Pegar emprestado', Icon: ArrowDownLeft }
+] as const;
 
 interface Contact {
   id: string;
@@ -162,10 +168,39 @@ export default function LedgerPeople({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const pending = useRef(false);
+  const movementDialog = useRef<HTMLDivElement>(null);
   const requestKey = useRef<{ key: string; id: string } | null>(null);
 
   const canWrite = workspace.role !== 'viewer';
   const cashAccounts = workspace.accounts.filter(account => account.liquidity === 'cash');
+
+  useEffect(() => {
+    if (!movementPersonId) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    movementDialog.current?.querySelector<HTMLSelectElement>('select')?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !pending.current) {
+        setMovementPersonId(null);
+      }
+      if (event.key !== 'Tab') return;
+      const elements = movementDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex="0"]');
+      if (!elements?.length) return;
+      const first = elements[0], last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKey);
+      previousFocus?.focus();
+    };
+  }, [movementPersonId]);
 
   // Initialize account for loan if needed
   useEffect(() => {
@@ -497,7 +532,7 @@ export default function LedgerPeople({
     const isSettlement = !preferredDirection || preferredDirection === 'receive' || preferredDirection === 'pay';
     if (preferredAmount !== undefined) {
       setMovementAmount(preferredAmount);
-    } else if (target && target.balance_cents !== 0) {
+    } else if (isSettlement && target && target.balance_cents !== 0) {
       const installment = terms?.payMode === 'installments' && terms.remainingInstallments !== 0
         ? terms.installmentAmountCents
         : terms?.payMode === 'indefinite' ? terms.recurringInterestCents
@@ -917,43 +952,23 @@ export default function LedgerPeople({
                   <span>Nova pessoa</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (showLoanForm) {
-                      setShowLoanForm(false);
-                    } else {
-                      openLoanForPerson();
-                    }
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-xl border border-brand-300 bg-brand-50/70 px-3.5 py-2 text-xs sm:text-sm font-semibold text-brand-800 shadow-xs hover:bg-brand-100 transition-colors dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60 ${
-                    showLoanForm ? 'border-brand-500 ring-2 ring-brand-500/30' : ''
-                  }`}
-                >
-                  <Coins size={15} className="text-brand-600 dark:text-brand-400" />
-                  <span>Empréstimo</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeContacts.length === 0) {
-                      setError('Cadastre pelo menos uma pessoa antes de registrar acertos.');
-                      return;
-                    }
-                    if (movementPersonId) {
-                      setMovementPersonId(null);
-                    } else {
-                      openMovementForPerson(activeContacts[0].id);
-                    }
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 ${
-                    movementPersonId ? 'border-brand-500 ring-2 ring-brand-500/20' : ''
-                  }`}
-                >
-                  <HandCoins size={15} className="text-brand-600 dark:text-brand-400" />
-                  <span>Acerto simples</span>
-                </button>
+                {movementActions.map(({ direction, label, Icon }) => (
+                  <button
+                    key={direction}
+                    type="button"
+                    onClick={() => {
+                      if (activeContacts.length === 0) {
+                        setError('Cadastre pelo menos uma pessoa antes de registrar uma movimentação.');
+                        return;
+                      }
+                      openMovementForPerson(activeContacts.find(person => person.id === selectedPersonId)?.id || activeContacts[0].id, undefined, direction);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    <Icon size={15} className={direction === 'pay' ? 'text-rose-500' : direction === 'borrow' ? 'text-amber-500' : 'text-brand-600 dark:text-brand-400'} />
+                    <span>{label}</span>
+                  </button>
+                ))}
 
                 <button
                   type="button"
@@ -2674,6 +2689,7 @@ export default function LedgerPeople({
       {/* 4. Movement Form (Acerto, Empréstimo, Pagamento, Recebimento) - Modal Dialog */}
       {canWrite && movementPersonId && (
         <div
+          ref={movementDialog}
           role="dialog"
           aria-modal="true"
           aria-label={`Movimentação com ${activeMovementPerson?.nickname || 'pessoa'}`}
@@ -2698,7 +2714,7 @@ export default function LedgerPeople({
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Acertar contas com {activeMovementPerson?.nickname || 'pessoa'}
+                    {movementDirection === 'lend' ? 'Emprestar para ' : movementDirection === 'borrow' ? 'Pegar emprestado de ' : 'Acertar contas com '}{activeMovementPerson?.nickname || 'pessoa'}
                   </h2>
                   {activeMovementPerson && (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -2744,7 +2760,7 @@ export default function LedgerPeople({
                 id="movement-person"
                 name="person"
                 value={movementPersonId}
-                onChange={e => openMovementForPerson(e.target.value)}
+                onChange={e => openMovementForPerson(e.target.value, undefined, movementDirection)}
                 className={input}
               >
                 {activeContacts.map(p => (
@@ -2760,10 +2776,11 @@ export default function LedgerPeople({
               <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Tipo do acerto / movimentação:
               </label>
-              <div className="grid gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <button
                   type="button"
-                  onClick={() => setMovementDirection('receive')}
+                  onClick={() => openMovementForPerson(movementPersonId, undefined, 'receive')}
+                  aria-pressed={movementDirection === 'receive'}
                   className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
                     movementDirection === 'receive'
                       ? 'border-emerald-500 bg-emerald-50/90 font-semibold text-emerald-950 ring-2 ring-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200'
@@ -2781,7 +2798,8 @@ export default function LedgerPeople({
 
                 <button
                   type="button"
-                  onClick={() => setMovementDirection('pay')}
+                  onClick={() => openMovementForPerson(movementPersonId, undefined, 'pay')}
+                  aria-pressed={movementDirection === 'pay'}
                   className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
                     movementDirection === 'pay'
                       ? 'border-rose-500 bg-rose-50/90 font-semibold text-rose-950 ring-2 ring-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200'
@@ -2799,7 +2817,8 @@ export default function LedgerPeople({
 
                 <button
                   type="button"
-                  onClick={() => setMovementDirection('lend')}
+                  onClick={() => openMovementForPerson(movementPersonId, undefined, 'lend')}
+                  aria-pressed={movementDirection === 'lend'}
                   className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
                     movementDirection === 'lend'
                       ? 'border-brand-500 bg-brand-50/90 font-semibold text-brand-950 ring-2 ring-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200'
@@ -2817,7 +2836,8 @@ export default function LedgerPeople({
 
                 <button
                   type="button"
-                  onClick={() => setMovementDirection('borrow')}
+                  onClick={() => openMovementForPerson(movementPersonId, undefined, 'borrow')}
+                  aria-pressed={movementDirection === 'borrow'}
                   className={`flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition ${
                     movementDirection === 'borrow'
                       ? 'border-amber-500 bg-amber-50/90 font-semibold text-amber-950 ring-2 ring-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200'
@@ -2868,7 +2888,7 @@ export default function LedgerPeople({
                   <label htmlFor="movement-amount" className="font-medium text-xs text-slate-700 dark:text-slate-300">
                     Valor *
                   </label>
-                  {activeMovementPerson && activeMovementPerson.balance_cents !== 0 && (
+                  {activeMovementPerson && activeMovementPerson.balance_cents !== 0 && ['receive', 'pay'].includes(movementDirection) && (
                     <button
                       type="button"
                       onClick={() => {
@@ -3441,7 +3461,7 @@ export default function LedgerPeople({
                 setMode={setDetailMode}
                 money={money}
                 onAgenda={onAgenda}
-                onMovement={() => openMovementForPerson(item.id)}
+                onMovement={direction => openMovementForPerson(item.id, undefined, direction)}
                 onOpenLoan={() => openLoanForPerson(item.id)}
                 onOpenLoanWithBalance={() => openLoanForPerson(item.id, true)}
                 onClose={() => setSelectedPersonId(null)}
@@ -3489,7 +3509,7 @@ function PersonDetailPanel({
   setMode: (mode: 'view' | 'edit' | 'opening') => void;
   money: (value: number) => string;
   onAgenda: () => void;
-  onMovement: () => void;
+  onMovement: (direction?: Direction) => void;
   onOpenLoan: () => void;
   onOpenLoanWithBalance?: () => void;
   onClose: () => void;
@@ -3634,27 +3654,18 @@ function PersonDetailPanel({
         <div className="flex flex-wrap items-center gap-2">
           {!person.archived_at && (
             <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onMovement}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-700 transition-colors"
-                title="Registrar pagamento ou acerto"
-              >
-                <HandCoins size={14} />
-                <span>Acertar</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onOpenLoan}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-brand-300 bg-brand-50/70 px-3.5 py-1.5 text-xs font-semibold text-brand-800 shadow-xs hover:bg-brand-100 transition-colors dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60"
-                title="Simular e registrar novo empréstimo"
-              >
-                <Coins size={14} className="text-brand-600 dark:text-brand-400" />
-                <span>Empréstimo</span>
-              </button>
+              {movementActions.map(({ direction, label, Icon }) => (
+                <button
+                  key={direction}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onMovement(direction)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Icon size={14} className={direction === 'pay' ? 'text-rose-500' : direction === 'borrow' ? 'text-amber-500' : 'text-brand-600 dark:text-brand-400'} />
+                  <span>{label}</span>
+                </button>
+              ))}
 
               {person.balance_cents !== 0 && (
                 <button
@@ -3795,7 +3806,7 @@ function PersonDetailPanel({
                 {!person.archived_at && (
                   <button
                     type="button"
-                    onClick={onMovement}
+                    onClick={() => onMovement()}
                     className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
                   >
                     <HandCoins size={13} />

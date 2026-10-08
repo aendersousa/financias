@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from 'react'
-import { ArrowLeftRight } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, CreditCard } from 'lucide-react'
 import type { LedgerTransaction } from '../lib/ledgerRepository'
 import { transactionFlow } from '../lib/transactionFlow'
 
@@ -45,12 +45,13 @@ export default function TransactionTable<T extends LedgerTransaction>({transacti
           const categories=[...new Set(entries.filter(entry=>entry.owner_type==='category').map(entry=>entry.account_name))].join(' · ')
           const amount=transaction.amount_cents??(entries.length?entries.reduce((sum,entry)=>sum+Math.max(0,entry.amount_cents),0):null)
           const cancelled=transaction.status==='cancelled'
-          const flow=transactionFlow(entries)
+          const flow=transactionFlow(entries)??(transaction.kind==='income'?'Entrada':transaction.kind==='expense'?'Saída':null)
           const expense=flow==='Saída'
           const income=flow==='Entrada'
+          const Icon=expense?ArrowUpRight:income?ArrowDownLeft:transaction.kind.startsWith('card_')?CreditCard:ArrowLeftRight
           const accountDetails=accounts.map((entry,index)=><div key={index} className="mb-1 last:mb-0">
             <span>{entry.account_name}</span>
-            {entry.owner_type==='financial_account'&&<span className={`block text-xs tabular-nums ${cancelled?'text-slate-500':entry.amount_cents>0?'text-brand-700 dark:text-brand-400':'text-red-600 dark:text-red-400'}`}>
+            {entry.owner_type==='financial_account'&&flow==='Transferência'&&<span className={`block text-xs tabular-nums ${cancelled?'text-slate-500':entry.amount_cents>0?'text-brand-700 dark:text-brand-400':'text-red-600 dark:text-red-400'}`}>
               {entry.amount_cents>0?'Entrada + ':'Saída − '}{money(Math.abs(entry.amount_cents))}
             </span>}
           </div>)
@@ -58,7 +59,7 @@ export default function TransactionTable<T extends LedgerTransaction>({transacti
             <tr className="table-row-hover transition-[background-color]">
               <td className="hidden px-4 py-2.5 text-slate-500 dark:text-slate-400 lg:table-cell">{date}</td>
               <td className="px-3 py-2.5 sm:px-4"><div className="flex items-start gap-2">
-                <ArrowLeftRight aria-hidden="true" size={14} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400"/>
+                <Icon aria-hidden="true" size={14} className={`mt-0.5 shrink-0 ${expense?'text-red-500':income?'text-brand-500':'text-slate-400'}`}/>
                 <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   {renderName?renderName(transaction):transaction.description}
                   {(transaction.kind==='card_purchase'||transaction.notes?.startsWith('Forma de pagamento: '))&&<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{transaction.kind==='card_purchase'?'Cartão de crédito':transaction.notes?.split('\n')[0]}</p>}
@@ -71,7 +72,7 @@ export default function TransactionTable<T extends LedgerTransaction>({transacti
               <td className="hidden px-4 py-2.5 text-slate-500 [overflow-wrap:anywhere] dark:text-slate-400 lg:table-cell">{accountDetails.length?accountDetails:'—'}</td>
               <td className="hidden px-4 py-2.5 text-slate-500 [overflow-wrap:anywhere] dark:text-slate-400 lg:table-cell">{categories||'—'}</td>
               <td className={`px-3 py-2.5 text-right font-semibold tabular-nums [overflow-wrap:anywhere] sm:px-4 ${cancelled?'text-slate-500 line-through':expense?'text-red-600 dark:text-red-400':income?'text-brand-700 dark:text-brand-400':''}`}>{amount===null?<span className="text-xs font-normal text-slate-500">Valor indisponível</span>:<>{expense?'− ':income?'+ ':''}{money(amount)}{flow&&<span className="mt-1 block text-xs font-normal">{flow}{cancelled?' (cancelada)':''}</span>}</>}</td>
-              <td className="hidden px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 sm:table-cell">{cancelled?'Cancelado':'Registrado'}</td>
+              <td className="hidden px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 sm:table-cell"><span className={`rounded-full px-2 py-1 ${cancelled?'bg-slate-100 dark:bg-slate-800':'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-400'}`}>{cancelled?'Cancelado':'Registrado'}</span></td>
               <td className="px-3 py-2.5 text-right sm:px-4">{renderActions?.(transaction)}</td>
             </tr>
             {editor&&<tr><td colSpan={7} className="p-3 sm:p-4">{editor}</td></tr>}

@@ -47,6 +47,13 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     icon: LayoutDashboard,
     description: 'Painel principal com visão geral, saldos e gráficos consolidados.'
   },
+  {
+    id: 'agenda',
+    label: 'Agenda',
+    group: 'Principal',
+    icon: CalendarDays,
+    description: 'Contas a pagar e a receber com vencimentos e compromissos futuros.'
+  },
   // Cadastre nesta ordem
   {
     id: 'accounts',
@@ -106,13 +113,6 @@ export const ALL_APP_PAGES: AppNavPage[] = [
     description: 'Importação e conciliação de extratos bancários em arquivos OFX.'
   },
   // Planejamento
-  {
-    id: 'agenda',
-    label: 'Agenda',
-    group: 'Planejamento',
-    icon: CalendarDays,
-    description: 'Contas a pagar e a receber com vencimentos e compromissos futuros.'
-  },
   {
     id: 'forecast',
     label: 'Previsão de saldo',

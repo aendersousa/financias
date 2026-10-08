@@ -31,11 +31,11 @@ export type Page =
 
 const items: { page: Page; label: string; icon: LucideIcon }[] = [
   { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { page: 'bills', label: 'Contas a Pagar/Receber', icon: Receipt },
   { page: 'transactions', label: 'Transações', icon: ArrowLeftRight },
   { page: 'accounts', label: 'Contas', icon: Wallet },
   { page: 'categories', label: 'Categorias', icon: Tags },
   { page: 'creditCards', label: 'Cartões', icon: CreditCard },
-  { page: 'bills', label: 'Contas a Pagar/Receber', icon: Receipt },
   { page: 'budget', label: 'Orçamento', icon: PiggyBank },
   { page: 'goals', label: 'Metas', icon: Goal }
 ]
