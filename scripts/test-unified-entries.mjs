@@ -27,6 +27,7 @@ function mockRpc(name,args) {
   if(name==='create_financial_account'){const id=randomUUID();mocked.accounts.push({id,name:args.p_name,ledger_account_id:randomUUID(),kind:args.p_kind,liquidity:'cash',balance_cents:args.p_opening_cents});return id}
   if(name==='create_category'){const id=randomUUID();mocked.categories.push({id,name:args.p_name,kind:args.p_kind,ledger_account_id:randomUUID(),parent_id:null});return id}
   if(name==='create_credit_card'){const id=randomUUID();mocked.cards.push({id,name:args.p_name,granted_cents:args.p_limit_cents,used_cents:0,free_cents:args.p_limit_cents});return id}
+  if(name==='foreign_currency_summary')return {currencies:[{code:'USD',minor_unit:2},{code:'EUR',minor_unit:2}],settings_version:1,iof_percent:null,purchases:[]};
   if(name==='workspace_snapshot')return structuredClone(mocked);
   if(name==='entry_preferences')return structuredClone(preferences);
   if(name==='suggest_entry_category')return [];
@@ -218,6 +219,23 @@ try {
     await page.keyboard.press('Escape');
   }
 
+  if(mock){
+    await page.getByRole('button',{name:'Novo lançamento',exact:true}).click();
+    await page.getByLabel('Operação',{exact:true}).selectOption('foreign_purchase');
+    const international=page.getByRole('dialog',{name:'Nova compra internacional',exact:true});
+    await expect(international).toBeVisible();
+    await expect(form).toHaveCount(0);
+    await expect(international.getByLabel('Moeda',{exact:true})).toBeEnabled();
+    await expect(international.getByLabel('Pagamento',{exact:true})).toBeVisible();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'International popup fits mobile');
+    await page.screenshot({path:'out/unified-entries-test/international-popup.png'});
+    await page.keyboard.press('Escape');
+    await expect(international).toHaveCount(0);
+    await page.getByRole('button',{name:'Internacionais',exact:true}).click();
+    await expect(page.getByRole('table',{name:'Lançamentos',exact:true})).not.toContainText('Movimentação 1');
+    await page.getByText('Compras internacionais · conversões e IOF',{exact:true}).click();
+    await expect(page.getByLabel('Mostrar compras',{exact:true})).toBeVisible();
+  }
   assert.deepEqual(exceptions,[]);
   console.log(`Passed unified entries (${mock?'component with mocked API':'local Supabase'}): one form, drafts, model save/reuse, transfers, offline expense/income, automatic sync exactly once, mobile and PWA shortcut.`);
 }catch(failure){await page?.screenshot({path:'out/unified-entries-test/failure.png',fullPage:true}).catch(()=>undefined);throw failure}

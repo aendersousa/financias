@@ -73,7 +73,7 @@ interface Contact {
   borrowed_cents?: number;
   interest_received_cents?: number;
   interest_paid_cents?: number;
-  reminders?: { id: string; title: string; due_on: string; completed_at: string | null }[];
+  reminders?: { id: string; title: string; due_on: string; completed_at: string | null; version?: number }[];
 }
 
 interface PersonDetail {
@@ -356,6 +356,30 @@ export default function LedgerPeople({
         ...(interest>0?{p_interest_cents:interest,p_category:text('interest_category')}: {})
       });
 
+      // Auto-complete Agenda reminder(s) when payment/settlement is made
+      if (movementDirection === 'pay' || movementDirection === 'receive') {
+        try {
+          const pendingReminders = targetContact?.reminders?.filter(r => !r.completed_at) || [];
+          if (pendingReminders.length > 0) {
+            const netDelta = movementDirection === 'pay' ? amount : -amount;
+            const newBal = (targetContact?.balance_cents ?? 0) + netDelta;
+            const isFullPayoff = newBal === 0;
+            const toComplete = isFullPayoff ? pendingReminders : [pendingReminders[0]];
+            for (const rem of toComplete) {
+              const remVer = rem.version ?? 1;
+              await ledgerRpc('complete_reminder', {
+                p_space: workspace.space.id,
+                p_commitment: rem.id,
+                p_version: remVer,
+                p_completed: true
+              }).catch(() => {});
+            }
+          }
+        } catch (autoErr) {
+          console.warn('Auto-complete reminder failed:', autoErr);
+        }
+      }
+
       await onChanged();
       await loadContacts();
       if (selectedPersonId === targetPerson) {
@@ -578,6 +602,17 @@ export default function LedgerPeople({
         setLoanStartDate(effectiveStartDate);
         setLoanFirstDueDate(calculateNextMonthlyDueDate(effectiveStartDate, workspace.space.today));
         setLoanElapsedMonthsOverride(null);
+
+        // Prefill from existing loan terms so previous configuration is preserved
+        const terms = getPersonLoanTerms(target, workspace.space.today);
+        if (terms.payMode) setLoanPayMode(terms.payMode);
+        if (terms.frequency) setLoanFrequency(terms.frequency);
+        if (terms.totalInstallments && terms.totalInstallments > 0) {
+          setLoanMonths(terms.totalInstallments);
+          setLoanInstallmentsCount(terms.totalInstallments);
+        }
+        if (terms.startDate) setLoanStartDate(terms.startDate);
+        if (terms.nextDueDate) setLoanFirstDueDate(terms.nextDueDate);
       }
     } else if (activeContacts.length > 0 && !loanPersonId) {
       const first = activeContacts[0];
@@ -744,7 +779,13 @@ export default function LedgerPeople({
               loanDirection === 'lend' ? 'Emprestado para' : 'Pegou emprestado de'
             } ${targetPerson.nickname}: Principal ${money(loanCalc.principalCents)} (${interestDesc}) | Devolução em ${loanCalc.count} ${freqLabel} (${conditionDesc}).`;
 
-        const updatedNotes = targetPerson.notes ? `${targetPerson.notes}\n\n${noteEntry}` : noteEntry;
+        // Replace previous loan notes instead of appending conflicting blocks
+        let baseNotes = targetPerson.notes || '';
+        baseNotes = baseNotes
+          .replace(/📌\s*\[Empréstimo[^\]]*\].*?(?=(?:\n\n📌|$))/gis, '')
+          .replace(/📌[^\n]*?\|\s*Devolução em[^\n]*/gis, '')
+          .trim();
+        const updatedNotes = baseNotes ? `${baseNotes}\n\n${noteEntry}` : noteEntry;
 
         await ledgerRpc('manage_person', {
           p_space: workspace.space.id,
@@ -756,8 +797,20 @@ export default function LedgerPeople({
         });
       }
 
-      // 3. If creating reminders, create Agenda commitments
+      // 3. If creating reminders, cancel old uncompleted ones first so they don't pile up, then create Agenda commitments
       if (loanCreateReminders && loanCalc.schedule.length > 0) {
+        if (targetPerson.reminders && targetPerson.reminders.length > 0) {
+          for (const rem of targetPerson.reminders) {
+            if (!rem.completed_at) {
+              await ledgerRpc('cancel_commitment', {
+                p_space: workspace.space.id,
+                p_commitment: rem.id,
+                p_version: rem.version ?? 1,
+                p_reason: 'Condições do empréstimo redefinidas'
+              }).catch(() => {});
+            }
+          }
+        }
         for (const item of loanCalc.schedule) {
           const title = loanPayMode === 'indefinite'
             ? `${loanDirection === 'lend' ? 'Cobrar' : 'Pagar'} juros de ${targetPerson.nickname}: ${money(loanCalc.monthlyInterestCents || item.amountCents)} (Vencimento mensal)`

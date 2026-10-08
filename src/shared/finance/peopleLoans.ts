@@ -355,106 +355,21 @@ export function getPersonLoanTerms(
     }
   }
 
-  let nextDueDate: string | null = null;
+  // 1. Parse terms from notes first (the authoritative agreement)
+  let notesPayMode: PeopleLoanPayMode | null = null;
+  let notesFrequency: PeopleLoanFrequency | null = null;
+  let notesTotalInstallments: number | null = null;
+  let notesInstallmentAmountCents: number | null = null;
 
-  // 1. Pending reminder in Agenda linked to the person
-  if (person.reminders && person.reminders.length > 0) {
-    const pendingReminder = person.reminders.find(r => !r.completed_at);
-    if (pendingReminder) {
-      nextDueDate = pendingReminder.due_on;
-    }
-  }
-
-  // 2. Extracted from notes if no reminder found
-  if (!nextDueDate && person.notes) {
-    const matchDue = person.notes.match(/(?:próximo vencimento em|pagamento único[^.\n]*?em|devolução em[^.\n]*?em)\s+(\d{2})\/(\d{2})\/(\d{4})/i);
-    if (matchDue) {
-      nextDueDate = `${matchDue[3]}-${matchDue[2]}-${matchDue[1]}`;
-    }
-  }
-
-  // 3. Fallback: if there is an active balance and known start date, calculate next monthly due date
-  if (!nextDueDate && startDate && person.balance_cents !== 0) {
-    nextDueDate = calculateNextMonthlyDueDate(startDate, todayIso);
-  }
-
-  // Installment parsing
-  let payMode: PeopleLoanPayMode | null = null;
-  let frequency: PeopleLoanFrequency | null = null;
-  let totalInstallments: number | null = null;
-  let currentInstallment: number | null = null;
-  let remainingInstallments: number | null = null;
-  let installmentAmountCents: number | null = null;
-
-  // A. Check reminders
-  if (person.reminders && person.reminders.length > 0) {
-    const installmentReminders: {
-      instNum: number;
-      total: number;
-      amountCents: number | null;
-      completed: boolean;
-      dueOn: string;
-    }[] = [];
-
-    let hasIndefiniteReminder = false;
-
-    for (const r of person.reminders) {
-      if (/vencimento mensal/i.test(r.title) || /juros de .*\(vencimento mensal\)/i.test(r.title)) {
-        hasIndefiniteReminder = true;
-      }
-      const match = r.title.match(/parcela\s+(\d+)\/(\d+)(?:\s*\((?:r\$\s*)?([\d.,]+)\))?/i);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        const tot = parseInt(match[2], 10);
-        let amt: number | null = null;
-        if (match[3]) {
-          try {
-            amt = parseBrlCents(match[3]);
-          } catch {
-            amt = null;
-          }
-        }
-        installmentReminders.push({
-          instNum: num,
-          total: tot,
-          amountCents: amt,
-          completed: Boolean(r.completed_at),
-          dueOn: r.due_on
-        });
-      }
-    }
-
-    if (hasIndefiniteReminder) {
-      payMode = 'indefinite';
-      frequency = 'monthly';
-    } else if (installmentReminders.length > 0) {
-      installmentReminders.sort((a, b) => a.instNum - b.instNum);
-      totalInstallments = installmentReminders[0].total || installmentReminders.length;
-      payMode = totalInstallments === 1 ? 'single' : 'installments';
-      frequency = 'monthly';
-
-      const pending = installmentReminders.filter(r => !r.completed);
-      remainingInstallments = pending.length;
-      currentInstallment = pending.length > 0 ? pending[0].instNum : totalInstallments;
-      installmentAmountCents = pending.length > 0 && pending[0].amountCents !== null
-        ? pending[0].amountCents
-        : (installmentReminders[0].amountCents ?? null);
-    }
-  }
-
-  // B. Check notes if payMode not established from reminders
-  if (!payMode && person.notes) {
+  if (person.notes) {
     const notes = person.notes;
-
     if (/(?:prazo indefinido|data indefinida|sem data final|juro[s]?[^\n]*correndo todo mês)/i.test(notes)
       || (!/\d+\s*(?:parcelas|x|meses|dias|semanas)/i.test(notes) && /(?:%|R\$\s*[\d.,]+)\s*\/(?:mês|mes|dia)/i.test(notes))) {
-      payMode = 'indefinite';
-      frequency = /(?:di[aá]ri[ao]|por dia)/i.test(notes) ? 'daily' : 'monthly';
+      notesPayMode = 'indefinite';
+      notesFrequency = /(?:di[aá]ri[ao]|por dia)/i.test(notes) ? 'daily' : 'monthly';
     } else if (/(?:pagamento [uú]nico|parcela [uú]nica|[aà] vista)/i.test(notes)) {
-      payMode = 'single';
-      totalInstallments = 1;
-      currentInstallment = 1;
-      remainingInstallments = 1;
+      notesPayMode = 'single';
+      notesTotalInstallments = 1;
     } else {
       const matchParcelas = notes.match(/(\d+)\s+parcelas(?:\s+(mensais|di[aá]rias|semanais))?(?:\s+de\s+~?(?:r\$\s*)?([\d.,]+))?/i);
       const matchX = notes.match(/(?:em|de\s+)?(\d+)\s*x(?:\s+de\s+~?(?:r\$\s*)?([\d.,]+))?/i);
@@ -480,22 +395,18 @@ export function getPersonLoanTerms(
       }
 
       if (count && count > 0) {
-        totalInstallments = count;
-        currentInstallment = 1;
-        remainingInstallments = count;
-        payMode = count === 1 ? 'single' : 'installments';
-
+        notesTotalInstallments = count;
+        notesPayMode = count === 1 ? 'single' : 'installments';
         if (freqStr) {
-          if (/di[aá]ri/i.test(freqStr) || /dias?/i.test(freqStr)) frequency = 'daily';
-          else if (/semana/i.test(freqStr)) frequency = 'weekly';
-          else frequency = 'monthly';
+          if (/di[aá]ri/i.test(freqStr) || /dias?/i.test(freqStr)) notesFrequency = 'daily';
+          else if (/semana/i.test(freqStr)) notesFrequency = 'weekly';
+          else notesFrequency = 'monthly';
         } else {
-          frequency = 'monthly';
+          notesFrequency = 'monthly';
         }
-
         if (amtStr) {
           try {
-            installmentAmountCents = parseBrlCents(amtStr);
+            notesInstallmentAmountCents = parseBrlCents(amtStr);
           } catch {
             // ignore
           }
@@ -504,9 +415,88 @@ export function getPersonLoanTerms(
     }
   }
 
+  // 2. Parse reminders linked to person
+  const parsedReminders: {
+    id?: string;
+    instNum: number;
+    total: number;
+    amountCents: number | null;
+    completed: boolean;
+    dueOn: string;
+  }[] = [];
+  let hasIndefiniteReminder = false;
+
+  if (person.reminders && person.reminders.length > 0) {
+    for (const r of person.reminders) {
+      if (/vencimento mensal/i.test(r.title) || /juros de .*\(vencimento mensal\)/i.test(r.title)) {
+        hasIndefiniteReminder = true;
+      }
+      const match = r.title.match(/parcela\s+(\d+)\/(\d+)(?:\s*\((?:r\$\s*)?([\d.,]+)\))?/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        const tot = parseInt(match[2], 10);
+        let amt: number | null = null;
+        if (match[3]) {
+          try {
+            amt = parseBrlCents(match[3]);
+          } catch {
+            amt = null;
+          }
+        }
+        parsedReminders.push({
+          id: r.id,
+          instNum: num,
+          total: tot,
+          amountCents: amt,
+          completed: Boolean(r.completed_at),
+          dueOn: r.due_on
+        });
+      }
+    }
+  }
+
+  // Filter reminders to only include the active series matching notes, ignoring orphan reminders
+  let validReminders = parsedReminders;
+  if (parsedReminders.length > 0) {
+    if (notesTotalInstallments) {
+      const matching = parsedReminders.filter(r => r.total === notesTotalInstallments);
+      if (matching.length > 0) validReminders = matching;
+    } else {
+      const maxTotal = Math.max(...parsedReminders.map(r => r.total));
+      const matching = parsedReminders.filter(r => r.total === maxTotal);
+      if (matching.length > 0) validReminders = matching;
+    }
+    validReminders.sort((a, b) => a.instNum - b.instNum || a.dueOn.localeCompare(b.dueOn));
+  }
+
+  let payMode: PeopleLoanPayMode | null = null;
+  let frequency: PeopleLoanFrequency | null = null;
+  let totalInstallments: number | null = null;
+  let currentInstallment: number | null = null;
+  let remainingInstallments: number | null = null;
+  let installmentAmountCents: number | null = null;
+
+  if (hasIndefiniteReminder || notesPayMode === 'indefinite') {
+    payMode = 'indefinite';
+    frequency = notesFrequency || 'monthly';
+  } else if (validReminders.length > 0) {
+    totalInstallments = notesTotalInstallments || validReminders[0].total || validReminders.length;
+    payMode = totalInstallments === 1 ? 'single' : 'installments';
+    frequency = notesFrequency || 'monthly';
+    installmentAmountCents = notesInstallmentAmountCents
+      || validReminders.find(r => r.amountCents !== null)?.amountCents
+      || null;
+  } else {
+    payMode = notesPayMode;
+    frequency = notesFrequency || (notesPayMode ? 'monthly' : null);
+    totalInstallments = notesTotalInstallments;
+    installmentAmountCents = notesInstallmentAmountCents;
+  }
+
   const readMoney = (match: RegExpMatchArray | null) => match ? parseBrlCents(match[1]) : null;
   const principalRemainingCents = Math.abs(person.balance_cents);
-  const isBorrowed = person.balance_cents < 0 || (person.balance_cents === 0 && /pegou emprestado de/i.test(person.notes ?? ''));
+  const isBorrowed = person.balance_cents < 0
+    || (person.balance_cents === 0 && (/pegou emprestado de/i.test(person.notes ?? '') || (person.paid_cents ?? 0) > (person.received_cents ?? 0)));
   const received = isBorrowed ? person.paid_cents ?? 0 : person.received_cents ?? 0;
   const interestPaid = isBorrowed ? person.interest_paid_cents ?? 0 : person.interest_received_cents ?? 0;
   const originalPrincipal = readMoney(person.notes?.match(/principal\s+R\$\s*([\d.,]+)/i) ?? null)
@@ -544,42 +534,80 @@ export function getPersonLoanTerms(
     const interest = person.balance_cents < 0 ? person.interest_paid_cents : person.interest_received_cents;
     installmentAmountCents = paid !== undefined
       ? Math.round((Math.abs(person.balance_cents) + paid - (interest ?? 0)) / totalInstallments)
-      : Math.round(Math.abs(person.balance_cents) / (remainingInstallments || totalInstallments));
+      : Math.round(Math.abs(person.balance_cents) / totalInstallments);
   }
 
-  // Payments update the installment progress even when Agenda reminders have not
-  // been manually checked off. Partial payments must keep the same due date.
-  if (payMode === 'installments' && totalInstallments && installmentAmountCents && installmentAmountCents > 0) {
-    const paidCents = person.balance_cents < 0 ? person.paid_cents : person.balance_cents > 0 ? person.received_cents : Math.max(person.paid_cents ?? 0, person.received_cents ?? 0);
-    const paidCount = Math.min(totalInstallments, Math.floor((paidCents ?? 0) / installmentAmountCents));
-    const completedCount = totalInstallments - (remainingInstallments ?? totalInstallments);
-    const settledCount = totalRemainingCents === 0 ? totalInstallments : Math.max(paidCount, completedCount);
-    remainingInstallments = totalInstallments - settledCount;
+  let nextDueDate: string | null = null;
+
+  if (totalRemainingCents === 0) {
+    nextDueDate = null;
+    remainingInstallments = 0;
+    currentInstallment = totalInstallments || 1;
+  } else if (payMode === 'installments' && totalInstallments && totalInstallments > 1) {
+    const baseAmount = installmentAmountCents || (totalInstallments > 0 ? Math.round(originalPrincipal / totalInstallments) : 0);
+    const paidCount = baseAmount > 0
+      ? Math.min(totalInstallments, Math.floor(received / baseAmount))
+      : 0;
+    const completedRemindersCount = validReminders.filter(r => r.completed).length;
+    const settledCount = Math.max(paidCount, completedRemindersCount);
+
+    remainingInstallments = Math.max(0, totalInstallments - settledCount);
     currentInstallment = Math.min(settledCount + 1, totalInstallments);
+
     if (remainingInstallments === 0) {
       nextDueDate = null;
-    } else if (paidCount > completedCount) {
-      const nextReminder = person.reminders?.find(r => {
-        const match = r.title.match(/parcela\s+(\d+)\/(\d+)/i);
-        return !r.completed_at && match && Number(match[1]) === currentInstallment && Number(match[2]) === totalInstallments;
-      });
-      if (nextReminder) {
-        nextDueDate = nextReminder.due_on;
-      } else if (!person.reminders?.length && startDate) {
+    } else {
+      // Find reminder for currentInstallment
+      const targetReminder = validReminders.find(r => r.instNum === currentInstallment);
+      if (targetReminder) {
+        nextDueDate = targetReminder.dueOn;
+      } else if (validReminders.length > 0) {
+        const base = validReminders[0].dueOn;
+        const offset = currentInstallment - validReminders[0].instNum;
+        nextDueDate = frequency === 'daily'
+          ? addDays(base, offset)
+          : frequency === 'weekly'
+            ? addDays(base, offset * 7)
+            : addMonthsClamped(base, offset);
+      } else if (startDate) {
         nextDueDate = frequency === 'daily'
           ? addDays(startDate, currentInstallment)
           : frequency === 'weekly'
             ? addDays(startDate, currentInstallment * 7)
             : addMonthsClamped(startDate, currentInstallment);
-      } else if (nextDueDate) {
+      } else {
         nextDueDate = frequency === 'daily'
-          ? addDays(nextDueDate, paidCount - completedCount)
+          ? addDays(todayIso, 1)
           : frequency === 'weekly'
-            ? addDays(nextDueDate, (paidCount - completedCount) * 7)
-            : addMonthsClamped(nextDueDate, paidCount - completedCount);
+            ? addDays(todayIso, 7)
+            : addMonthsClamped(todayIso, 1);
       }
     }
+  } else if (payMode === 'indefinite') {
+    const pendingReminder = person.reminders?.find(r => !r.completed_at);
+    if (pendingReminder) {
+      nextDueDate = pendingReminder.due_on;
+    } else if (startDate) {
+      nextDueDate = calculateNextMonthlyDueDate(startDate, todayIso);
+    }
+  } else {
+    // Single payment
+    remainingInstallments = totalRemainingCents === 0 ? 0 : 1;
+    currentInstallment = 1;
+    const pendingReminder = person.reminders?.find(r => !r.completed_at);
+    if (pendingReminder) {
+      nextDueDate = pendingReminder.due_on;
+    } else if (person.notes) {
+      const matchDue = person.notes.match(/(?:próximo vencimento em|pagamento único[^.\n]*?em|devolução em[^.\n]*?em)\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+      if (matchDue) {
+        nextDueDate = `${matchDue[3]}-${matchDue[2]}-${matchDue[1]}`;
+      }
+    }
+    if (!nextDueDate && startDate && person.balance_cents !== 0) {
+      nextDueDate = calculateNextMonthlyDueDate(startDate, todayIso);
+    }
   }
+
   if (totalRemainingCents === 0) nextDueDate = null;
   const isOverdue = !!(nextDueDate && nextDueDate < todayIso && totalRemainingCents !== 0);
   const isToday = !!(nextDueDate && nextDueDate === todayIso && totalRemainingCents !== 0);
@@ -589,7 +617,13 @@ export function getPersonLoanTerms(
   let installmentsText: string | null = null;
   let installmentDetail: string | null = null;
 
-  if (payMode === 'indefinite') {
+  if (totalRemainingCents === 0) {
+    installmentsBadge = 'Quitado';
+    installmentsText = totalInstallments && totalInstallments > 1
+      ? `${totalInstallments}x (${totalInstallments}/${totalInstallments} quitada)`
+      : 'Quitado';
+    installmentDetail = 'Quitado';
+  } else if (payMode === 'indefinite') {
     installmentsBadge = 'Indefinido';
     installmentsText = 'Prazo indefinido';
     installmentDetail = recurringInterestCents === null
@@ -597,12 +631,12 @@ export function getPersonLoanTerms(
       : `${formatBrlCents(recurringInterestCents)} ${frequency === 'daily' ? '/dia' : '/mês'}`;
   } else if (payMode === 'single' || totalInstallments === 1) {
     installmentsBadge = '1x';
-    installmentsText = '1x (à vista)';
-    installmentDetail = 'Pagamento único';
+    installmentsText = received > 0 ? '1x (parcialmente pago)' : '1x (à vista)';
+    installmentDetail = received > 0 ? `Restante: ${formatBrlCents(totalRemainingCents)}` : 'Pagamento único';
   } else if (payMode === 'installments' && totalInstallments && totalInstallments > 1) {
     installmentsBadge = `${totalInstallments}x`;
+
     const freqSuffix = frequency === 'daily' ? '/dia' : frequency === 'weekly' ? '/sem' : '/mês';
-    
     if (installmentAmountCents) {
       installmentsText = `${totalInstallments}x de ${formatBrlCents(installmentAmountCents)}`;
     } else {

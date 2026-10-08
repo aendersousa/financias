@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import LedgerForeignCurrency from './LedgerForeignCurrency'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Plus, Search, X, ArrowLeftRight, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react'
 import { transactionFlow } from '../lib/transactionFlow'
 import { parseBrlCents } from '../../../shared/finance/money'
@@ -32,6 +33,14 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [page,setPage]=useState(1)
   const [filtersOpen,setFiltersOpen]=useState(false)
+  const [foreignOpen,setForeignOpen]=useState(false)
+  const [foreignManagement,setForeignManagement]=useState(false)
+  const [foreignTransactions,setForeignTransactions]=useState<Record<string,string>>({})
+  useEffect(()=>{
+    let cancelled=false;setForeignTransactions({});if(!online)return;
+    void ledgerRpc<{purchases:{ledger_transaction_id:string;original_currency:string}[]}>('foreign_currency_summary',{p_space:workspace.space.id}).then(summary=>{if(!cancelled)setForeignTransactions(Object.fromEntries(summary.purchases.map(purchase=>[purchase.ledger_transaction_id,purchase.original_currency])))}).catch(()=>{});
+    return ()=>{cancelled=true};
+  },[workspace,online])
   const [entryOpen,setEntryOpen]=useState(()=>initialOpen||new URLSearchParams(location.search).get('quick')==='expense')
   const [flowFilter,setFlowFilter]=useState('all'),[accountFilter,setAccountFilter]=useState(''),[monthFilter,setMonthFilter]=useState('')
   const [entrySelection,setEntrySelection]=useState<EntrySelection|null>(null)
@@ -47,7 +56,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   const goals=reserves?.reserves.filter(reserve=>reserve.reserve_type==='goal'&&['active','achieved'].includes(reserve.status))??[]
   const visible=workspace.transactions.filter(transaction=>{
     const entries=transaction.entries??[],flow=transactionFlow(entries)
-    const matchesFlow=flowFilter==='all'||flowFilter==='income'&&(flow==='Entrada'||transaction.kind==='income')||flowFilter==='expense'&&(flow==='Saída'||transaction.kind==='expense')||flowFilter==='transfer'&&(flow==='Transferência'||transaction.kind==='transfer')||flowFilter==='card'&&transaction.kind.startsWith('card_')
+    const matchesFlow=flowFilter==='all'||flowFilter==='foreign'&&Boolean(foreignTransactions[transaction.id])||flowFilter==='income'&&(flow==='Entrada'||transaction.kind==='income')||flowFilter==='expense'&&(flow==='Saída'||transaction.kind==='expense')||flowFilter==='transfer'&&(flow==='Transferência'||transaction.kind==='transfer')||flowFilter==='card'&&transaction.kind.startsWith('card_')
     const account=workspace.accounts.find(item=>item.id===accountFilter),card=workspace.cards.find(item=>item.id===accountFilter)
     const matchesAccount=!accountFilter||entries.some(entry=>entry.account_name===(account?.name??card?.name)&&['financial_account','credit_card'].includes(entry.owner_type))
     const content=[transaction.description,transactionKindLabels[transaction.kind]??'',...entries.map(entry=>entry.account_name)].join(' ').toLocaleLowerCase('pt-BR')
@@ -179,7 +188,9 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
     } catch(failure) {setError(failure instanceof Error?failure.message:'Confira os campos e tente novamente.')}
     finally {pending.current=false;setBusy(false)}
   }
+  const closeForeign=useCallback(()=>setForeignOpen(false),[])
   return <div className="space-y-6">
+    {foreignOpen&&online&&<LedgerForeignCurrency mode="create" workspace={workspace} money={money} onChanged={onChanged} onClose={closeForeign}/>}
     {writer&&entryOpen&&<div role="dialog" aria-modal="true" aria-label="Novo lançamento" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4" onClick={event=>{if(event.target===event.currentTarget)closeEntry()}}>
     <form ref={formRef} aria-label="Adicionar lançamento" onSubmit={save} key={nonce} className="grid max-h-[92vh] w-full max-w-2xl grid-cols-1 gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2">
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800 sm:col-span-2"><div className="flex items-center gap-3"><span className="rounded-xl bg-brand-100 p-2.5 text-brand-600 dark:bg-brand-950 dark:text-brand-400"><ArrowLeftRight size={20}/></span><div><h2 className="font-semibold">{entrySelection?.draft?'Completar rascunho':entrySelection?.item?'Editar lançamento pendente':'Novo lançamento'}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Preencha os dados e confira antes de salvar.</p></div></div><button type="button" aria-label="Fechar lançamento" disabled={busy} onClick={closeEntry} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button></div>
@@ -187,7 +198,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       <fieldset disabled={busy} className="contents">
         {!online&&<p className="w-full sm:col-span-2 text-xs text-amber-700 dark:text-amber-300">Sem conexão: despesas e receitas à vista ou compras no cartão em 1x ficam salvas neste aparelho até o envio. Transferências, parcelamentos e metas precisam de internet.</p>}
         {entrySelection&&<div className="flex w-full sm:col-span-2 flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><span>{entrySelection.item?'Editando lançamento não enviado':entrySelection.draft?'Completando rascunho':'Modelo preenchido. Confira os campos antes de adicionar.'}</span><button type="button" onClick={resetEntry} className="font-semibold text-brand-700 dark:text-brand-300">Limpar formulário</button></div>}
-        <label className={labelClass}><span className="field-label">Operação</span><select aria-label="Operação" value={kind} onChange={event=>{setKind(event.target.value as Kind);setSuggestions([]);suggestionRequest.current++}} className={input}><option value="expense">Despesa</option><option value="income">Receita</option><option value="transfer" disabled={!online||Boolean(entrySelection?.item)}>Transferência</option><option value="card_purchase">Compra no cartão</option><option value="card_payment" disabled={!online||Boolean(entrySelection?.item)}>Pagamento do cartão</option></select></label>
+        <label className={labelClass}><span className="field-label">Operação</span><select aria-label="Operação" value={kind} onChange={event=>{if(event.target.value==='foreign_purchase'){setEntryOpen(false);setForeignOpen(true);return}setKind(event.target.value as Kind);setSuggestions([]);suggestionRequest.current++}} className={input}><option value="expense">Despesa</option><option value="income">Receita</option><option value="transfer" disabled={!online||Boolean(entrySelection?.item)}>Transferência</option><option value="card_purchase">Compra no cartão</option><option value="card_payment" disabled={!online||Boolean(entrySelection?.item)}>Pagamento do cartão</option><option value="foreign_purchase" disabled={!online||Boolean(entrySelection)}>Compra internacional</option></select></label>
         {!['transfer','card_payment'].includes(kind)&&<label className="flex w-full flex-col gap-1.5"><span className="field-label">Nome ou descrição</span><input name="name" required maxLength={100} defaultValue={preset?.description??''} onBlur={event=>void suggest(event.target.value)} placeholder="Ex: Mercado" className={input}/></label>}
         {['expense','income','card_purchase'].includes(kind)&&<label className="flex w-full flex-col gap-1.5"><span className="field-label">Forma de pagamento</span><select aria-label="Forma de pagamento" value={kind==='card_purchase'?'credit_card':paymentMethod==='credit_card'?'':paymentMethod} onChange={event=>{const method=event.target.value as PaymentMethod|'';setPaymentMethod(method);if(method==='credit_card')setKind('card_purchase');else if(kind==='card_purchase')setKind('expense')}} className={input}><option value="">Não informado</option>{Object.entries(paymentMethods).filter(([method])=>kind!=='income'||method!=='credit_card').map(([method,label])=><option key={method} value={method}>{label}</option>)}</select></label>}
         {kind!=='card_purchase'&&<label className={labelClass}><span className="field-label">Conta</span><select aria-label="Conta" key={'account-'+kind} name="account" required defaultValue={preset?.accountId??''} className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
@@ -213,7 +224,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
     <div className="px-5 pb-4">    <LedgerEntryManagement workspace={workspace} money={money} onChanged={onChanged} onUse={useEntry} refreshKey={preferencesRevision} disabled={busy}/></div>
     <div className="space-y-3 border-t border-slate-200 bg-slate-50/50 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/20">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-wrap gap-1" aria-label="Filtrar movimentações">{[['all','Todos'],['income','Entradas'],['expense','Saídas'],['transfer','Transferências'],['card','Cartão']].map(([value,label])=><button type="button" key={value} aria-pressed={flowFilter===value} onClick={()=>setFlowFilter(value)} className={`rounded-lg px-3 py-2 text-sm font-medium ${flowFilter===value?'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300':'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}>{label}</button>)}</div>
+      <div className="flex flex-wrap gap-1" aria-label="Filtrar movimentações">{[['all','Todos'],['income','Entradas'],['expense','Saídas'],['transfer','Transferências'],['card','Cartão'],['foreign','Internacionais']].map(([value,label])=><button type="button" key={value} aria-pressed={flowFilter===value} onClick={()=>setFlowFilter(value)} className={`rounded-lg px-3 py-2 text-sm font-medium ${flowFilter===value?'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300':'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}>{label}</button>)}</div>
       <button type="button" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"><SlidersHorizontal size={14}/>Filtros{(accountFilter||monthFilter||status!=='all')&&<span className="h-1.5 w-1.5 rounded-full bg-brand-500"/>}</button>
     </div>
       <label className={labelClass}><div className="relative"><Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Buscar lançamento" value={search} onChange={event=>{setSearch(event.target.value);setSelected(null);setPage(1)}} placeholder="Descrição, conta ou categoria" className={input+' pl-9'}/></div></label>
@@ -226,7 +237,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
     {(search||flowFilter!=='all'||accountFilter||monthFilter||status!=='all')&&<button type="button" onClick={()=>{setSearch('');setFlowFilter('all');setAccountFilter('');setMonthFilter('');setStatus('all');setPage(1);setSelected(null)}} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-brand-600"><X size={13}/>Limpar filtros</button>}
     </div>
     <TransactionTable transactions={pageTransactions} money={money}
-      renderName={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Abrir lançamento '+transaction.description} className="block max-w-full text-left [overflow-wrap:anywhere]">{transaction.description}</button>:transaction.description}
+      renderName={transaction=><><span>{foreignTransactions[transaction.id]&&<span className="mr-2 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] text-slate-500 dark:border-slate-700 dark:text-slate-400">Internacional · {foreignTransactions[transaction.id]}</span>}</span>{online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Abrir lançamento '+transaction.description} className="block max-w-full text-left [overflow-wrap:anywhere]">{transaction.description}</button>:transaction.description}</>}
       renderActions={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Ver detalhes de '+transaction.description} aria-expanded={selected===transaction.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>:null}
       renderEditor={transaction=>online&&selected===transaction.id?<LedgerTransactionActions key={transaction.id} workspace={workspace} transactionId={transaction.id} money={money} onChanged={onChanged} onClose={()=>setSelected(null)} mutationPending={pending} externalBusy={busy} onBusyChange={setBusy}/>:null}/>
     <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
@@ -238,5 +249,6 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
       </nav>
     </div>
     </section>
+    {online&&<details className="card p-4" onToggle={event=>setForeignManagement(event.currentTarget.open)}><summary className="cursor-pointer text-sm font-medium">Compras internacionais · conversões e IOF</summary><div className="mt-4">{foreignManagement&&<LedgerForeignCurrency mode="manage" workspace={workspace} money={money} onChanged={onChanged}/>}</div></details>}
   </div>
 }

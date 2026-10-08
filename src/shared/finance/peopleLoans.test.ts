@@ -466,4 +466,49 @@ describe('peopleLoans calculations', () => {
     expect(terms.installmentsBadge).toBe('3x');
     expect(terms.installmentsText).toBe('3x de R$ 500,00');
   });
+
+  it('correctly handles Aender scenario: advances to next installment even with orphan 1/1 reminder', () => {
+    const aender = {
+      opening_on: '2026-10-07',
+      balance_cents: -12000,
+      paid_cents: 12000,
+      notes: '📌 Shampoo e Condicionador Wella: R$ 240,00 (sem juros adicionais) | Devolução em 2 meses (2 parcelas mensais de R$ 120,00 (total R$ 240,00)).',
+      reminders: [
+        { id: 'rem-orphan', title: 'Pagar Aender: Parcela 1/1 (R$ 240,00)', due_on: '2026-10-07', completed_at: null },
+        { id: 'rem-1', title: 'Pagar Aender: Parcela 1/2 (R$ 120,00)', due_on: '2026-11-08', completed_at: null },
+        { id: 'rem-2', title: 'Pagar Aender: Parcela 2/2 (R$ 120,00)', due_on: '2026-12-08', completed_at: null }
+      ]
+    };
+
+    const terms = getPersonLoanTerms(aender, '2026-10-08');
+
+    expect(terms.payMode).toBe('installments');
+    expect(terms.totalInstallments).toBe(2);
+    expect(terms.currentInstallment).toBe(2);
+    expect(terms.remainingInstallments).toBe(1);
+    expect(terms.installmentDetail).toBe('Parcela 2 de 2');
+    expect(terms.nextDueDate).toBe('2026-12-08');
+    expect(terms.isOverdue).toBe(false);
+  });
+
+  it('marks loan as Quitado when all installments are paid', () => {
+    const aenderSettled = {
+      opening_on: '2026-10-07',
+      balance_cents: 0,
+      paid_cents: 24000,
+      notes: '📌 Shampoo e Condicionador Wella: R$ 240,00 (sem juros adicionais) | Devolução em 2 meses (2 parcelas mensais de R$ 120,00 (total R$ 240,00)).',
+      reminders: [
+        { id: 'rem-1', title: 'Pagar Aender: Parcela 1/2 (R$ 120,00)', due_on: '2026-11-08', completed_at: null },
+        { id: 'rem-2', title: 'Pagar Aender: Parcela 2/2 (R$ 120,00)', due_on: '2026-12-08', completed_at: null }
+      ]
+    };
+
+    const terms = getPersonLoanTerms(aenderSettled, '2026-10-08');
+
+    expect(terms.remainingInstallments).toBe(0);
+    expect(terms.nextDueDate).toBeNull();
+    expect(terms.isOverdue).toBe(false);
+    expect(terms.installmentsBadge).toBe('Quitado');
+    expect(terms.installmentDetail).toBe('Quitado');
+  });
 });

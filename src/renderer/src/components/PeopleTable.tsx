@@ -154,6 +154,11 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                       <span>{displayDate(loanDates.nextDueDate)}</span>
                     </span>
                   )
+                ) : !hasDebt && loanTerms.totalInstallments && loanTerms.totalInstallments > 0 ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                    <Check size={13} className="shrink-0" />
+                    <span>Quitado</span>
+                  </span>
                 ) : (
                   <span className="text-slate-300 dark:text-slate-600">—</span>
                 )}
@@ -221,6 +226,11 @@ export default function PeopleTable<T extends PersonItem>({ people, money, today
                   ) : (
                     <span className="text-slate-300 dark:text-slate-600">—</span>
                   )
+                ) : loanTerms.totalInstallments && loanTerms.totalInstallments > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    <Check size={11} className="shrink-0" />
+                    <span>Quitado {loanTerms.totalInstallments > 1 ? `(${loanTerms.totalInstallments}x)` : ''}</span>
+                  </span>
                 ) : (
                   <span className="text-slate-300 dark:text-slate-600">—</span>
                 )}

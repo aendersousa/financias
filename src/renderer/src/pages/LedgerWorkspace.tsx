@@ -44,7 +44,7 @@ const navigation = [
   { id: 'people', label: 'Pessoas', icon: Users },
   { id: 'sharing', label: 'Compartilhamento', icon: Users },
   { id: 'transactions', label: 'Lançamentos', icon: ArrowLeftRight },
-  { id: 'foreign_currency', label: 'Compras internacionais', icon: ArrowLeftRight },
+
   { id: 'imports', label: 'Importar extrato', icon: ArrowLeftRight },
   { id: 'forecast', label: 'Previsão de saldo', icon: CalendarDays },
   { id: 'budgets', label: 'Orçamentos', icon: Wallet },

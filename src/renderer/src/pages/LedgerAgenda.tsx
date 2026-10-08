@@ -1,3 +1,5 @@
+import { syncPeopleAgenda } from '../../../shared/finance/agendaPeople';
+import type { getPersonLoanTerms } from '../../../shared/finance/peopleLoans';
 import {
   cloneElement,
   Fragment,
@@ -28,6 +30,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Eye,
+  Search,
   X
 } from 'lucide-react';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
@@ -36,6 +39,7 @@ import CurrencyInput from '../components/CurrencyInput';
 
 interface AgendaItem {
   id: string;
+  person_id?: string | null;
   type: string;
   title: string;
   on: string;
@@ -111,8 +115,23 @@ export default function LedgerAgenda({
   const [month, setMonth] = useState(workspace.space.today.slice(0, 7));
   const [calendar, setCalendar] = useState<Calendar | null>(null);
   const [day, setDay] = useState('');
+  const [popupDay,setPopupDay]=useState('');
+  const dayDialog=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!popupDay)return;
+    const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
+    document.body.style.overflow='hidden';dayDialog.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    const handle=(event:KeyboardEvent)=>{
+      if(event.key==='Escape')setPopupDay('');
+      if(event.key!=='Tab')return;
+      const buttons=Array.from(dayDialog.current?.querySelectorAll<HTMLButtonElement>('button')??[]),first=buttons[0],last=buttons.at(-1);
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+    };
+    document.addEventListener('keydown',handle);
+    return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',handle);previous?.focus();};
+  },[popupDay]);
   const [status, setStatus] = useState('open');
-  const [showCalendar, setShowCalendar] = useState(false);
   const [creationKind, setCreationKind] = useState('one_off');
   const [direction, setDirection] = useState('outflow');
   const [creationMethod, setCreationMethod] = useState('account');
@@ -123,30 +142,60 @@ export default function LedgerAgenda({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [showAddForm, setShowAddForm] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [search,setSearch] = useState('');
+  const [flow,setFlow] = useState('all');
+  const creationDialog = useRef<HTMLDivElement>(null);
 
   const pending = useRef(false);
   const paymentRequests = useRef(new Map<string, string>());
   const canWrite = workspace.role !== 'viewer';
 
-  async function load() {
-    setCalendar(await ledgerRpc<Calendar>('agenda_month', { p_space: workspace.space.id, p_month: `${month}-01` }));
+  useEffect(() => {
+    if (!showAddForm) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    creationDialog.current?.querySelector<HTMLInputElement>('input:not([type="hidden"])')?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !pending.current) setShowAddForm(false);
+      if (event.key !== 'Tab') return;
+      const elements = [...(creationDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)') ?? [])].filter(element => element.getClientRects().length);
+      const first=elements[0],last=elements.at(-1);
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+    };
+    document.addEventListener('keydown',keydown);
+    return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',keydown);previousFocus?.focus();};
+  },[showAddForm]);
+
+  async function fetchCalendar():Promise<Calendar>{
+    const [next,contacts]=await Promise.all([
+      ledgerRpc<Calendar>('agenda_month',{p_space:workspace.space.id,p_month:`${month}-01`}),
+      ledgerRpc<{people:(Parameters<typeof getPersonLoanTerms>[0]&{id:string})[]}>('people_management_summary',{p_space:workspace.space.id,p_include_archived:true})
+    ]);
+    return {...next,items:syncPeopleAgenda(next.items,contacts.people,next.today)};
   }
+  async function load(){setCalendar(await fetchCalendar());}
 
   useEffect(() => {
-    let active = true;
+    let active = true,loading=false;
     setCalendar(previous => (previous?.month === `${month}-01` ? previous : null));
-    void ledgerRpc<Calendar>('agenda_month', { p_space: workspace.space.id, p_month: `${month}-01` })
-      .then(next => {
-        if (active) setCalendar(next);
-      })
-      .catch(failure => {
-        if (active) setError(failure.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [workspace, month]);
+    async function refreshCalendar(){
+      if(loading||pending.current||!navigator.onLine||document.visibilityState==='hidden')return;
+      loading=true;
+      try{
+        const next=await fetchCalendar();
+        if(active)setCalendar(next);
+      }catch(failure){if(active)setError(failure instanceof Error?failure.message:'Falha ao atualizar a Agenda.');}
+      finally{loading=false;}
+    }
+    void refreshCalendar();
+    const refresh=()=>{void refreshCalendar();};
+    const interval=window.setInterval(refresh,30000);
+    window.addEventListener('focus',refresh);window.addEventListener('online',refresh);document.addEventListener('visibilitychange',refresh);
+    return()=>{active=false;window.clearInterval(interval);window.removeEventListener('focus',refresh);window.removeEventListener('online',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[workspace,month]);
 
   async function run(name: string, args: Record<string, unknown>, onSaved?: () => void) {
     if (pending.current) return;
@@ -223,6 +272,7 @@ export default function LedgerAgenda({
           setCreationKind('one_off');
           setDirection('outflow');
           setCreationMethod('account');
+          setShowAddForm(false);
         }
       );
     } catch (failure) {
@@ -301,8 +351,6 @@ export default function LedgerAgenda({
   const allItems = calendar?.items ?? [];
   const activeItems = allItems.filter(item => item.settlement_status !== 'cancelled');
 
-  let pendingOutflowCents = 0;
-  let pendingInflowCents = 0;
   let overdueCount = 0;
   let pendingCount = 0;
   let settledCount = 0;
@@ -317,17 +365,17 @@ export default function LedgerAgenda({
     } else if (isPending) {
       pendingCount++;
       if (isOverdue) overdueCount++;
-      if (item.direction === 'outflow') pendingOutflowCents += rem;
-      else if (item.direction === 'inflow') pendingInflowCents += rem;
     }
   }
 
   // Filter items
   const items = (calendar?.items.filter(item => {
+    if(search&&!`${item.title} ${item.category_name??''} ${item.payment_name??''}`.toLocaleLowerCase('pt-BR').includes(search.trim().toLocaleLowerCase('pt-BR')))return false;
+    if(flow!=='all'&&(flow==='reminder'?item.type!=='reminder':item.direction!==flow))return false;
     if (day && item.on !== day) return false;
     if (status === 'all') return true;
     if (status === 'settled') return item.settlement_status === 'settled';
-    if (status === 'overdue') return ['pending', 'partial'].includes(item.settlement_status) && item.on < workspace.space.today;
+    if (status === 'overdue') return ['pending', 'partial', 'scheduled'].includes(item.settlement_status) && item.on < workspace.space.today;
     return ['pending', 'partial', 'scheduled'].includes(item.settlement_status);
   }) ?? []).sort((a, b) => a.on.localeCompare(b.on));
 
@@ -521,7 +569,7 @@ export default function LedgerAgenda({
   return (
     <div className="min-w-0 space-y-6">
       {/* ALERTS */}
-      {error && (
+      {error && !showAddForm && (
         <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50/90 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
           <AlertCircle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <span>{error}</span>
@@ -534,92 +582,37 @@ export default function LedgerAgenda({
         </div>
       )}
 
-      {/* TOP SUMMARY CARDS */}
-      <section aria-label="Resumo do mês" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* A PAGAR */}
-        <div className="relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50/60 to-white p-4.5 shadow-sm dark:border-rose-900/40 dark:from-rose-950/20 dark:to-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">A Pagar</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
-              <TrendingDown size={18} />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {money(pendingOutflowCents)}
-          </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Saídas pendentes neste mês
-          </p>
-        </div>
+      {canWrite && <div className="flex justify-end"><button type="button" onClick={()=>{setError('');setShowAddForm(true);}} className={primary+' inline-flex items-center gap-2'}><Plus size={16}/>Novo compromisso</button></div>}
 
-        {/* A RECEBER */}
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/60 to-white p-4.5 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">A Receber</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
-              <TrendingUp size={18} />
-            </div>
+      {popupDay&&<div role="dialog" aria-modal="true" aria-label={`Compromissos de ${dateLabel(popupDay)}`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs" onClick={event=>{if(event.target===event.currentTarget)setPopupDay('');}}>
+        <div ref={dayDialog} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800"><div className="flex items-center gap-3"><CalendarDays className="text-brand-500"/><div><h2 className="font-semibold">Compromissos de {dateLabel(popupDay)}</h2><p className="mt-1 text-xs text-slate-500">Todos os itens registrados para este dia</p></div></div><button type="button" aria-label="Fechar compromissos do dia" onClick={()=>setPopupDay('')} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button></div>
+          <div className="space-y-3">
+            {(calendar?.items??[]).filter(item=>item.on===popupDay).map(item=><article key={itemKey(item)} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold [overflow-wrap:anywhere]">{item.title}</h3>{item.remaining_cents!==null&&<span className={'font-semibold tabular-nums '+(item.direction==='inflow'?'text-brand-600 dark:text-brand-400':item.direction==='outflow'?'text-red-500':'')}>{money(item.remaining_cents)}</span>}</div>
+              <p className="mt-1 text-xs text-slate-500">{itemTypes[item.type]??item.type} · {statuses[item.settlement_status]??item.settlement_status}{item.direction==='inflow'?' · A receber':item.direction==='outflow'?' · A pagar':''}</p>
+              {(item.payment_name||item.category_name)&&<p className="mt-3 text-sm text-slate-500">{[item.payment_name,item.category_name].filter(Boolean).join(' · ')}</p>}
+              {Boolean(item.paid_cents)&&<p className="mt-2 text-xs text-slate-500">Já pago: {money(item.paid_cents??0)}</p>}
+              {item.notes&&<p className="mt-3 whitespace-pre-wrap text-sm text-slate-500 [overflow-wrap:anywhere]">{item.notes}</p>}
+            </article>)}
+            {!(calendar?.items??[]).some(item=>item.on===popupDay)&&<p className="py-6 text-center text-sm text-slate-500">Nenhum compromisso registrado para este dia.</p>}
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {money(pendingInflowCents)}
-          </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Entradas previstas neste mês
-          </p>
+          <div className="mt-4 flex justify-end border-t border-slate-200 pt-4 dark:border-slate-800"><button type="button" onClick={()=>setPopupDay('')} className={primary}>Fechar</button></div>
         </div>
-
-        {/* BALANÇO PREVISTO */}
-        <div className="relative overflow-hidden rounded-2xl border border-sky-200/60 bg-gradient-to-br from-sky-50/60 to-white p-4.5 shadow-sm dark:border-sky-900/40 dark:from-sky-950/20 dark:to-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">Balanço Previsto</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300">
-              <Wallet size={18} />
-            </div>
-          </div>
-          <p className={`mt-2 text-2xl font-bold tracking-tight ${pendingInflowCents - pendingOutflowCents >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {money(pendingInflowCents - pendingOutflowCents)}
-          </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Entradas menos saídas do mês
-          </p>
-        </div>
-
-        {/* SITUAÇÃO / STATUS */}
-        <div className={`relative overflow-hidden rounded-2xl border p-4.5 shadow-sm ${
-          overdueCount > 0
-            ? 'border-red-300/80 bg-gradient-to-br from-red-50/80 to-white dark:border-red-900/60 dark:from-red-950/30 dark:to-slate-900'
-            : 'border-slate-200/60 bg-gradient-to-br from-slate-50/60 to-white dark:border-slate-800 dark:from-slate-900/40 dark:to-slate-900'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className={`text-xs font-semibold uppercase tracking-wider ${overdueCount > 0 ? 'text-red-700 dark:text-red-300' : 'text-slate-600 dark:text-slate-400'}`}>
-              Situação
-            </span>
-            <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${
-              overdueCount > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300'
-            }`}>
-              {overdueCount > 0 ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {overdueCount > 0 ? `${overdueCount} vencida${overdueCount > 1 ? 's' : ''}` : 'Tudo em dia'}
-          </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {pendingCount} compromisso{pendingCount !== 1 ? 's' : ''} a vencer no mês
-          </p>
-        </div>
-      </section>
+      </div>}
 
       {/* CREATION FORM ("Adicionar item à Agenda") */}
-      {canWrite && (
-        <section aria-label="Novo item" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-            <div className="flex items-center gap-2.5">
+      {canWrite && showAddForm && (
+        <div ref={creationDialog} role="dialog" aria-modal="true" aria-label="Novo compromisso" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs" onClick={event=>{if(event.target===event.currentTarget&&!busy)setShowAddForm(false);}}>
+        <section aria-label="Novo item" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+            <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:bg-brand-400/10 dark:text-brand-300">
                 <Plus size={18} />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                  Novo item na Agenda
+                  Novo compromisso
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Agende compromissos, contas futuras ou lembretes de cobrança
@@ -627,6 +620,10 @@ export default function LedgerAgenda({
               </div>
             </div>
 
+            <button type="button" aria-label="Fechar novo compromisso" disabled={busy} onClick={()=>setShowAddForm(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button>
+          </div>
+          {error&&<p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
+          <div className="mt-4">
             {/* SEGMENTED KIND SELECTOR */}
             <div className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
               <button
@@ -672,7 +669,7 @@ export default function LedgerAgenda({
           </div>
 
           <form aria-label="Adicionar item à Agenda" onSubmit={event => void create(event)} className="mt-4">
-            <fieldset disabled={busy} className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+            <fieldset disabled={busy} className="grid gap-3.5 sm:grid-cols-2">
               {/* HIDDEN INPUT FOR TEST SELECTION */}
               <div className="hidden">
                 {field(
@@ -825,7 +822,7 @@ export default function LedgerAgenda({
                 </>
               )}
 
-              <div className="flex items-end sm:col-span-2 lg:col-span-4 justify-end pt-2">
+              <div className="flex items-end gap-3 sm:col-span-2 justify-end border-t border-slate-200 pt-4 dark:border-slate-800"><button type="button" onClick={()=>setShowAddForm(false)} className="px-3 py-2 text-sm text-slate-500">Cancelar</button>
                 <button className={`${primary} flex items-center justify-center gap-2 px-6 py-2.5`}>
                   <Plus size={16} />
                   <span>{busy ? 'Salvando…' : 'Adicionar item'}</span>
@@ -833,11 +830,12 @@ export default function LedgerAgenda({
               </div>
             </fieldset>
           </form>
-        </section>
+        </section></div>
       )}
 
+      <div className="card overflow-hidden">
       {/* FILTER & MONTH CONTROL BAR */}
-      <section aria-label="Filtros da Agenda" className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section aria-label="Filtros da Agenda" className="space-y-4 border-b border-slate-200 p-4 sm:p-5 dark:border-slate-800">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           {/* MONTH NAVIGATOR */}
           <div className="flex items-center gap-2">
@@ -904,20 +902,6 @@ export default function LedgerAgenda({
 
           {/* VIEW SWITCHER & STATUS FILTERS */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* TOGGLE CALENDAR */}
-            <button
-              type="button"
-              onClick={() => setShowCalendar(prev => !prev)}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-                showCalendar
-                  ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-950/60 dark:text-brand-300'
-                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300'
-              }`}
-            >
-              <CalendarIcon size={14} />
-              <span>{showCalendar ? 'Ocultar calendário' : 'Ver calendário mensal'}</span>
-            </button>
-
             {/* STATUS SELECTOR PILLS */}
             <div className="flex rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
               <button
@@ -1022,8 +1006,9 @@ export default function LedgerAgenda({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3"><label className="relative w-full sm:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Buscar na Agenda" value={search} onChange={event=>{setSearch(event.target.value);setDetails(null);setAction(null);}} placeholder="Buscar compromisso, conta ou categoria" className={input+' pl-9'}/></label><div className="flex flex-wrap gap-1">{[['all','Todos os tipos'],['outflow','A pagar'],['inflow','A receber'],['reminder','Lembretes']].map(([value,label])=><button type="button" key={value} aria-pressed={flow===value} onClick={()=>{setFlow(value);setDetails(null);setAction(null);}} className={'rounded-lg px-3 py-2 text-xs font-medium '+(flow===value?'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300':'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800')}>{label}</button>)}</div></div>
         {/* ELEGANT MONTHLY CALENDAR GRID */}
-        {showCalendar && (
+        {(
           <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
             <div className="grid grid-cols-7 gap-1.5 text-center text-xs">
               {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(lbl => (
@@ -1051,6 +1036,8 @@ export default function LedgerAgenda({
                     type="button"
                     aria-label={`${idx + 1}: ${rows.length} itens`}
                     aria-pressed={isSelected}
+                    onDoubleClick={()=>{setDay(on);setPopupDay(on);}}
+                    onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();setDay(on);setPopupDay(on);}}}
                     onClick={() => {
                       setDay(isSelected ? '' : on);
                       setAction(null);
@@ -1089,14 +1076,14 @@ export default function LedgerAgenda({
               })}
             </div>
             <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-              O calendário reúne compromissos a pagar, a receber, lembretes e faturas. Clique em qualquer dia para filtrar.
+              O calendário reúne compromissos a pagar, a receber, lembretes e faturas. Clique em qualquer dia para filtrar. Dê dois cliques para ver os compromissos do dia.
             </p>
           </div>
         )}
       </section>
 
       {/* ITEMS TABLE / LIST ("Itens da Agenda") */}
-      <div className="table-shell overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5 dark:border-slate-800 dark:bg-slate-800/40">
           <div className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-slate-500 dark:text-slate-400" />
@@ -1348,7 +1335,7 @@ export default function LedgerAgenda({
                       {!calendar ? 'Carregando Agenda…' : 'Nenhum item para este período e situação.'}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500">
-                      Adicione um novo compromisso no formulário acima ou mude o filtro para visualizar outros meses.
+                      Use Novo compromisso ou ajuste os filtros para encontrar outros itens.
                     </p>
                   </div>
                 </td>
@@ -1356,6 +1343,7 @@ export default function LedgerAgenda({
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );
