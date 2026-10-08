@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Plus, Search, X, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, X, ArrowLeftRight, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react'
 import { transactionFlow } from '../lib/transactionFlow'
 import { parseBrlCents } from '../../../shared/finance/money'
 import { todayInSpace } from '../../../shared/finance/calendar'
@@ -31,6 +31,7 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
   const [selected,setSelected]=useState<string|null>(null),[search,setSearch]=useState(''),[status,setStatus]=useState('all')
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [page,setPage]=useState(1)
+  const [filtersOpen,setFiltersOpen]=useState(false)
   const [entryOpen,setEntryOpen]=useState(()=>initialOpen||new URLSearchParams(location.search).get('quick')==='expense')
   const [flowFilter,setFlowFilter]=useState('all'),[accountFilter,setAccountFilter]=useState(''),[monthFilter,setMonthFilter]=useState('')
   const [entrySelection,setEntrySelection]=useState<EntrySelection|null>(null)
@@ -179,17 +180,6 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
     finally {pending.current=false;setBusy(false)}
   }
   return <div className="space-y-6">
-    <section className="flex flex-wrap items-center justify-between gap-4">
-      <div><h2 className="text-lg font-semibold">Seu histórico de movimentações</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Veja o que entrou, o que saiu e de qual conta.</p></div>
-      {writer&&<button type="button" onClick={()=>newEntry()} className="btn-primary inline-flex items-center gap-2"><Plus size={17}/>Novo lançamento</button>}
-    </section>
-    {writer&&<div className="flex flex-wrap gap-2" aria-label="Atalhos de lançamento">{([
-      {kind:'expense',label:'Despesa',Icon:ArrowUpRight,color:'text-rose-500'},
-      {kind:'income',label:'Receita',Icon:ArrowDownLeft,color:'text-brand-500'},
-      {kind:'transfer',label:'Transferência',Icon:ArrowLeftRight,color:'text-slate-400'},
-      {kind:'card_purchase',label:'Compra no cartão',Icon:CreditCard,color:'text-violet-400'},
-      {kind:'card_payment',label:'Pagar fatura',Icon:CreditCard,color:'text-slate-400'}
-    ] as const).map(action=><button key={action.kind} type="button" disabled={busy||!online&&['transfer','card_payment'].includes(action.kind)} onClick={()=>newEntry(action.kind)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"><action.Icon size={15} className={action.color}/>{action.label}</button>)}</div>}
     {writer&&entryOpen&&<div role="dialog" aria-modal="true" aria-label="Novo lançamento" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4" onClick={event=>{if(event.target===event.currentTarget)closeEntry()}}>
     <form ref={formRef} aria-label="Adicionar lançamento" onSubmit={save} key={nonce} className="grid max-h-[92vh] w-full max-w-2xl grid-cols-1 gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2">
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800 sm:col-span-2"><div className="flex items-center gap-3"><span className="rounded-xl bg-brand-100 p-2.5 text-brand-600 dark:bg-brand-950 dark:text-brand-400"><ArrowLeftRight size={20}/></span><div><h2 className="font-semibold">{entrySelection?.draft?'Completar rascunho':entrySelection?.item?'Editar lançamento pendente':'Novo lançamento'}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Preencha os dados e confira antes de salvar.</p></div></div><button type="button" aria-label="Fechar lançamento" disabled={busy} onClick={closeEntry} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button></div>
@@ -217,24 +207,29 @@ export default function LedgerTransactions({workspace,money,reserves,online,onCh
     </form></div>}
     {error&&!entryOpen&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
     {notice&&<p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    <LedgerEntryManagement workspace={workspace} money={money} onChanged={onChanged} onUse={useEntry} refreshKey={preferencesRevision} disabled={busy}/>
-    <section aria-label="Histórico de lançamentos" className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
+
+    <section aria-label="Histórico de lançamentos" className="card overflow-hidden">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4"><div><h2 className="text-base font-semibold">Movimentações</h2><p className="mt-1 text-xs text-slate-500">{visible.length} registros · 7 por página</p></div>{writer&&<button type="button" onClick={()=>newEntry()} className="btn-primary inline-flex items-center gap-2"><Plus size={16}/>Novo lançamento</button>}</div>
+    <div className="px-5 pb-4">    <LedgerEntryManagement workspace={workspace} money={money} onChanged={onChanged} onUse={useEntry} refreshKey={preferencesRevision} disabled={busy}/></div>
+    <div className="space-y-3 border-t border-slate-200 bg-slate-50/50 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/20">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap gap-1" aria-label="Filtrar movimentações">{[['all','Todos'],['income','Entradas'],['expense','Saídas'],['transfer','Transferências'],['card','Cartão']].map(([value,label])=><button type="button" key={value} aria-pressed={flowFilter===value} onClick={()=>setFlowFilter(value)} className={`rounded-lg px-3 py-2 text-sm font-medium ${flowFilter===value?'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300':'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}>{label}</button>)}</div>
-      <span className="text-xs text-slate-500">{visible.length} {visible.length===1?'lançamento':'lançamentos'}</span>
+      <button type="button" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"><SlidersHorizontal size={14}/>Filtros{(accountFilter||monthFilter||status!=='all')&&<span className="h-1.5 w-1.5 rounded-full bg-brand-500"/>}</button>
     </div>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(250px,1fr)_190px_170px_170px]">
-      <label className={labelClass}><span className="field-label">Buscar lançamento</span><div className="relative"><Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Buscar lançamento" value={search} onChange={event=>{setSearch(event.target.value);setSelected(null);setPage(1)}} placeholder="Descrição, conta ou categoria" className={input+' pl-9'}/></div></label>
+      <label className={labelClass}><div className="relative"><Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Buscar lançamento" value={search} onChange={event=>{setSearch(event.target.value);setSelected(null);setPage(1)}} placeholder="Descrição, conta ou categoria" className={input+' pl-9'}/></div></label>
+    {filtersOpen&&    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+
       <label className={labelClass}><span className="field-label">Conta ou cartão</span><select aria-label="Filtrar por conta ou cartão" value={accountFilter} onChange={event=>setAccountFilter(event.target.value)} className={input}><option value="">Todos</option><optgroup label="Contas">{workspace.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</optgroup><optgroup label="Cartões">{workspace.cards.map(card=><option key={card.id} value={card.id}>{card.name}</option>)}</optgroup></select></label>
       <label className={labelClass}><span className="field-label">Mês</span><input aria-label="Filtrar por mês" type="month" value={monthFilter} onChange={event=>setMonthFilter(event.target.value)} className={input}/></label>
       <label className={labelClass}><span className="field-label">Situação do lançamento</span><select aria-label="Situação do lançamento" value={status} onChange={event=>{setStatus(event.target.value);setSelected(null);setPage(1)}} className={input}><option value="all">Todos</option><option value="posted">Registrados</option><option value="cancelled">Cancelados</option></select></label>
-    </div>
+    </div>}
     {(search||flowFilter!=='all'||accountFilter||monthFilter||status!=='all')&&<button type="button" onClick={()=>{setSearch('');setFlowFilter('all');setAccountFilter('');setMonthFilter('');setStatus('all');setPage(1);setSelected(null)}} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-brand-600"><X size={13}/>Limpar filtros</button>}
+    </div>
     <TransactionTable transactions={pageTransactions} money={money}
       renderName={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Abrir lançamento '+transaction.description} className="block max-w-full text-left [overflow-wrap:anywhere]">{transaction.description}</button>:transaction.description}
       renderActions={transaction=>online?<button type="button" disabled={busy} onClick={()=>openDetails(transaction.id)} aria-label={'Ver detalhes de '+transaction.description} aria-expanded={selected===transaction.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>:null}
       renderEditor={transaction=>online&&selected===transaction.id?<LedgerTransactionActions key={transaction.id} workspace={workspace} transactionId={transaction.id} money={money} onChanged={onChanged} onClose={()=>setSelected(null)} mutationPending={pending} externalBusy={busy} onBusyChange={setBusy}/>:null}/>
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
       <p role="status" className="text-xs text-slate-500 dark:text-slate-400">{visible.length?`Exibindo ${pageStart+1}–${pageStart+pageTransactions.length} de ${visible.length} lançamentos.`:'Nenhum lançamento encontrado.'}{workspace.transactions.length>=200&&' Histórico limitado aos 200 mais recentes.'}</p>
       <nav aria-label="Páginas dos lançamentos" className="flex flex-wrap items-center gap-1">
         <button type="button" aria-label="Página anterior" disabled={busy||currentPage===1} onClick={()=>{setPage(currentPage-1);setSelected(null)}} className="rounded-lg p-2 text-slate-500 disabled:opacity-30"><ChevronLeft size={18}/></button>

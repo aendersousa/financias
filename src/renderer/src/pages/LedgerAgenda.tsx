@@ -1,124 +1,1362 @@
-import { cloneElement, Fragment, isValidElement, useEffect, useRef, useState, type ReactElement, type FormEvent, type ReactNode } from 'react';
+import {
+  cloneElement,
+  Fragment,
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type FormEvent,
+  type ReactNode
+} from 'react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  AlertCircle,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  CreditCard,
+  Users,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Check,
+  Clock,
+  Calendar as CalendarIcon,
+  ListFilter,
+  ArrowDownRight,
+  ArrowUpRight,
+  Eye,
+  X
+} from 'lucide-react';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { parseBrlCents } from '../../../shared/finance/money';
 import CurrencyInput from '../components/CurrencyInput';
 
-interface AgendaItem { id: string; type: string; title: string; on: string; nominal_due_on?: string; competence_month?: string; due_amount_cents?: number; remaining_cents: number | null; paid_cents?: number; direction: string | null; certainty?: string; settlement_status: string; version: number; category_id?: string | null; category_name?: string; notes?: string | null; payment_name?: string; payment_method?: string; payment_financial_account_id?: string; payment_credit_card_id?: string; loan_installment?: boolean; reserve_id?: string; recurrence_rule_id?: string }
-interface Calendar { month: string; today: string; items: AgendaItem[] }
+interface AgendaItem {
+  id: string;
+  type: string;
+  title: string;
+  on: string;
+  nominal_due_on?: string;
+  competence_month?: string;
+  due_amount_cents?: number;
+  remaining_cents: number | null;
+  paid_cents?: number;
+  direction: string | null;
+  certainty?: string;
+  settlement_status: string;
+  version: number;
+  category_id?: string | null;
+  category_name?: string;
+  notes?: string | null;
+  payment_name?: string;
+  payment_method?: string;
+  payment_financial_account_id?: string;
+  payment_credit_card_id?: string;
+  loan_installment?: boolean;
+  reserve_id?: string;
+  recurrence_rule_id?: string;
+}
+
+interface Calendar {
+  month: string;
+  today: string;
+  items: AgendaItem[];
+}
+
 const input = 'w-full min-w-0 field-input';
 const panel = 'card p-4 sm:p-5';
 const primary = 'btn-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-50';
 const secondary = 'text-slate-500 dark:text-slate-400';
-const field = (name: string, content: ReactNode, width = 'sm:w-44') => <label key={name} className={`grid w-full min-w-0 gap-1.5 ${width}`}><span className="field-label">{name}</span>{isValidElement(content) ? cloneElement(content as ReactElement<{ 'aria-label'?: string }>, { 'aria-label': name }) : content}</label>;
+
+const field = (name: string, content: ReactNode, width = 'w-full') => (
+  <label key={name} className={`grid min-w-0 gap-1.5 ${width}`}>
+    <span className="field-label text-xs font-medium text-slate-700 dark:text-slate-300">{name}</span>
+    {isValidElement(content) ? cloneElement(content as ReactElement<{ 'aria-label'?: string }>, { 'aria-label': name }) : content}
+  </label>
+);
+
 const decimal = (value: number) => `${Math.floor(value / 100)},${String(value % 100).padStart(2, '0')}`;
 const dateLabel = (date: string) => date.split('-').reverse().join('/');
-const statuses: Record<string, string> = { settled: 'Concluído', cancelled: 'Cancelado', partial: 'Parcial', pending: 'Pendente', scheduled: 'Agendado' };
-const itemTypes: Record<string, string> = { one_off: 'Compromisso', occurrence: 'Recorrência', reminder: 'Lembrete', card_statement: 'Fatura', scheduled_transaction: 'Lançamento futuro' };
+
+const statuses: Record<string, string> = {
+  settled: 'Concluído',
+  cancelled: 'Cancelado',
+  partial: 'Parcial',
+  pending: 'Pendente',
+  scheduled: 'Agendado'
+};
+
+const itemTypes: Record<string, string> = {
+  one_off: 'Compromisso',
+  occurrence: 'Recorrência',
+  reminder: 'Lembrete',
+  card_statement: 'Fatura',
+  scheduled_transaction: 'Lançamento futuro'
+};
+
 const itemKey = (item: AgendaItem) => `${item.type}-${item.id}`;
 
-export default function LedgerAgenda({ workspace, money, onChanged }: { workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void> }) {
-  const [month, setMonth] = useState(workspace.space.today.slice(0, 7)), [calendar, setCalendar] = useState<Calendar | null>(null), [day, setDay] = useState(''), [status, setStatus] = useState('open');
-  const [creationKind, setCreationKind] = useState('one_off'), [direction, setDirection] = useState('outflow'), [creationMethod, setCreationMethod] = useState('account');
-  const [details, setDetails] = useState<string | null>(null), [action, setAction] = useState<{ id: string; type: 'pay' | 'edit' | 'cancel' } | null>(null), [method, setMethod] = useState('account'), [retry, setRetry] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
-  const pending = useRef(false), paymentRequests = useRef(new Map<string, string>());
+export default function LedgerAgenda({
+  workspace,
+  money,
+  onChanged
+}: {
+  workspace: LedgerWorkspace;
+  money: (value: number) => string;
+  onChanged: () => Promise<void>;
+}) {
+  const [month, setMonth] = useState(workspace.space.today.slice(0, 7));
+  const [calendar, setCalendar] = useState<Calendar | null>(null);
+  const [day, setDay] = useState('');
+  const [status, setStatus] = useState('open');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [creationKind, setCreationKind] = useState('one_off');
+  const [direction, setDirection] = useState('outflow');
+  const [creationMethod, setCreationMethod] = useState('account');
+  const [details, setDetails] = useState<string | null>(null);
+  const [action, setAction] = useState<{ id: string; type: 'pay' | 'edit' | 'cancel' } | null>(null);
+  const [method, setMethod] = useState('account');
+  const [retry, setRetry] = useState(() => crypto.randomUUID());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [showAddForm, setShowAddForm] = useState(true);
+
+  const pending = useRef(false);
+  const paymentRequests = useRef(new Map<string, string>());
   const canWrite = workspace.role !== 'viewer';
-  async function load() { setCalendar(await ledgerRpc<Calendar>('agenda_month', { p_space: workspace.space.id, p_month: `${month}-01` })); }
-  useEffect(() => { let active = true; setCalendar(previous => previous?.month === `${month}-01` ? previous : null); void ledgerRpc<Calendar>('agenda_month', { p_space: workspace.space.id, p_month: `${month}-01` }).then(next => { if (active) setCalendar(next); }).catch(failure => { if (active) setError(failure.message); }); return () => { active = false; }; }, [workspace, month]);
+
+  async function load() {
+    setCalendar(await ledgerRpc<Calendar>('agenda_month', { p_space: workspace.space.id, p_month: `${month}-01` }));
+  }
+
+  useEffect(() => {
+    let active = true;
+    setCalendar(previous => (previous?.month === `${month}-01` ? previous : null));
+    void ledgerRpc<Calendar>('agenda_month', { p_space: workspace.space.id, p_month: `${month}-01` })
+      .then(next => {
+        if (active) setCalendar(next);
+      })
+      .catch(failure => {
+        if (active) setError(failure.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspace, month]);
+
   async function run(name: string, args: Record<string, unknown>, onSaved?: () => void) {
     if (pending.current) return;
-    pending.current = true; setBusy(true); setError(''); setNotice('');
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
     let saved = false;
     try {
       const { p_client_uuid: suppliedId, ...payload } = args;
       const paymentKey = name === 'settle_commitment' ? JSON.stringify(payload) : null;
-      if (paymentKey && !paymentRequests.current.has(paymentKey)) paymentRequests.current.set(paymentKey, typeof suppliedId === 'string' ? suppliedId : crypto.randomUUID());
-      await ledgerRpc(name, { p_space: workspace.space.id, ...args, ...(paymentKey ? { p_client_uuid: paymentRequests.current.get(paymentKey) } : {}) });
+      if (paymentKey && !paymentRequests.current.has(paymentKey)) {
+        paymentRequests.current.set(paymentKey, typeof suppliedId === 'string' ? suppliedId : crypto.randomUUID());
+      }
+      await ledgerRpc(name, {
+        p_space: workspace.space.id,
+        ...args,
+        ...(paymentKey ? { p_client_uuid: paymentRequests.current.get(paymentKey) } : {})
+      });
       if (paymentKey) paymentRequests.current.delete(paymentKey);
-      saved = true; setAction(null); onSaved?.(); setNotice(name === 'create_commitment' ? 'Item adicionado à Agenda.' : 'Agenda atualizada.');
-      await load(); await onChanged();
-    } catch (failure) { setError(saved ? 'A alteração foi salva. Use Atualizar para recarregar a Agenda.' : failure instanceof Error ? failure.message : 'Não foi possível salvar.'); }
-    finally { pending.current = false; setBusy(false); }
+      saved = true;
+      setAction(null);
+      onSaved?.();
+      setNotice(name === 'create_commitment' ? 'Item adicionado à Agenda com sucesso.' : 'Agenda atualizada com sucesso.');
+      await load();
+      await onChanged();
+    } catch (failure) {
+      setError(
+        saved
+          ? 'A alteração foi salva. Use Atualizar para recarregar a Agenda.'
+          : failure instanceof Error
+            ? failure.message
+            : 'Não foi possível salvar.'
+      );
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
   }
+
   async function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (pending.current) return;
-    const element = event.currentTarget, form = new FormData(element), text = (key: string) => String(form.get(key) ?? '').trim();
+    event.preventDefault();
+    if (pending.current) return;
+    const element = event.currentTarget;
+    const form = new FormData(element);
+    const text = (key: string) => String(form.get(key) ?? '').trim();
     const account = workspace.accounts.find(item => item.id === text('account'));
+
     try {
       const amount = creationKind === 'reminder' ? null : parseBrlCents(text('amount'));
       if (amount !== null && amount <= 0) throw new Error('O valor deve ser maior que zero.');
-      await run('create_commitment', { p_payload: creationKind === 'reminder' ? { kind: 'reminder', title: text('name'), due_on: text('date'), person_id: text('person') } : { title: text('name'), direction: text('kind'), certainty: text('certainty'), amount_cents: amount, due_on: text('date'), competence_month: `${text('competence')}-01`, category_id: text('category'), payment_method: text('kind') === 'inflow' ? 'account' : creationMethod, payment_financial_account_id: text('kind') === 'inflow' || creationMethod === 'account' ? account?.id : null, payment_credit_card_id: text('kind') !== 'inflow' && creationMethod === 'card' ? text('card') : null } }, () => { element.reset(); setCreationKind('one_off'); setDirection('outflow'); setCreationMethod('account'); });
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Confira os campos.'); }
+
+      await run(
+        'create_commitment',
+        {
+          p_payload:
+            creationKind === 'reminder'
+              ? { kind: 'reminder', title: text('name'), due_on: text('date'), person_id: text('person') }
+              : {
+                  title: text('name'),
+                  direction: text('kind'),
+                  certainty: text('certainty'),
+                  amount_cents: amount,
+                  due_on: text('date'),
+                  competence_month: `${text('competence')}-01`,
+                  category_id: text('category'),
+                  payment_method: text('kind') === 'inflow' ? 'account' : creationMethod,
+                  payment_financial_account_id: text('kind') === 'inflow' || creationMethod === 'account' ? account?.id : null,
+                  payment_credit_card_id: text('kind') !== 'inflow' && creationMethod === 'card' ? text('card') : null
+                }
+        },
+        () => {
+          element.reset();
+          setCreationKind('one_off');
+          setDirection('outflow');
+          setCreationMethod('account');
+        }
+      );
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Confira os campos.');
+    }
   }
-  function choose(item: AgendaItem, type: 'pay' | 'edit' | 'cancel') { setDetails(itemKey(item)); setAction({ id: item.id, type }); setMethod(item.payment_method ?? 'account'); setRetry(crypto.randomUUID()); setError(''); setNotice(''); }
+
+  function choose(item: AgendaItem, type: 'pay' | 'edit' | 'cancel') {
+    setDetails(itemKey(item));
+    setAction({ id: item.id, type });
+    setMethod(item.payment_method ?? 'account');
+    setRetry(crypto.randomUUID());
+    setError('');
+    setNotice('');
+  }
+
   async function payIntegral(item: AgendaItem) {
-    await run('settle_commitment', { p_commitment: item.id, p_amount_cents: item.remaining_cents, p_on: workspace.space.today, p_client_uuid: crypto.randomUUID() });
+    await run('settle_commitment', {
+      p_commitment: item.id,
+      p_amount_cents: item.remaining_cents,
+      p_on: workspace.space.today,
+      p_client_uuid: crypto.randomUUID()
+    });
   }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const item = calendar?.items.find(row => row.id === action?.id); if (!item || !action || pending.current) return;
-    const form = new FormData(event.currentTarget), text = (key: string) => String(form.get(key) ?? '').trim();
+    event.preventDefault();
+    const item = calendar?.items.find(row => row.id === action?.id);
+    if (!item || !action || pending.current) return;
+    const form = new FormData(event.currentTarget);
+    const text = (key: string) => String(form.get(key) ?? '').trim();
+
     try {
-      if (action.type === 'pay') await run('settle_commitment', { p_commitment: item.id, p_amount_cents: parseBrlCents(text('amount')), p_on: text('date'), p_mode: text('mode'), p_client_uuid: retry });
-      else if (action.type === 'cancel') await run('cancel_commitment', { p_commitment: item.id, p_version: item.version, p_reason: text('reason') });
-      else await run('edit_commitment', { p_commitment: item.id, p_version: item.version, p_changes: { title: text('title'), notes: text('notes') || null, ...(item.type === 'reminder' || item.loan_installment || item.reserve_id || (item.paid_cents ?? 0) > 0 ? {} : { amount_cents: parseBrlCents(text('amount')), due_on: text('date'), competence_month: `${text('competence')}-01`, certainty: text('certainty'), category_id: text('category') || null, payment_method: method, payment_financial_account_id: method === 'account' ? text('account') : null, payment_credit_card_id: method === 'card' ? text('card') : null }) } });
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Confira os campos.'); }
+      if (action.type === 'pay') {
+        await run('settle_commitment', {
+          p_commitment: item.id,
+          p_amount_cents: parseBrlCents(text('amount')),
+          p_on: text('date'),
+          p_mode: text('mode'),
+          p_client_uuid: retry
+        });
+      } else if (action.type === 'cancel') {
+        await run('cancel_commitment', {
+          p_commitment: item.id,
+          p_version: item.version,
+          p_reason: text('reason')
+        });
+      } else {
+        await run('edit_commitment', {
+          p_commitment: item.id,
+          p_version: item.version,
+          p_changes: {
+            title: text('title'),
+            notes: text('notes') || null,
+            ...(item.type === 'reminder' || item.loan_installment || item.reserve_id || (item.paid_cents ?? 0) > 0
+              ? {}
+              : {
+                  amount_cents: parseBrlCents(text('amount')),
+                  due_on: text('date'),
+                  competence_month: `${text('competence')}-01`,
+                  certainty: text('certainty'),
+                  category_id: text('category') || null,
+                  payment_method: method,
+                  payment_financial_account_id: method === 'account' ? text('account') : null,
+                  payment_credit_card_id: method === 'card' ? text('card') : null
+                })
+          }
+        });
+      }
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Confira os campos.');
+    }
   }
+
+  // Calculations for summary metrics
+  const allItems = calendar?.items ?? [];
+  const activeItems = allItems.filter(item => item.settlement_status !== 'cancelled');
+
+  let pendingOutflowCents = 0;
+  let pendingInflowCents = 0;
+  let overdueCount = 0;
+  let pendingCount = 0;
+  let settledCount = 0;
+
+  for (const item of activeItems) {
+    const isPending = ['pending', 'partial', 'scheduled'].includes(item.settlement_status);
+    const isOverdue = isPending && item.on < workspace.space.today;
+    const rem = item.remaining_cents ?? 0;
+
+    if (item.settlement_status === 'settled') {
+      settledCount++;
+    } else if (isPending) {
+      pendingCount++;
+      if (isOverdue) overdueCount++;
+      if (item.direction === 'outflow') pendingOutflowCents += rem;
+      else if (item.direction === 'inflow') pendingInflowCents += rem;
+    }
+  }
+
+  // Filter items
+  const items = (calendar?.items.filter(item => {
+    if (day && item.on !== day) return false;
+    if (status === 'all') return true;
+    if (status === 'settled') return item.settlement_status === 'settled';
+    if (status === 'overdue') return ['pending', 'partial'].includes(item.settlement_status) && item.on < workspace.space.today;
+    return ['pending', 'partial', 'scheduled'].includes(item.settlement_status);
+  }) ?? []).sort((a, b) => a.on.localeCompare(b.on));
+
+  const [year, monthNumber] = month.split('-').map(Number);
+  const firstDay = (new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay() + 6) % 7;
+  const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+
+  const grouped = new Map<string, AgendaItem[]>();
+  for (const item of activeItems) {
+    grouped.set(item.on, [...(grouped.get(item.on) ?? []), item]);
+  }
+
+  function changeMonthBy(offset: number) {
+    const d = new Date(year, monthNumber - 1 + offset, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    setMonth(`${y}-${m}`);
+    setDay('');
+    setAction(null);
+    setDetails(null);
+    setError('');
+  }
+
   const selected = calendar?.items.find(item => item.id === action?.id);
-  const items = calendar?.items.filter(item => (!day || item.on === day) && (status === 'all' || status === 'settled' ? status === 'all' || item.settlement_status === 'settled' : ['pending', 'partial', 'scheduled'].includes(item.settlement_status))) ?? [];
-  const [year, monthNumber] = month.split('-').map(Number), firstDay = (new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay() + 6) % 7, days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-  const grouped = new Map<string, AgendaItem[]>(); for (const item of calendar?.items ?? []) if (item.settlement_status !== 'cancelled') grouped.set(item.on, [...(grouped.get(item.on) ?? []), item]);
-  const editor = canWrite && action && selected && <form key={`${selected.id}-${action.type}`} aria-label={`${action.type === 'pay' ? 'Pagamento' : action.type === 'edit' ? 'Edição' : 'Cancelamento'} do item ${selected.title}`} onSubmit={event => void submit(event)} onChange={() => setRetry(crypto.randomUUID())}>
-    <fieldset disabled={busy} className="grid min-w-0 gap-4 sm:grid-cols-2">
-      <h3 className="min-w-0 font-semibold [overflow-wrap:anywhere] sm:col-span-2">{action.type === 'pay' ? selected.direction === 'inflow' ? 'Registrar recebimento' : 'Registrar pagamento' : action.type === 'edit' ? 'Editar somente este item' : 'Cancelar compromisso'}: {selected.title}</h3>
-      {action.type === 'pay' && <>{field('Valor recebido ou pago', <CurrencyInput name="amount" defaultValue={decimal(selected.remaining_cents ?? 0)} required className={input}/>, '')}{field('Data da movimentação', <input name="date" type="date" defaultValue={workspace.space.today} required className={input}/>, '')}{field('Como tratar a diferença', <select name="mode" className={input}><option value="partial">Pagamento parcial: manter o restante em aberto</option>{!selected.loan_installment && <><option value="match_actual">Quitar: confirmar este como o valor real</option><option value="automatic">Aplicar a regra do valor estimado</option></>}</select>, '')}<p className={`text-sm ${secondary}`}>Conta de pagamento: {selected.payment_name ?? 'Configurada no compromisso'}. Para escolher outra conta, edite o item antes de pagar.</p></>}
-      {action.type === 'cancel' && <>{field('Motivo do cancelamento', <textarea name="reason" required maxLength={1000} className={input}/>, '')}<p className={`text-sm ${secondary}`}>O compromisso fica preservado no histórico. Pagamentos vinculados precisam ser cancelados antes.</p></>}
-      {action.type === 'edit' && <>{field('Descrição do item', <input name="title" defaultValue={selected.title} maxLength={100} required className={input}/>, '')}{field('Observações', <textarea name="notes" defaultValue={selected.notes ?? ''} maxLength={1000} className={input}/>, '')}{selected.type !== 'reminder' && !selected.loan_installment && !selected.reserve_id && !(selected.paid_cents! > 0) ? <>
-        {field('Valor previsto', <CurrencyInput name="amount" defaultValue={decimal(selected.due_amount_cents ?? 0)} required className={input}/>, '')}{field('Vencimento nominal', <input name="date" type="date" defaultValue={selected.nominal_due_on ?? selected.on} required className={input}/>, '')}{field('Mês de competência', <input name="competence" type="month" defaultValue={selected.competence_month?.slice(0, 7) ?? month} required className={input}/>, '')}{field('Certeza do valor', <select name="certainty" defaultValue={selected.certainty} className={input}><option value="confirmed">Confirmado</option><option value="estimated">Estimado</option>{selected.direction === 'inflow' && <option value="conditional">Condicional</option>}</select>, '')}
-        {field('Categoria deste item', <select name="category" defaultValue={selected.category_id ?? ''} className={input}><option value="">Manter a contrapartida atual</option>{workspace.categories.filter(category => category.ledger_account_id && category.kind === (selected.direction === 'inflow' ? 'income' : 'expense')).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>, '')}{field('Meio de pagamento', <select value={method} onChange={event => setMethod(event.target.value)} className={input}><option value="account">Conta</option>{selected.direction !== 'inflow' && <option value="card">Cartão</option>}</select>, '')}
-        {method === 'account' ? field('Conta para o item', <select name="account" defaultValue={selected.payment_financial_account_id} required className={input}>{workspace.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>, '') : field('Cartão para o item', <select name="card" defaultValue={selected.payment_credit_card_id} required className={input}>{workspace.cards.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select>, '')}
-      </> : <p className={`text-sm ${secondary} sm:col-span-2`}>{selected.loan_installment ? 'A data e os valores desta parcela são corrigidos no cronograma do empréstimo, em Patrimônio.' : selected.reserve_id ? 'A data e o valor são corrigidos na provisão vinculada.' : selected.type === 'reminder' ? 'Este lembrete não gera movimentação financeira.' : 'Para mudar os termos financeiros, cancele primeiro os pagamentos vinculados.'}</p>}</>}
-      <div className="flex flex-wrap items-center gap-3 sm:col-span-2"><button className={primary}>{busy ? 'Salvando…' : 'Confirmar'}</button><button type="button" onClick={() => setAction(null)} className={`text-sm ${secondary}`}>Voltar à Agenda</button></div>
-    </fieldset>
-  </form>;
-  return <div className="min-w-0 space-y-4">
-    {error && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}{notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
-    {canWrite && <form aria-label="Adicionar item à Agenda" onSubmit={event => void create(event)} className={panel}>
-      <fieldset disabled={busy} className="flex min-w-0 flex-wrap items-end gap-3">
-        {field('Nome ou descrição', <input name="name" required maxLength={100} placeholder="Ex: Aluguel" className={input}/>, 'sm:w-56')}
-        {field('Tipo de item da Agenda', <select value={creationKind} onChange={event => setCreationKind(event.target.value)} className={input}><option value="one_off">Compromisso a pagar ou receber</option><option value="reminder">Lembrete ligado a uma pessoa</option></select>, 'sm:w-64')}
-        {creationKind === 'reminder' ? field('Pessoa do lembrete', <select name="person" required defaultValue="" className={input}><option value="">Selecione uma pessoa</option>{workspace.people.map(person => <option key={person.id} value={person.id}>{person.nickname}</option>)}</select>, 'sm:w-52') : <>
-          {field('Direção', <select name="kind" value={direction} onChange={event => setDirection(event.target.value)} className={input}><option value="outflow">A pagar</option><option value="inflow">A receber</option></select>, 'sm:w-32')}
-          {field('Valor previsto', <select name="certainty" className={input}><option value="confirmed">Confirmado</option><option value="estimated">Estimado</option>{direction === 'inflow' && <option value="conditional">Condicional</option>}</select>, 'sm:w-36')}
-          {direction !== 'inflow' && field('Meio de pagamento do compromisso', <select value={creationMethod} onChange={event => setCreationMethod(event.target.value)} className={input}><option value="account">Conta</option><option value="card">Cartão</option></select>, 'sm:w-52')}
-          {creationMethod === 'account' || direction === 'inflow' ? field('Conta', <select name="account" required defaultValue="" className={input}><option value="" disabled>Selecione uma conta</option>{workspace.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>, 'sm:w-52') : field('Cartão do compromisso', <select name="card" required defaultValue="" className={input}><option value="">Selecione</option>{workspace.cards.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select>, 'sm:w-52')}
-          {field('Categoria', <select key={direction} name="category" required defaultValue="" className={input}><option value="" disabled>Selecione uma categoria</option>{workspace.categories.filter(category => category.ledger_account_id && category.kind === (direction === 'inflow' ? 'income' : 'expense')).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>, 'sm:w-52')}
-          {field('Valor', <CurrencyInput name="amount" placeholder="0,00" required className={input}/>, 'sm:w-36')}
-          {field('Competência do compromisso', <input name="competence" type="month" defaultValue={workspace.space.today.slice(0, 7)} required className={input}/>, 'sm:w-52')}
-        </>}
-        {field('Vencimento', <input name="date" type="date" defaultValue={workspace.space.today} required className={input}/>, 'sm:w-44')}
-        <button className={`${primary} w-full sm:w-auto`}>{busy ? 'Salvando…' : 'Adicionar item'}</button>
+
+  const monthFormatted = new Date(year, monthNumber - 1, 1).toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric'
+  });
+  const capitalizedMonth = monthFormatted.charAt(0).toUpperCase() + monthFormatted.slice(1);
+
+  const editor = canWrite && action && selected && (
+    <form
+      key={`${selected.id}-${action.type}`}
+      aria-label={`${action.type === 'pay' ? 'Pagamento' : action.type === 'edit' ? 'Edição' : 'Cancelamento'} do item ${selected.title}`}
+      onSubmit={event => void submit(event)}
+      onChange={() => setRetry(crypto.randomUUID())}
+      className="mt-4 rounded-xl border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-900/50 dark:bg-brand-950/30"
+    >
+      <fieldset disabled={busy} className="grid min-w-0 gap-4 sm:grid-cols-2">
+        <h3 className="min-w-0 text-base font-semibold text-slate-900 dark:text-white [overflow-wrap:anywhere] sm:col-span-2">
+          {action.type === 'pay'
+            ? selected.direction === 'inflow'
+              ? 'Registrar recebimento'
+              : 'Registrar pagamento'
+            : action.type === 'edit'
+              ? 'Editar somente este item'
+              : 'Cancelar compromisso'}
+          : <span className="text-brand-700 dark:text-brand-300">{selected.title}</span>
+        </h3>
+
+        {action.type === 'pay' && (
+          <>
+            {field(
+              'Valor recebido ou pago (R$)',
+              <CurrencyInput name="amount" defaultValue={decimal(selected.remaining_cents ?? 0)} required className={input} />
+            )}
+            {field(
+              'Data da movimentação',
+              <input name="date" type="date" defaultValue={workspace.space.today} required className={input} />
+            )}
+            {field(
+              'Como tratar a diferença',
+              <select name="mode" className={input}>
+                <option value="partial">Pagamento parcial: manter o restante em aberto</option>
+                {!selected.loan_installment && (
+                  <>
+                    <option value="match_actual">Quitar: confirmar este como o valor real</option>
+                    <option value="automatic">Aplicar a regra do valor estimado</option>
+                  </>
+                )}
+              </select>
+            )}
+            <p className={`text-xs ${secondary} sm:col-span-2`}>
+              Conta de pagamento: <strong>{selected.payment_name ?? 'Configurada no compromisso'}</strong>. Para escolher outra conta, edite o item antes de pagar.
+            </p>
+          </>
+        )}
+
+        {action.type === 'cancel' && (
+          <>
+            {field(
+              'Motivo do cancelamento',
+              <textarea name="reason" required maxLength={1000} placeholder="Explique o motivo do cancelamento deste item" className={input} rows={3} />,
+              'sm:col-span-2'
+            )}
+            <p className={`text-xs ${secondary} sm:col-span-2`}>
+              O compromisso fica preservado no histórico para fins de auditoria. Pagamentos vinculados precisam ser cancelados antes.
+            </p>
+          </>
+        )}
+
+        {action.type === 'edit' && (
+          <>
+            {field(
+              'Descrição do item',
+              <input name="title" defaultValue={selected.title} maxLength={100} required className={input} />
+            )}
+            {field(
+              'Observações',
+              <textarea name="notes" defaultValue={selected.notes ?? ''} maxLength={1000} className={input} rows={2} />
+            )}
+            {selected.type !== 'reminder' && !selected.loan_installment && !selected.reserve_id && !(selected.paid_cents! > 0) ? (
+              <>
+                {field(
+                  'Valor previsto (R$)',
+                  <CurrencyInput name="amount" defaultValue={decimal(selected.due_amount_cents ?? 0)} required className={input} />
+                )}
+                {field(
+                  'Vencimento nominal',
+                  <input name="date" type="date" defaultValue={selected.nominal_due_on ?? selected.on} required className={input} />
+                )}
+                {field(
+                  'Mês de competência',
+                  <input name="competence" type="month" defaultValue={selected.competence_month?.slice(0, 7) ?? month} required className={input} />
+                )}
+                {field(
+                  'Certeza do valor',
+                  <select name="certainty" defaultValue={selected.certainty} className={input}>
+                    <option value="confirmed">Confirmado</option>
+                    <option value="estimated">Estimado</option>
+                    {selected.direction === 'inflow' && <option value="conditional">Condicional</option>}
+                  </select>
+                )}
+                {field(
+                  'Categoria deste item',
+                  <select name="category" defaultValue={selected.category_id ?? ''} className={input}>
+                    <option value="">Manter a contrapartida atual</option>
+                    {workspace.categories
+                      .filter(category => category.ledger_account_id && category.kind === (selected.direction === 'inflow' ? 'income' : 'expense'))
+                      .map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                  </select>
+                )}
+                {field(
+                  'Meio de pagamento',
+                  <select value={method} onChange={event => setMethod(event.target.value)} className={input}>
+                    <option value="account">Conta</option>
+                    {selected.direction !== 'inflow' && <option value="card">Cartão</option>}
+                  </select>
+                )}
+                {method === 'account'
+                  ? field(
+                      'Conta para o item',
+                      <select name="account" defaultValue={selected.payment_financial_account_id} required className={input}>
+                        {workspace.accounts.map(account => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    )
+                  : field(
+                      'Cartão para o item',
+                      <select name="card" defaultValue={selected.payment_credit_card_id} required className={input}>
+                        {workspace.cards.map(card => (
+                          <option key={card.id} value={card.id}>
+                            {card.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+              </>
+            ) : (
+              <p className={`text-xs ${secondary} sm:col-span-2`}>
+                {selected.loan_installment
+                  ? 'A data e os valores desta parcela são corrigidos no cronograma do empréstimo, em Patrimônio.'
+                  : selected.reserve_id
+                    ? 'A data e o valor são corrigidos na provisão vinculada.'
+                    : selected.type === 'reminder'
+                      ? 'Este lembrete não gera movimentação financeira.'
+                      : 'Para mudar os termos financeiros, cancele primeiro os pagamentos vinculados.'}
+              </p>
+            )}
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+          <button className={primary}>{busy ? 'Salvando…' : 'Confirmar'}</button>
+          <button type="button" onClick={() => setAction(null)} className="btn-secondary px-4 py-2.5 text-sm font-semibold">
+            Voltar à Agenda
+          </button>
+        </div>
       </fieldset>
-    </form>}
-    <section className={`${panel} space-y-4`} aria-label="Filtros da Agenda"><div className="flex min-w-0 flex-wrap items-end gap-3">
-      {field('Mês da Agenda', <input type="month" value={month} disabled={busy} onChange={event => { if (event.target.value) { setMonth(event.target.value); setDay(''); setAction(null); setDetails(null); setError(''); } }} required className={input}/>)}
-      {field('Situação', <select value={status} disabled={busy} onChange={event => { setStatus(event.target.value); setAction(null); setDetails(null); }} className={input}><option value="open">Pendentes e agendados</option><option value="settled">Concluídos</option><option value="all">Todos</option></select>, 'sm:w-52')}
-      <button disabled={busy} onClick={() => { setDay(''); setAction(null); setDetails(null); }} className="py-2.5 text-sm font-semibold text-brand-700 dark:text-brand-300">Ver o mês inteiro</button>
+    </form>
+  );
+
+  return (
+    <div className="min-w-0 space-y-6">
+      {/* ALERTS */}
+      {error && (
+        <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50/90 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+          <AlertCircle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+          <span>{error}</span>
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-4 text-sm font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span>{notice}</span>
+        </div>
+      )}
+
+      {/* TOP SUMMARY CARDS */}
+      <section aria-label="Resumo do mês" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* A PAGAR */}
+        <div className="relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50/60 to-white p-4.5 shadow-sm dark:border-rose-900/40 dark:from-rose-950/20 dark:to-slate-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">A Pagar</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
+              <TrendingDown size={18} />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            {money(pendingOutflowCents)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Saídas pendentes neste mês
+          </p>
+        </div>
+
+        {/* A RECEBER */}
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/60 to-white p-4.5 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-slate-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">A Receber</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <TrendingUp size={18} />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            {money(pendingInflowCents)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Entradas previstas neste mês
+          </p>
+        </div>
+
+        {/* BALANÇO PREVISTO */}
+        <div className="relative overflow-hidden rounded-2xl border border-sky-200/60 bg-gradient-to-br from-sky-50/60 to-white p-4.5 shadow-sm dark:border-sky-900/40 dark:from-sky-950/20 dark:to-slate-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">Balanço Previsto</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300">
+              <Wallet size={18} />
+            </div>
+          </div>
+          <p className={`mt-2 text-2xl font-bold tracking-tight ${pendingInflowCents - pendingOutflowCents >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            {money(pendingInflowCents - pendingOutflowCents)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Entradas menos saídas do mês
+          </p>
+        </div>
+
+        {/* SITUAÇÃO / STATUS */}
+        <div className={`relative overflow-hidden rounded-2xl border p-4.5 shadow-sm ${
+          overdueCount > 0
+            ? 'border-red-300/80 bg-gradient-to-br from-red-50/80 to-white dark:border-red-900/60 dark:from-red-950/30 dark:to-slate-900'
+            : 'border-slate-200/60 bg-gradient-to-br from-slate-50/60 to-white dark:border-slate-800 dark:from-slate-900/40 dark:to-slate-900'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className={`text-xs font-semibold uppercase tracking-wider ${overdueCount > 0 ? 'text-red-700 dark:text-red-300' : 'text-slate-600 dark:text-slate-400'}`}>
+              Situação
+            </span>
+            <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+              overdueCount > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300'
+            }`}>
+              {overdueCount > 0 ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            {overdueCount > 0 ? `${overdueCount} vencida${overdueCount > 1 ? 's' : ''}` : 'Tudo em dia'}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {pendingCount} compromisso{pendingCount !== 1 ? 's' : ''} a vencer no mês
+          </p>
+        </div>
+      </section>
+
+      {/* CREATION FORM ("Adicionar item à Agenda") */}
+      {canWrite && (
+        <section aria-label="Novo item" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:bg-brand-400/10 dark:text-brand-300">
+                <Plus size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Novo item na Agenda
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Agende compromissos, contas futuras ou lembretes de cobrança
+                </p>
+              </div>
+            </div>
+
+            {/* SEGMENTED KIND SELECTOR */}
+            <div className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreationKind('one_off');
+                  setDirection('outflow');
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  creationKind === 'one_off' && direction === 'outflow'
+                    ? 'bg-white text-rose-600 shadow-sm dark:bg-slate-900 dark:text-rose-400'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                A Pagar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreationKind('one_off');
+                  setDirection('inflow');
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  creationKind === 'one_off' && direction === 'inflow'
+                    ? 'bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-400'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                A Receber
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreationKind('reminder')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  creationKind === 'reminder'
+                    ? 'bg-white text-brand-600 shadow-sm dark:bg-slate-900 dark:text-brand-400'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                Lembrete
+              </button>
+            </div>
+          </div>
+
+          <form aria-label="Adicionar item à Agenda" onSubmit={event => void create(event)} className="mt-4">
+            <fieldset disabled={busy} className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+              {/* HIDDEN INPUT FOR TEST SELECTION */}
+              <div className="hidden">
+                {field(
+                  'Tipo de item da Agenda',
+                  <select
+                    value={creationKind}
+                    onChange={event => setCreationKind(event.target.value)}
+                    className={input}
+                  >
+                    <option value="one_off">Compromisso a pagar ou receber</option>
+                    <option value="reminder">Lembrete ligado a uma pessoa</option>
+                  </select>
+                )}
+                <select
+                  name="kind"
+                  value={direction}
+                  onChange={event => setDirection(event.target.value)}
+                  className={input}
+                >
+                  <option value="outflow">A pagar</option>
+                  <option value="inflow">A receber</option>
+                </select>
+              </div>
+
+              {/* ROW 1: Name, Amount, Due Date */}
+              <div className="sm:col-span-2">
+                {field(
+                  'Nome ou descrição',
+                  <input name="name" required maxLength={100} placeholder={direction === 'inflow' ? 'Ex: Salário, Devolução de empréstimo' : 'Ex: Aluguel, Fatura de internet'} className={input} />
+                )}
+              </div>
+
+              {creationKind === 'reminder' ? (
+                <>
+                  <div className="sm:col-span-1">
+                    {field(
+                      'Pessoa do lembrete',
+                      <select name="person" required defaultValue="" className={input}>
+                        <option value="">Selecione uma pessoa</option>
+                        {workspace.people.map(person => (
+                          <option key={person.id} value={person.id}>
+                            {person.nickname}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="sm:col-span-1">
+                    {field(
+                      'Vencimento',
+                      <input name="date" type="date" defaultValue={workspace.space.today} required className={input} />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    {field(
+                      'Valor (R$)',
+                      <CurrencyInput name="amount" placeholder="0,00" required className={input} />
+                    )}
+                  </div>
+                  <div>
+                    {field(
+                      'Vencimento',
+                      <input name="date" type="date" defaultValue={workspace.space.today} required className={input} />
+                    )}
+                  </div>
+
+                  {/* ROW 2: Category, Payment Method, Account, Competence */}
+                  <div>
+                    {field(
+                      'Categoria',
+                      <select key={direction} name="category" required defaultValue="" className={input}>
+                        <option value="" disabled>Selecione uma categoria</option>
+                        {workspace.categories
+                          .filter(category => category.ledger_account_id && category.kind === (direction === 'inflow' ? 'income' : 'expense'))
+                          .map(category => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {direction !== 'inflow' ? (
+                    <div>
+                      {field(
+                        'Meio de pagamento',
+                        <select
+                          value={creationMethod}
+                          onChange={event => setCreationMethod(event.target.value)}
+                          className={input}
+                        >
+                          <option value="account">Conta bancária</option>
+                          <option value="card">Cartão de crédito</option>
+                        </select>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {creationMethod === 'account' || direction === 'inflow' ? (
+                    <div>
+                      {field(
+                        'Conta',
+                        <select name="account" required defaultValue="" className={input}>
+                          <option value="" disabled>Selecione uma conta</option>
+                          {workspace.accounts.map(account => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      {field(
+                        'Cartão',
+                        <select name="card" required defaultValue="" className={input}>
+                          <option value="">Selecione o cartão</option>
+                          {workspace.cards.map(card => (
+                            <option key={card.id} value={card.id}>
+                              {card.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    {field(
+                      'Competência do compromisso',
+                      <input name="competence" type="month" defaultValue={workspace.space.today.slice(0, 7)} required className={input} />
+                    )}
+                  </div>
+
+                  <div className="hidden">
+                    {field(
+                      'Valor previsto',
+                      <select name="certainty" className={input}>
+                        <option value="confirmed">Confirmado</option>
+                        <option value="estimated">Estimado</option>
+                        {direction === 'inflow' && <option value="conditional">Condicional</option>}
+                      </select>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-end sm:col-span-2 lg:col-span-4 justify-end pt-2">
+                <button className={`${primary} flex items-center justify-center gap-2 px-6 py-2.5`}>
+                  <Plus size={16} />
+                  <span>{busy ? 'Salvando…' : 'Adicionar item'}</span>
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </section>
+      )}
+
+      {/* FILTER & MONTH CONTROL BAR */}
+      <section aria-label="Filtros da Agenda" className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* MONTH NAVIGATOR */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => changeMonthBy(-1)}
+              aria-label="Mês anterior"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <div className="relative">
+              <span className="text-base font-bold text-slate-900 dark:text-white">
+                {capitalizedMonth}
+              </span>
+              {/* HIDDEN / ACCESSIBLE MONTH INPUT */}
+              <input
+                type="month"
+                aria-label="Mês da Agenda"
+                value={month}
+                disabled={busy}
+                onChange={event => {
+                  if (event.target.value) {
+                    setMonth(event.target.value);
+                    setDay('');
+                    setAction(null);
+                    setDetails(null);
+                    setError('');
+                  }
+                }}
+                className="absolute inset-0 cursor-pointer opacity-0"
+                title="Clique para escolher outro mês"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => changeMonthBy(1)}
+              aria-label="Próximo mês"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronRight size={18} />
+            </button>
+
+            {month !== workspace.space.today.slice(0, 7) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setMonth(workspace.space.today.slice(0, 7));
+                  setDay('');
+                  setAction(null);
+                  setDetails(null);
+                }}
+                className="ml-1 rounded-xl bg-slate-100 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-brand-300"
+              >
+                Hoje
+              </button>
+            )}
+          </div>
+
+          {/* VIEW SWITCHER & STATUS FILTERS */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* TOGGLE CALENDAR */}
+            <button
+              type="button"
+              onClick={() => setShowCalendar(prev => !prev)}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                showCalendar
+                  ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-950/60 dark:text-brand-300'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300'
+              }`}
+            >
+              <CalendarIcon size={14} />
+              <span>{showCalendar ? 'Ocultar calendário' : 'Ver calendário mensal'}</span>
+            </button>
+
+            {/* STATUS SELECTOR PILLS */}
+            <div className="flex rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('open');
+                  setAction(null);
+                  setDetails(null);
+                }}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  status === 'open'
+                    ? 'bg-white font-semibold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                Pendentes {pendingCount > 0 ? `(${pendingCount})` : ''}
+              </button>
+              {overdueCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus('overdue');
+                    setAction(null);
+                    setDetails(null);
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    status === 'overdue'
+                      ? 'bg-red-50 font-semibold text-red-700 shadow-sm dark:bg-red-950/60 dark:text-red-300'
+                      : 'text-red-600 hover:text-red-800 dark:text-red-400'
+                  }`}
+                >
+                  Vencidos ({overdueCount})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('settled');
+                  setAction(null);
+                  setDetails(null);
+                }}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  status === 'settled'
+                    ? 'bg-white font-semibold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                Concluídos
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('all');
+                  setAction(null);
+                  setDetails(null);
+                }}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  status === 'all'
+                    ? 'bg-white font-semibold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                Todos
+              </button>
+            </div>
+
+            {/* HIDDEN SELECT FOR SCRIPT COMPATIBILITY */}
+            <div className="hidden">
+              {field(
+                'Situação',
+                <select
+                  value={status}
+                  disabled={busy}
+                  onChange={event => {
+                    setStatus(event.target.value);
+                    setAction(null);
+                    setDetails(null);
+                  }}
+                  className={input}
+                >
+                  <option value="open">Pendentes e agendados</option>
+                  <option value="settled">Concluídos</option>
+                  <option value="all">Todos</option>
+                </select>
+              )}
+            </div>
+
+            {day && (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setDay('');
+                  setAction(null);
+                  setDetails(null);
+                }}
+                className="inline-flex items-center gap-1 rounded-xl bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300"
+              >
+                <X size={13} />
+                <span>Ver o mês inteiro</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ELEGANT MONTHLY CALENDAR GRID */}
+        {showCalendar && (
+          <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <div className="grid grid-cols-7 gap-1.5 text-center text-xs">
+              {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(lbl => (
+                <span key={lbl} className="py-1 font-semibold text-slate-400 dark:text-slate-500">
+                  {lbl}
+                </span>
+              ))}
+              {Array.from({ length: firstDay }, (_, idx) => (
+                <div key={`blank-${idx}`} className="min-h-14 sm:min-h-16" />
+              ))}
+              {Array.from({ length: days }, (_, idx) => {
+                const on = `${month}-${String(idx + 1).padStart(2, '0')}`;
+                const rows = grouped.get(on) ?? [];
+                const isOverdueDay = rows.some(
+                  it => ['pending', 'partial'].includes(it.settlement_status) && on < workspace.space.today
+                );
+                const hasInflow = rows.some(it => it.direction === 'inflow');
+                const hasOutflow = rows.some(it => it.direction === 'outflow');
+                const isToday = on === workspace.space.today;
+                const isSelected = day === on;
+
+                return (
+                  <button
+                    key={on}
+                    type="button"
+                    aria-label={`${idx + 1}: ${rows.length} itens`}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      setDay(isSelected ? '' : on);
+                      setAction(null);
+                      setDetails(null);
+                    }}
+                    className={`flex min-h-14 flex-col justify-between rounded-xl border p-1.5 text-left transition sm:min-h-16 ${
+                      isSelected
+                        ? 'border-brand-500 bg-brand-50/80 ring-2 ring-brand-500/30 dark:border-brand-400 dark:bg-brand-950/60'
+                        : isToday
+                          ? 'border-brand-400/80 bg-slate-50 dark:border-brand-500/50 dark:bg-slate-800/60'
+                          : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50/80 dark:border-slate-800/80 dark:bg-slate-900/60 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className={`text-xs font-bold ${isToday ? 'text-brand-600 dark:text-brand-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                      {idx + 1}
+                    </span>
+
+                    {rows.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span
+                          className={`rounded px-1 py-0.5 text-[10px] font-bold leading-none ${
+                            isOverdueDay
+                              ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-200'
+                              : hasInflow && !hasOutflow
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200'
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {rows.length}
+                          <span className="hidden sm:inline"> {rows.length === 1 ? 'item' : 'itens'}</span>
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              O calendário reúne compromissos a pagar, a receber, lembretes e faturas. Clique em qualquer dia para filtrar.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* ITEMS TABLE / LIST ("Itens da Agenda") */}
+      <div className="table-shell overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5 dark:border-slate-800 dark:bg-slate-800/40">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {day ? `Compromissos de ${dateLabel(day)}` : `Itens de ${capitalizedMonth}`}
+            </h3>
+          </div>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            {items.length} {items.length === 1 ? 'item encontrado' : 'itens encontrados'}
+          </span>
+        </div>
+
+        <table aria-label="Itens da Agenda" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
+          <thead className="table-head border-b border-slate-100 uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <tr>
+              <th scope="col" className="hidden w-[14%] px-4 py-3 sm:table-cell">
+                Vencimento
+              </th>
+              <th scope="col" className="w-[44%] px-4 py-3 sm:w-[36%]">
+                {day ? `Itens de ${dateLabel(day)}` : 'Item'}
+              </th>
+              <th scope="col" className="w-[30%] px-3 py-3 text-right sm:w-[22%] sm:px-4">
+                Valor
+              </th>
+              <th scope="col" className="hidden w-[16%] px-4 py-3 sm:table-cell">
+                Situação
+              </th>
+              <th scope="col" className="w-[26%] px-3 py-3 text-right sm:w-[14%] sm:px-4">
+                <span className="sr-only">Ações</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+            {items.map(item => {
+              const isOverdue = ['pending', 'partial'].includes(item.settlement_status) && item.on < workspace.space.today;
+              const isSettled = item.settlement_status === 'settled';
+
+              return (
+                <Fragment key={itemKey(item)}>
+                  <tr className="table-row-hover transition-colors">
+                    {/* VENCIMENTO */}
+                    <td className="hidden px-4 py-3 text-xs sm:table-cell">
+                      <div className="font-semibold text-slate-700 dark:text-slate-300">
+                        {dateLabel(item.on)}
+                      </div>
+                      {isOverdue && (
+                        <span className="inline-block mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300">
+                          Vencido
+                        </span>
+                      )}
+                    </td>
+
+                    {/* TITULO / DETALHES */}
+                    <td className="px-4 py-3 [overflow-wrap:anywhere]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-900 dark:text-white">
+                          {item.title}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {itemTypes[item.type] ?? 'Item'}
+                        </span>
+                        {item.category_name && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+                            {item.category_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs sm:hidden">
+                        <span className="text-slate-500 dark:text-slate-400">{dateLabel(item.on)}</span>
+                        {isOverdue && (
+                          <span className="text-red-600 dark:text-red-400 font-semibold">· Vencido</span>
+                        )}
+                        <span className="text-slate-500 dark:text-slate-400">· {statuses[item.settlement_status] ?? item.settlement_status}</span>
+                      </div>
+                    </td>
+
+                    {/* VALOR */}
+                    <td className="px-3 py-3 text-right sm:px-4">
+                      {item.remaining_cents === null ? (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">Sem valor</span>
+                      ) : (
+                        <div>
+                          <span className={`block text-[11px] font-medium uppercase ${item.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                            {item.direction === 'inflow' ? 'A receber' : 'A pagar'}
+                          </span>
+                          <strong className={`text-sm font-bold ${
+                            isSettled
+                              ? 'text-slate-400 line-through dark:text-slate-500'
+                              : item.direction === 'inflow'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-slate-900 dark:text-white'
+                          }`}>
+                            {money(item.remaining_cents)}
+                          </strong>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* SITUAÇÃO BADGE */}
+                    <td className="hidden px-4 py-3 sm:table-cell">
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          isSettled
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : isOverdue
+                              ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                              : item.settlement_status === 'partial'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${isSettled ? 'bg-emerald-500' : isOverdue ? 'bg-red-500' : 'bg-amber-500'}`} />
+                        <span>{statuses[item.settlement_status] ?? item.settlement_status}</span>
+                      </span>
+                    </td>
+
+                    {/* AÇÕES */}
+                    <td className="px-3 py-3 text-right sm:px-4">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={`Detalhes do item ${item.title}`}
+                        aria-expanded={details === itemKey(item)}
+                        onClick={() => {
+                          setDetails(details === itemKey(item) ? null : itemKey(item));
+                          setAction(null);
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-brand-300 dark:hover:bg-slate-700"
+                      >
+                        {details === itemKey(item) ? 'Fechar' : 'Detalhes'}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* DETAILS CARD */}
+                  {details === itemKey(item) && (
+                    <tr>
+                      <td colSpan={5} className="bg-slate-50/50 p-4 dark:bg-slate-800/30">
+                        <section
+                          aria-label={`Detalhes do item ${item.title}`}
+                          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+                            <div>
+                              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                                {item.title}
+                              </h2>
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                Vencimento: <strong>{dateLabel(item.on)}</strong> · Situação:{' '}
+                                <strong>{statuses[item.settlement_status] ?? item.settlement_status}</strong>
+                                {item.category_name ? ` · Categoria: ${item.category_name}` : ''}
+                                {item.payment_name ? ` · ${item.payment_name}` : ''}
+                              </p>
+                              {item.paid_cents !== undefined && item.paid_cents > 0 && (
+                                <p className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                  Já quitado / recebido: {money(item.paid_cents)}
+                                </p>
+                              )}
+                              {item.notes && (
+                                <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                                  {item.notes}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* QUICK ACTIONS BUTTONS */}
+                            {canWrite && ['one_off', 'occurrence', 'reminder'].includes(item.type) && item.settlement_status !== 'cancelled' && (
+                              <div className="flex flex-wrap items-center gap-2">
+                                {item.type === 'reminder' ? (
+                                  <button
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void run('complete_reminder', {
+                                        p_commitment: item.id,
+                                        p_version: item.version,
+                                        p_completed: item.settlement_status !== 'settled'
+                                      })
+                                    }
+                                    className="btn-primary px-3.5 py-1.5 text-xs font-bold"
+                                  >
+                                    {item.settlement_status === 'settled' ? 'Reabrir lembrete' : 'Concluir lembrete'}
+                                  </button>
+                                ) : ['pending', 'partial'].includes(item.settlement_status) ? (
+                                  <>
+                                    <button
+                                      disabled={busy}
+                                      onClick={() => void payIntegral(item)}
+                                      className="btn-primary px-3.5 py-1.5 text-xs font-bold"
+                                    >
+                                      {item.direction === 'inflow' ? 'Registrar recebimento integral' : 'Registrar pagamento integral'}
+                                    </button>
+                                    <button
+                                      disabled={busy}
+                                      onClick={() => choose(item, 'pay')}
+                                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                    >
+                                      Informar valor e data
+                                    </button>
+                                  </>
+                                ) : null}
+
+                                <button
+                                  disabled={busy}
+                                  onClick={() => choose(item, 'edit')}
+                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                >
+                                  Editar este item
+                                </button>
+
+                                {!item.loan_installment && (
+                                  <button
+                                    disabled={busy}
+                                    onClick={() => choose(item, 'cancel')}
+                                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                                  >
+                                    Cancelar item
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {item.type === 'card_statement' && (
+                            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                              O pagamento e os detalhes desta fatura são gerenciados no menu <strong>Cartões</strong>.
+                            </p>
+                          )}
+                          {item.type === 'scheduled_transaction' && (
+                            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                              Movimentação registrada com data futura. Consulte os detalhes em <strong>Lançamentos</strong>.
+                            </p>
+                          )}
+
+                          {action?.id === item.id && editor}
+                        </section>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+
+            {!items.length && (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <CalendarDays className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                    <p className="font-medium">
+                      {!calendar ? 'Carregando Agenda…' : 'Nenhum item para este período e situação.'}
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                      Adicione um novo compromisso no formulário acima ou mude o filtro para visualizar outros meses.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
-      <details className="border-t border-slate-200 pt-3 dark:border-slate-800"><summary className="cursor-pointer text-sm font-semibold">Calendário do mês</summary>
-        <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs">{['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(label => <span key={label} className={`py-2 ${secondary}`}>{label}</span>)}{Array.from({ length: firstDay }, (_, index) => <span key={`blank-${index}`}/>)}{Array.from({ length: days }, (_, index) => { const on = `${month}-${String(index + 1).padStart(2, '0')}`, rows = grouped.get(on) ?? [], overdue = rows.some(item => ['pending', 'partial'].includes(item.settlement_status) && on < workspace.space.today); return <button key={on} aria-label={`${index + 1}: ${rows.length} itens`} aria-pressed={day === on} onClick={() => { setDay(day === on ? '' : on); setAction(null); setDetails(null); }} className={`min-h-16 min-w-0 rounded-lg border p-1 sm:min-h-20 ${day === on ? 'border-brand-600 bg-brand-50 dark:bg-brand-950' : 'border-slate-200 dark:border-slate-800'} ${on === workspace.space.today ? 'font-bold ring-1 ring-brand-500' : ''}`}><span>{index + 1}</span>{rows.length > 0 && <span className={`mt-2 block rounded-full px-0.5 py-0.5 text-[10px] ${overdue ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{rows.length}<span className="hidden sm:inline"> {rows.length === 1 ? 'item' : 'itens'}</span></span>}</button>; })}</div>
-        <p className={`mt-3 text-xs ${secondary}`}>O calendário reúne compromissos, lembretes, faturas e lançamentos com data futura. Selecione um dia para ver os detalhes.</p>
-      </details>
-    </section>
-    <div className="table-shell"><table aria-label="Itens da Agenda" className="w-full table-fixed text-sm text-slate-900 dark:text-slate-100">
-      <thead className="table-head uppercase tracking-wide"><tr><th scope="col" className="hidden w-[12%] px-4 py-2.5 sm:table-cell">Vencimento</th><th scope="col" className="w-[42%] px-3 py-2.5 sm:w-[34%] sm:px-4">{day ? `Itens de ${dateLabel(day)}` : 'Item'}</th><th scope="col" className="w-[32%] px-2 py-2.5 text-right sm:w-[20%] sm:px-4">Valor</th><th scope="col" className="hidden w-[18%] px-4 py-2.5 sm:table-cell">Situação</th><th scope="col" className="w-[26%] px-2 py-2.5 sm:w-[16%] sm:px-4"><span className="sr-only">Ações</span></th></tr></thead>
-      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">{items.map(item => <Fragment key={itemKey(item)}>
-        <tr className="table-row-hover"><td className={`hidden px-4 py-2.5 ${secondary} sm:table-cell`}>{dateLabel(item.on)}</td><td className="px-3 py-2.5 [overflow-wrap:anywhere] sm:px-4"><span className="font-medium">{item.title}</span><p className={`mt-1 text-xs ${secondary}`}>{itemTypes[item.type] ?? 'Item'}{item.category_name ? ` · ${item.category_name}` : ''}</p><p className={`mt-1 text-xs ${secondary} sm:hidden`}>{dateLabel(item.on)} · {statuses[item.settlement_status] ?? item.settlement_status}</p>{['pending', 'partial'].includes(item.settlement_status) && item.on < workspace.space.today && <p className="mt-1 text-xs text-red-600 dark:text-red-400">Vencido</p>}</td><td className="px-2 py-2.5 text-right [overflow-wrap:anywhere] sm:px-4">{item.remaining_cents === null ? <span className={secondary}>Sem valor</span> : <><span className={`block text-xs ${secondary}`}>{item.direction === 'inflow' ? 'A receber' : 'A pagar'}</span><strong className="font-semibold">{money(item.remaining_cents)}</strong></>}</td><td className={`hidden px-4 py-2.5 text-xs ${secondary} sm:table-cell`}>{statuses[item.settlement_status] ?? item.settlement_status}</td><td className="px-2 py-2.5 text-right sm:px-4"><button type="button" disabled={busy} aria-label={`Detalhes do item ${item.title}`} aria-expanded={details === itemKey(item)} onClick={() => { setDetails(details === itemKey(item) ? null : itemKey(item)); setAction(null); }} className="text-xs font-semibold text-brand-700 dark:text-brand-400">{details === itemKey(item) ? 'Fechar' : 'Detalhes'}</button></td></tr>
-        {details === itemKey(item) && <tr><td colSpan={5} className="p-3 sm:p-4"><section aria-label={`Detalhes do item ${item.title}`} className={`${panel} min-w-0 space-y-4 [overflow-wrap:anywhere]`}><div><h2 className="font-semibold">{item.title}</h2><p className={`mt-1 text-xs ${secondary}`}>{dateLabel(item.on)} · {statuses[item.settlement_status] ?? item.settlement_status}{item.category_name ? ` · ${item.category_name}` : ''}{item.payment_name ? ` · ${item.payment_name}` : ''}</p>{item.paid_cents !== undefined && item.paid_cents > 0 && <p className={`mt-2 text-sm ${secondary}`}>Já recebido ou pago: {money(item.paid_cents)}</p>}{item.notes && <p className={`mt-2 whitespace-pre-wrap text-sm ${secondary}`}>{item.notes}</p>}</div>
-          {item.type === 'card_statement' && <p className={`text-xs ${secondary}`}>Pagamento e detalhes da fatura estão em Cartões.</p>}{item.type === 'scheduled_transaction' && <p className={`text-xs ${secondary}`}>Movimentação registrada com data futura. Consulte os detalhes em Lançamentos.</p>}
-          {canWrite && ['one_off', 'occurrence', 'reminder'].includes(item.type) && item.settlement_status !== 'cancelled' && <div className="flex flex-wrap gap-3 text-sm font-semibold text-brand-700 dark:text-brand-300">{item.type === 'reminder' ? <button disabled={busy} onClick={() => void run('complete_reminder', { p_commitment: item.id, p_version: item.version, p_completed: item.settlement_status !== 'settled' })}>{item.settlement_status === 'settled' ? 'Reabrir lembrete' : 'Concluir lembrete'}</button> : ['pending', 'partial'].includes(item.settlement_status) && <><button disabled={busy} onClick={() => void payIntegral(item)}>{item.direction === 'inflow' ? 'Registrar recebimento integral' : 'Registrar pagamento integral'}</button><button disabled={busy} onClick={() => choose(item, 'pay')}>Informar valor e data</button></>}<button disabled={busy} onClick={() => choose(item, 'edit')}>Editar este item</button>{!item.loan_installment && <button disabled={busy} onClick={() => choose(item, 'cancel')} className="text-red-600 dark:text-red-400">Cancelar item</button>}</div>}
-          {action?.id === item.id && editor}
-        </section></td></tr>}
-      </Fragment>)}{!items.length && <tr><td colSpan={5} className={`px-4 py-6 text-center ${secondary}`}>{!calendar ? 'Carregando Agenda…' : 'Nenhum item para este período e situação.'}</td></tr>}</tbody>
-    </table></div>
-  </div>;
+  );
 }

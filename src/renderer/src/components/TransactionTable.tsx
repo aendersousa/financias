@@ -38,7 +38,7 @@ export default function TransactionTable<T extends LedgerTransaction>({transacti
           const kind=transactionKindLabels[transaction.kind]??'Movimentação'
           const date=transaction.occurred_on.split('-').reverse().join('/')
           const entries=transaction.entries??[]
-          const accounts=entries.filter(entry=>['financial_account','credit_card'].includes(entry.owner_type))
+          const accounts=entries.filter(entry=>['financial_account','credit_card'].includes(entry.owner_type)).filter((entry,index,rows)=>rows.findIndex(other=>other.account_name===entry.account_name&&other.owner_type===entry.owner_type&&(transaction.kind!=='transfer'||other.amount_cents===entry.amount_cents))===index)
           const accountNames=transaction.kind==='transfer'
             ? [...accounts].sort((a,b)=>a.amount_cents-b.amount_cents).map(entry=>entry.account_name).join(' → ')
             : [...new Set(accounts.map(entry=>entry.account_name))].join(' · ')
