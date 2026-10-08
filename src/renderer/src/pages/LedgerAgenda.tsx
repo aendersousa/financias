@@ -582,7 +582,6 @@ export default function LedgerAgenda({
         </div>
       )}
 
-      {canWrite && <div className="flex justify-end"><button type="button" onClick={()=>{setError('');setShowAddForm(true);}} className={primary+' inline-flex items-center gap-2'}><Plus size={16}/>Novo compromisso</button></div>}
 
       {popupDay&&<div role="dialog" aria-modal="true" aria-label={`Compromissos de ${dateLabel(popupDay)}`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs" onClick={event=>{if(event.target===event.currentTarget)setPopupDay('');}}>
         <div ref={dayDialog} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
@@ -975,6 +974,20 @@ export default function LedgerAgenda({
                 Todos
               </button>
             </div>
+
+            {canWrite && (
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setShowAddForm(true);
+                }}
+                className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold shadow-xs"
+              >
+                <Plus size={14} />
+                <span>Novo compromisso</span>
+              </button>
+            )}
 
             {/* HIDDEN SELECT FOR SCRIPT COMPATIBILITY */}
             <div className="hidden">
