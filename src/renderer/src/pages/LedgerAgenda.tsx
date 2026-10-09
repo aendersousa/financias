@@ -137,6 +137,8 @@ export default function LedgerAgenda({
   const [creationMethod, setCreationMethod] = useState('account');
   const [details, setDetails] = useState<string | null>(null);
   const [action, setAction] = useState<{ id: string; type: 'pay' | 'edit' | 'cancel' } | null>(null);
+  const [cancellingItem, setCancellingItem] = useState<AgendaItem | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [method, setMethod] = useState('account');
   const [retry, setRetry] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
@@ -397,6 +399,8 @@ export default function LedgerAgenda({
     setDay('');
     setAction(null);
     setDetails(null);
+    setCancellingItem(null);
+    setCancelReason('');
     setError('');
   }
 
@@ -588,7 +592,7 @@ export default function LedgerAgenda({
         <div ref={dayDialog} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800"><div className="flex items-center gap-3"><CalendarDays className="text-brand-500"/><div><h2 className="font-semibold">Compromissos de {dateLabel(popupDay)}</h2><p className="mt-1 text-xs text-slate-500">Todos os itens registrados para este dia</p></div></div><button type="button" aria-label="Fechar compromissos do dia" onClick={()=>setPopupDay('')} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18}/></button></div>
           <div className="space-y-3">
-            {(calendar?.items??[]).filter(item=>item.on===popupDay).map(item=>{
+            {(calendar?.items??[]).filter(item=>item.on===popupDay && item.settlement_status !== 'cancelled').map(item=>{
               const isInterestAccrual = /juros acumulados/i.test(item.title) || /vencimento mensal/i.test(item.title);
               const overdue = !isInterestAccrual && ['pending','partial','scheduled'].includes(item.settlement_status)&&item.on<(calendar?.today??workspace.space.today);
               const settled = item.settlement_status==='settled';
@@ -629,7 +633,56 @@ export default function LedgerAgenda({
                   {Boolean(item.paid_cents)&&<p className="text-xs text-slate-500">Já pago: {money(item.paid_cents??0)}</p>}
                   {item.notes&&<p className="whitespace-pre-wrap text-sm text-slate-500 [overflow-wrap:anywhere]">{item.notes}</p>}
 
-                  {canWrite && ['one_off', 'occurrence', 'reminder'].includes(item.type) && item.settlement_status !== 'cancelled' && (
+                  {cancellingItem?.id === item.id ? (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50/80 p-3.5 dark:border-rose-900/60 dark:bg-rose-950/40 space-y-2.5">
+                      <p className="text-xs font-semibold text-rose-900 dark:text-rose-200">
+                        Confirmar cancelamento deste compromisso?
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        O item será removido das pendências deste mês. A regra de recorrência continuará valendo normalmente para os próximos meses.
+                      </p>
+                      <div>
+                        <label htmlFor={`cancel-popup-${item.id}`} className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                          Motivo do cancelamento
+                        </label>
+                        <input
+                          id={`cancel-popup-${item.id}`}
+                          type="text"
+                          placeholder="Ex: Início a partir do próximo mês"
+                          value={cancelReason}
+                          onChange={e => setCancelReason(e.target.value)}
+                          className="field-input w-full text-xs"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            await run('cancel_commitment', {
+                              p_commitment: item.id,
+                              p_version: item.version,
+                              p_reason: cancelReason.trim() || 'Cancelado pelo usuário (início a partir do próximo mês)'
+                            });
+                            setCancellingItem(null);
+                            setCancelReason('');
+                          }}
+                          className="rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50"
+                        >
+                          {busy ? 'Cancelando…' : 'Sim, cancelar item'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => { setCancellingItem(null); setCancelReason(''); }}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    </div>
+                  ) : canWrite && ['one_off', 'occurrence', 'reminder'].includes(item.type) && item.settlement_status !== 'cancelled' ? (
                     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                       {item.type === 'reminder' ? (
                         <button
@@ -675,14 +728,14 @@ export default function LedgerAgenda({
                       {!item.loan_installment && (
                         <button
                           disabled={busy}
-                          onClick={() => { setPopupDay(''); choose(item, 'cancel'); }}
-                          className="rounded-xl px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                          onClick={() => { setCancellingItem(item); setCancelReason('Início a partir do próximo mês'); }}
+                          className="rounded-xl px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                         >
                           Cancelar item
                         </button>
                       )}
                     </div>
-                  )}
+                  ) : null}
                 </article>
               );
             })}
@@ -1447,8 +1500,8 @@ export default function LedgerAgenda({
                                 {!item.loan_installment && (
                                   <button
                                     disabled={busy}
-                                    onClick={() => choose(item, 'cancel')}
-                                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                                    onClick={() => { setCancellingItem(item); setCancelReason('Início a partir do próximo mês'); }}
+                                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                                   >
                                     Cancelar item
                                   </button>
@@ -1456,6 +1509,57 @@ export default function LedgerAgenda({
                               </div>
                             )}
                           </div>
+
+                          {cancellingItem?.id === item.id && (
+                            <div className="mt-3 w-full rounded-xl border border-rose-200 bg-rose-50/80 p-3.5 dark:border-rose-900/60 dark:bg-rose-950/40 space-y-2.5">
+                              <p className="text-xs font-semibold text-rose-900 dark:text-rose-200">
+                                Confirmar cancelamento deste compromisso?
+                              </p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                O item será removido das pendências deste mês. A regra de recorrência continuará valendo normalmente para os próximos meses.
+                              </p>
+                              <div>
+                                <label htmlFor={`cancel-row-${item.id}`} className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                                  Motivo do cancelamento
+                                </label>
+                                <input
+                                  id={`cancel-row-${item.id}`}
+                                  type="text"
+                                  placeholder="Ex: Início a partir do próximo mês"
+                                  value={cancelReason}
+                                  onChange={e => setCancelReason(e.target.value)}
+                                  className="field-input w-full text-xs"
+                                  autoFocus
+                                />
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={async () => {
+                                    await run('cancel_commitment', {
+                                      p_commitment: item.id,
+                                      p_version: item.version,
+                                      p_reason: cancelReason.trim() || 'Cancelado pelo usuário (início a partir do próximo mês)'
+                                    });
+                                    setCancellingItem(null);
+                                    setCancelReason('');
+                                  }}
+                                  className="rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50"
+                                >
+                                  {busy ? 'Cancelando…' : 'Sim, cancelar item'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => { setCancellingItem(null); setCancelReason(''); }}
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                >
+                                  Voltar
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {item.type === 'card_statement' && (
                             <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
