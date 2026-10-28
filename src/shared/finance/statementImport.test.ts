@@ -123,3 +123,46 @@ describe('OFX SGML/XML and file payload', () => {
     expect(() => parseCsvStatement(`Data;Descrição;Valor\n${rows}`, profile, '2026-10-10')).toThrow('10.000');
   });
 });
+
+
+import { predictCategoryForDescription } from './statementImport';
+
+describe('predictCategoryForDescription', () => {
+  const categories = [
+    { id: 'cat-alimentacao', name: 'Alimentação', accountClass: 'expense' },
+    { id: 'cat-transporte', name: 'Transporte e Mobilidade', accountClass: 'expense' },
+    { id: 'cat-mercado', name: 'Supermercado', accountClass: 'expense' },
+    { id: 'cat-saude', name: 'Saúde e Farmácia', accountClass: 'expense' },
+    { id: 'cat-streaming', name: 'Assinaturas & Streaming', accountClass: 'expense' },
+    { id: 'cat-moradia', name: 'Moradia e Contas', accountClass: 'expense' },
+    { id: 'cat-salario', name: 'Salário & Remuneração', accountClass: 'income' },
+  ];
+
+  it('predicts category from user history with high confidence', () => {
+    const history = [
+      { description: 'PADARIA REAL SOROCABA', categoryName: 'Alimentação', counterpartId: 'cat-alimentacao' }
+    ];
+    const result = predictCategoryForDescription('COMPRA PADARIA REAL', categories, history);
+    expect(result).toEqual({
+      counterpartId: 'cat-alimentacao',
+      categoryName: 'Alimentação',
+      confidence: 'high',
+      reason: 'Histórico anterior (Alimentação)'
+    });
+  });
+
+  it('predicts common Brazilian establishments using rule dictionary', () => {
+    expect(predictCategoryForDescription('COMPRA CARTAO IFOOD *1234', categories)?.counterpartId).toBe('cat-alimentacao');
+    expect(predictCategoryForDescription('PAG*UBER *TRIP SAO PAULO', categories)?.counterpartId).toBe('cat-transporte');
+    expect(predictCategoryForDescription('POSTO SHELL 0928', categories)?.counterpartId).toBe('cat-transporte');
+    expect(predictCategoryForDescription('CARREFOUR BRASIL HIPER', categories)?.counterpartId).toBe('cat-mercado');
+    expect(predictCategoryForDescription('DROGASIL 452 SAO PAULO', categories)?.counterpartId).toBe('cat-saude');
+    expect(predictCategoryForDescription('NETFLIX.COM MENSALIDADE', categories)?.counterpartId).toBe('cat-streaming');
+    expect(predictCategoryForDescription('SABESP AGUA E ESGOTO', categories)?.counterpartId).toBe('cat-moradia');
+    expect(predictCategoryForDescription('TED SALARIO EMPRESA XYZ', categories, [], false)?.counterpartId).toBe('cat-salario');
+  });
+
+  it('returns null if no rule or category matches', () => {
+    expect(predictCategoryForDescription('TRANSFERENCIA DESCONHECIDA 9999', categories)).toBeNull();
+  });
+});

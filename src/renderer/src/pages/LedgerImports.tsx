@@ -1,10 +1,20 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { inspectCsvStatement, parseStatementFile, type CsvColumn, type CsvStatementPreview, type StatementCsvProfile, type StatementImportPayload } from '../../../shared/finance/statementImport';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  inspectCsvStatement,
+  parseStatementFile,
+  predictCategoryForDescription,
+  type CategoryPrediction,
+  type CsvColumn,
+  type CsvStatementPreview,
+  type HistoricalPattern,
+  type StatementCsvProfile,
+  type StatementImportPayload
+} from '../../../shared/finance/statementImport';
 import { ledgerRpc, type LedgerWorkspace } from '../lib/ledgerRepository';
 import { useAppStore } from '../store/useAppStore';
 import { parseBrlCents } from '../../../shared/finance/money';
 import { ImportHistoryTable, ImportReviewTable } from '../components/ImportTables';
-import { Upload } from 'lucide-react';
+import { Sparkles, Upload } from 'lucide-react';
 
 interface ImportAccount { id: string; name: string; liquidity: string; accountType?: 'card'; importProfile: StatementCsvProfile | null; fitidsUnreliable: boolean; institution: string | null; lastDigits: string | null }
 interface ImportBatch { id: string; financial_account_id: string | null; credit_card_id?: string | null; ledger_account_id: string; accountName?: string; file_name: string; status: 'in_review' | 'completed' | 'undone'; version: number; created_at: string; lines_read: number; lines_new: number; lines_duplicate: number; fitids_regenerated: boolean; canUndo?: boolean }
@@ -34,34 +44,96 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const [referenceMonth, setReferenceMonth] = useState('');
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDragging, setIsDragging] = useState(false);
+
   const privacy = useAppStore(state => state.privacyMode), canWrite = workspace.role !== 'viewer';
   const currentSpace = useRef(workspace.space.id); currentSpace.current = workspace.space.id;
   const fileInput = useRef<HTMLInputElement>(null);
   const account = overview?.accounts.find(item => item.id === accountId);
+
+  const historyPatterns = useMemo<HistoricalPattern[]>(() => {
+    if (!workspace?.transactions) return [];
+    const patterns: HistoricalPattern[] = [];
+    for (const tx of workspace.transactions) {
+      if (!tx.description) continue;
+      const catEntry = tx.entries?.find(e => e.owner_type === 'category');
+      if (catEntry?.account_name) {
+        const counterpart = overview?.counterparts.find(
+          c => c.ownerType === 'category' && c.name.toLowerCase() === catEntry.account_name.toLowerCase()
+        );
+        patterns.push({
+          description: tx.description,
+          categoryName: catEntry.account_name,
+          counterpartId: counterpart?.id
+        });
+      }
+    }
+    return patterns;
+  }, [workspace.transactions, overview?.counterparts]);
+
+  const predictions = useMemo<Record<string, CategoryPrediction>>(() => {
+    if (!review?.candidates || !overview?.counterparts) return {};
+    const map: Record<string, CategoryPrediction> = {};
+    const availableCategories = overview.counterparts.filter(c => c.ownerType === 'category');
+    for (const row of review.candidates) {
+      if (awaiting(row) && row.amount_cents !== null && !row.autoSelected) {
+        const isExpense = row.amount_cents < 0;
+        const pred = predictCategoryForDescription(row.description, availableCategories, historyPatterns, isExpense);
+        if (pred) map[row.id] = pred;
+      }
+    }
+    return map;
+  }, [review?.candidates, overview?.counterparts, historyPatterns]);
+
   async function loadOverview() { const space = workspace.space.id, data = await ledgerRpc<Overview>('import_overview', { p_space: space }); if (currentSpace.current === space) setOverview(data); }
   useEffect(() => {
-    setOverview(null); setReview(null); setAccountId(''); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setUndoOpen(false); setError(''); setNotice('');
+    setOverview(null); setReview(null); setAccountId(''); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setUndoOpen(false); setError(''); setNotice(''); setSelectedIds(new Set());
     void loadOverview().catch(failure => setError(failure instanceof Error ? failure.message : 'Não foi possível carregar as importações.'));
   }, [workspace.space.id]);
-  function setLoadedReview(next: ImportReview) {
+
+  function setLoadedReview(next: ImportReview, currentOverview = overview) {
     setReview(next); setFilter('review'); setPage(0); setUndoOpen(false); setRestoreChoices({});
-    setExpandedLine(null);
-    setChoices(Object.fromEntries(next.candidates.map(row => [row.id, { action: row.autoSelected && row.suggestions[0]?.entryId ? `${row.suggestions[0].kind}:${row.suggestions[0].entryId}` : 'skip', counterpart: '' }])));
+    setExpandedLine(null); setSelectedIds(new Set());
+
+    const availableCategories = currentOverview?.counterparts.filter(c => c.ownerType === 'category') ?? [];
+    const initialChoices: Record<string, Choice> = {};
+
+    for (const row of next.candidates) {
+      if (row.autoSelected && row.suggestions[0]?.entryId) {
+        initialChoices[row.id] = { action: `${row.suggestions[0].kind}:${row.suggestions[0].entryId}`, counterpart: '' };
+      } else if (awaiting(row) && row.amount_cents !== null) {
+        const isExpense = row.amount_cents < 0;
+        const pred = predictCategoryForDescription(row.description, availableCategories, historyPatterns, isExpense);
+        if (pred) {
+          initialChoices[row.id] = { action: 'create', counterpart: pred.counterpartId };
+        } else {
+          initialChoices[row.id] = { action: 'skip', counterpart: '' };
+        }
+      } else {
+        initialChoices[row.id] = { action: 'skip', counterpart: '' };
+      }
+    }
+    setChoices(initialChoices);
   }
+
   async function openBatch(id: string) {
     if (busy) return; setBusy(true); setError('');
     try { const next = await ledgerRpc<ImportReview>('import_review', { p_space: workspace.space.id, p_batch: id }); setLoadedReview(next); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível abrir este lote.'); }
     finally { setBusy(false); }
   }
+
   function chooseAccount(id: string) {
     setAccountId(id); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setSignConfirmed(false); setOtherReason(''); setReferenceMonth('');
     setProfile(overview?.accounts.find(item => item.id === id)?.importProfile ?? defaultProfile());
   }
+
   function updateProfile(next: StatementCsvProfile) {
     setProfile(next); setPrepared(null); setSignConfirmed(false);
     if (bytes && !isOfx) { try { const preview = inspectCsvStatement(bytes, next); setCsvPreview(preview); } catch (failure) { setError((failure as Error).message); } }
   }
+
   async function selectFile(file: File | undefined) {
     setError(''); setPrepared(null); setSignConfirmed(false); setOtherReason(''); if (!file) return;
     try {
@@ -72,6 +144,24 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
       else setCsvPreview(null);
     } catch (failure) { setBytes(null); setCsvPreview(null); setError(failure instanceof Error ? failure.message : 'Não foi possível ler o arquivo.'); }
   }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    if (!busy && accountId) setIsDragging(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    if (busy || !accountId) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) void selectFile(file);
+  }
+
   async function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy || !bytes) return; setBusy(true); setError(''); setNotice('');
     try {
@@ -82,6 +172,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
     } catch (failure) { setPrepared(null); setError(failure instanceof Error ? failure.message : 'Confira o arquivo e o mapeamento.'); }
     finally { setBusy(false); }
   }
+
   async function readBatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy || !prepared || !signConfirmed) return; setBusy(true); setError(''); setNotice('');
     const form = new FormData(event.currentTarget);
@@ -89,11 +180,77 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
       const id = await ledgerRpc<string>('import_statement_read', { p_space: workspace.space.id, p_account: accountId, p_client_uuid: clientId, p_payload: { ...prepared, accountType: account?.accountType === 'card' ? 'card' : 'bank', referenceMonth: account?.accountType === 'card' && referenceMonth ? `${referenceMonth}-01` : undefined, periodStart: String(form.get('periodStart')) || null, periodEnd: String(form.get('periodEnd')) || null, profile: prepared.profile ?? { columns: {}, inverseSigns: profile.inverseSigns ?? false }, otherAccountReason: otherReason || undefined } });
       const next = await ledgerRpc<ImportReview>('import_review', { p_space: workspace.space.id, p_batch: id });
       setLoadedReview(next); setPrepared(null); setBytes(null); setFileName(''); setCsvPreview(null); await loadOverview();
-      setNotice('Arquivo lido. Revise as linhas antes de confirmar os lançamentos.');
+      const predictedCount = next.candidates.filter(r => awaiting(r) && r.amount_cents !== null && predictCategoryForDescription(r.description, overview?.counterparts.filter(c => c.ownerType === 'category') ?? [], historyPatterns, r.amount_cents < 0)).length;
+      setNotice(`Arquivo lido com sucesso. ${predictedCount > 0 ? `${predictedCount} linhas foram pré-categorizadas automaticamente! ` : ''}Revise as decisões antes de confirmar.`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível gravar a leitura.'); await loadOverview().catch(() => undefined); }
     finally { setBusy(false); }
   }
-  function changeChoice(row: Candidate, action: string, counterpart = choices[row.id]?.counterpart ?? '') { setChoices(previous => ({ ...previous, [row.id]: { ...previous[row.id], action, counterpart } })); }
+
+  function changeChoice(row: Candidate, action: string, counterpart = choices[row.id]?.counterpart ?? '') {
+    setChoices(previous => ({ ...previous, [row.id]: { ...previous[row.id], action, counterpart } }));
+  }
+
+  function applyAllPredictions() {
+    setChoices(prev => {
+      const next = { ...prev };
+      let applied = 0;
+      for (const [rowId, pred] of Object.entries(predictions)) {
+        if (!next[rowId] || next[rowId].action === 'skip') {
+          next[rowId] = { action: 'create', counterpart: pred.counterpartId };
+          applied++;
+        }
+      }
+      if (applied > 0) setNotice(`${applied} sugestões aplicadas com sucesso.`);
+      return next;
+    });
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const r of visibleAwaiting) next.delete(r.id);
+      } else {
+        for (const r of visibleAwaiting) next.add(r.id);
+      }
+      return next;
+    });
+  }
+
+  function applyBulkCategory(counterpartId: string) {
+    if (!selectedIds.size) return;
+    setChoices(prev => {
+      const next = { ...prev };
+      for (const id of selectedIds) {
+        next[id] = { ...next[id], action: 'create', counterpart: counterpartId };
+      }
+      return next;
+    });
+    setNotice(`${selectedIds.size} linhas atualizadas com a nova categoria.`);
+    setSelectedIds(new Set());
+  }
+
+  function applyBulkAction(action: 'ignore' | 'skip') {
+    if (!selectedIds.size) return;
+    setChoices(prev => {
+      const next = { ...prev };
+      for (const id of selectedIds) {
+        next[id] = { ...next[id], action, counterpart: '' };
+      }
+      return next;
+    });
+    setNotice(`${selectedIds.size} linhas marcadas como "${action === 'ignore' ? 'Ignorar' : 'Decidir depois'}".`);
+    setSelectedIds(new Set());
+  }
+
   async function confirm() {
     if (busy || !review) return; setBusy(true); setError(''); setNotice('');
     try {
@@ -115,16 +272,19 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível confirmar o lote.'); }
     finally { setBusy(false); }
   }
+
   async function reject(row: Candidate, suggestion: Suggestion) {
     if (busy || !review) return; setBusy(true); setError('');
     try { const next = await ledgerRpc<ImportReview>('confirm_import', { p_space: workspace.space.id, p_batch: review.batch.id, p_version: review.batch.version, p_decisions: [{ candidateId: row.id, action: 'reject', matchKind: suggestion.kind, entryId: suggestion.entryId, commitmentId: suggestion.commitmentId }] }); setLoadedReview(next); await loadOverview(); }
     catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
   }
+
   async function unmatch(row: Candidate) {
     if (busy || !review) return; setBusy(true); setError('');
     try { await ledgerRpc('unmatch_import', { p_space: workspace.space.id, p_candidate: row.id, p_version: row.currentTransactionVersion }); setLoadedReview(await ledgerRpc<ImportReview>('import_review', { p_space: workspace.space.id, p_batch: review.batch.id })); await loadOverview(); await onChanged(); setNotice('Conciliação desfeita. O lançamento continua no financeiro.'); }
     catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
   }
+
   async function undo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy || !review) return; setBusy(true); setError('');
     try {
@@ -134,39 +294,83 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível desfazer o lote.'); }
     finally { setBusy(false); }
   }
+
   async function downloadOriginal() {
     if (busy || !review) return; setBusy(true); setError('');
     try { const file = await ledgerRpc<{ fileName: string; fileBytesBase64: string }>('import_original_file', { p_space: workspace.space.id, p_batch: review.batch.id }); const data = Uint8Array.from(atob(file.fileBytesBase64), char => char.charCodeAt(0)); const url = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' })); const link = document.createElement('a'); link.href = url; link.download = file.fileName; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
     catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
   }
+
   const selectedBatch = overview?.batches.find(item => item.id === review?.batch.id);
   const displayed = review?.candidates.filter(row => filter === 'all' || filter === 'review' && awaiting(row) || filter === 'applied' && ['created', 'matched', 'ignored', 'undone'].includes(row.status) || filter === 'duplicate' && row.status === 'duplicate' || filter === 'pending' && row.status === 'pending_authorization' || filter === 'error' && ['invalid', 'informational'].includes(row.status)) ?? [];
   const selectedCount = review?.candidates.filter(row => awaiting(row) && choices[row.id]?.action && choices[row.id].action !== 'skip').length ?? 0;
+
+  const visibleAwaiting = displayed.slice(page * 50, page * 50 + 50).filter(r => awaiting(r));
+  const allSelected = visibleAwaiting.length > 0 && visibleAwaiting.every(r => selectedIds.has(r.id));
+
   return <div className="min-w-0 space-y-6">
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
-    {notice && <p role="status" className="text-sm text-brand-700 dark:text-brand-300">{notice}</p>}
+    {notice && <p role="status" className="text-sm font-medium text-brand-700 dark:text-brand-300">{notice}</p>}
       {canWrite ? <form aria-label="Preparar importação" onSubmit={event => void prepare(event)} className="card min-w-0 space-y-4 p-4">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="flex w-full min-w-0 flex-col gap-1 sm:w-64"><label htmlFor="import-account" className="field-label">Conta ou cartão do arquivo</label><select id="import-account" value={accountId} onChange={event => chooseAccount(event.target.value)} disabled={busy} required className={input}><option value="">Selecione a conta ou o cartão</option>{overview?.accounts.map(item => <option key={item.id} value={item.id}>{item.name}{item.liquidity === 'benefit' ? ' · Benefício' : item.accountType === 'card' ? ' · Cartão' : ''}</option>)}</select></div>
-          <div className="flex w-full min-w-0 flex-col gap-1 sm:w-96">
-            <label htmlFor="import-file" className="field-label">Arquivo OFX ou CSV</label>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <input ref={fileInput} id="import-file" key={accountId} type="file" accept=".ofx,.csv,text/csv,application/x-ofx" hidden disabled={busy || !accountId} onChange={event => {
-                const file = event.currentTarget.files?.[0];
-                if (!file) return;
-                event.currentTarget.value = '';
-                void selectFile(file);
-              }}/>
-              <button type="button" disabled={busy || !accountId} onClick={() => fileInput.current?.click()} aria-label="Escolher arquivo OFX ou CSV" aria-describedby="import-file-name" className={`${primary} inline-flex shrink-0 items-center gap-2 disabled:cursor-not-allowed`}>
-                <Upload size={16} aria-hidden="true"/>Escolher arquivo
-              </button>
-              <button disabled={busy || !bytes} className={primary}>{busy ? 'Preparando…' : 'Conferir arquivo'}</button>
-            </div>
-            <span id="import-file-name" aria-live="polite" className={`min-w-0 text-xs [overflow-wrap:anywhere] ${bytes ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>{bytes ? fileName : 'Nenhum arquivo selecionado'}</span>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex w-full min-w-0 flex-col gap-1"><label htmlFor="import-account" className="field-label">Conta ou cartão do arquivo</label><select id="import-account" value={accountId} onChange={event => chooseAccount(event.target.value)} disabled={busy} required className={input}><option value="">Selecione a conta ou o cartão</option>{overview?.accounts.map(item => <option key={item.id} value={item.id}>{item.name}{item.liquidity === 'benefit' ? ' · Benefício' : item.accountType === 'card' ? ' · Cartão' : ''}</option>)}</select></div>
+          {account?.accountType === 'card' && <div className="flex w-full min-w-0 flex-col gap-1"><label htmlFor="import-statement-month" className="field-label">Mês da fatura (se o arquivo for de uma fatura)</label><input id="import-statement-month" type="month" value={referenceMonth} onChange={event => setReferenceMonth(event.target.value)} disabled={busy} className={input}/><span className="text-xs text-slate-500 dark:text-slate-400">Deixe vazio para atribuir cada linha pela data da compra.</span></div>}
         </div>
-        <p className="max-w-prose text-xs text-slate-500 dark:text-slate-400">Escolha a conta, confira as colunas e revise o arquivo. Seus saldos só mudam quando você confirma as linhas.</p>
-        {account?.accountType === 'card' && <div className="grid max-w-md gap-1 text-sm"><label htmlFor="import-statement-month" className="field-label">Mês da fatura (se o arquivo for de uma fatura)</label><input id="import-statement-month" type="month" value={referenceMonth} onChange={event => setReferenceMonth(event.target.value)} disabled={busy} className={input}/><span className="text-xs text-slate-500 dark:text-slate-400">Deixe vazio para atribuir cada linha pela data da compra.</span></div>}
+
+        {/* Drag & Drop Dropzone */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => { if (!busy && accountId) fileInput.current?.click(); }}
+          className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all cursor-pointer ${
+            isDragging
+              ? 'border-brand-500 bg-brand-50/70 dark:border-brand-400 dark:bg-brand-950/40 scale-[1.01]'
+              : bytes
+              ? 'border-emerald-400 bg-emerald-50/40 dark:border-emerald-600/60 dark:bg-emerald-950/20'
+              : 'border-slate-300 hover:border-brand-400 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/40'
+          } ${!accountId ? 'opacity-60 cursor-not-allowed' : ''}`}
+        >
+          <input
+            ref={fileInput}
+            id="import-file"
+            key={accountId}
+            type="file"
+            accept=".ofx,.csv,text/csv,application/x-ofx"
+            hidden
+            disabled={busy || !accountId}
+            onChange={event => {
+              const file = event.currentTarget.files?.[0];
+              if (!file) return;
+              event.currentTarget.value = '';
+              void selectFile(file);
+            }}
+          />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300 mb-3">
+            <Upload size={24} aria-hidden="true" />
+          </div>
+          {bytes ? (
+            <div className="space-y-1">
+              <p className="font-semibold text-emerald-800 dark:text-emerald-300">✓ {fileName}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{(bytes.length / 1024).toFixed(1)} KB · Arquivo selecionado. Clique ou arraste outro para substituir.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="font-medium text-slate-800 dark:text-slate-200">
+                {accountId ? 'Arraste e solte o arquivo OFX ou CSV aqui' : 'Selecione primeiro a conta ou cartão acima'}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {accountId ? 'ou clique em qualquer parte deste quadro para buscar no computador' : 'O envio do arquivo é habilitado após selecionar a conta'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <p className="max-w-prose text-xs text-slate-500 dark:text-slate-400">Escolha a conta, confira as colunas e revise o arquivo. Seus saldos só mudam quando você confirma as linhas.</p>
+          <button disabled={busy || !bytes} className={primary}>{busy ? 'Preparando…' : 'Conferir arquivo'}</button>
+        </div>
+
         {account?.lastDigits && <p className="text-xs text-slate-500 dark:text-slate-400">Identificação da conta no banco: {account.institution} · final {account.lastDigits}</p>}
         {account?.fitidsUnreliable && <p className="text-sm text-amber-700 dark:text-amber-300">Este banco gerou identificadores novos para linhas antigas. A comparação usa data, valor e quantidade de linhas iguais.</p>}
         {bytes && <div className="grid min-w-0 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-800">
@@ -196,13 +400,155 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
       {review.balanceCheck && <div className="rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800"><p className="font-semibold">{review.balanceCheck.matches ? 'Saldo conferido' : 'Saldo divergente'} em {review.balanceCheck.on}</p><p className="mt-1">No extrato: {money(review.balanceCheck.statementCents)} · No aplicativo: {money(review.balanceCheck.ledgerCents)}</p>{!review.balanceCheck.matches && <p className="mt-1">Diferença: {money(review.balanceCheck.differenceCents)}. Revise as linhas e os lançamentos desta conta.</p>}</div>}
       {undoOpen && <form onSubmit={event => void undo(event)} className="grid gap-4 rounded-xl border border-red-200 p-4 dark:border-red-900"><p className="text-sm">Desfazer cancela os lançamentos criados pelo lote, desfaz suas conciliações e restaura os valores que ele alterou. O histórico permanece registrado.</p>{review.undoChoices.map(item => <div key={item.id} className="grid gap-1 text-sm"><label htmlFor={`import-restore-${item.id}`}>{item.description}: alterado depois da importação</label><select id={`import-restore-${item.id}`} required value={restoreChoices[item.id] ?? ''} onChange={event => setRestoreChoices(previous => ({ ...previous, [item.id]: event.target.value }))} className={input}><option value="">Escolha o que fazer</option><option value="restore">Restaurar o valor anterior ao lote</option><option value="keep">Manter o valor atual</option></select></div>)}<div className="grid gap-1 text-sm"><label htmlFor="import-undo-reason">Motivo para desfazer</label><textarea id="import-undo-reason" name="reason" required maxLength={1000} className={input}/></div><div className="flex gap-3"><button disabled={busy} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Desfazendo…' : 'Confirmar desfazer lote'}</button><button type="button" disabled={busy} onClick={() => setUndoOpen(false)} className={secondary}>Voltar</button></div></form>}
       {review.absentGroups.map(group => <div key={group.fingerprintKey} className="rounded-xl border border-amber-200 p-4 text-sm dark:border-amber-900"><p>{group.existingCount} lançamentos de {money(group.amountCents)} em {group.postedOn} no aplicativo; {group.fileCount} no extrato.</p><p className="mt-1 text-slate-500">Nenhum foi cancelado. Abra o lote original para decidir qual está ausente e se deseja manter o lançamento.</p><div className="mt-2 flex flex-wrap gap-3">{[...new Set(group.candidates.map(item => item.batchId))].map(id => <button key={id} disabled={busy} onClick={() => void openBatch(id)} className="font-semibold text-brand-700 dark:text-brand-300">Abrir lote original</button>)}</div></div>)}
-      <div className="grid max-w-xs gap-1 text-sm"><label htmlFor="import-filter" className="field-label">Mostrar linhas</label><select id="import-filter" value={filter} onChange={event => { setFilter(event.target.value); setPage(0); setExpandedLine(null); }} className={input}><option value="review">Aguardando revisão</option><option value="applied">Aplicadas e ignoradas</option><option value="duplicate">Já importadas</option><option value="pending">Em processamento</option><option value="error">Informativas e com erro</option><option value="all">Todas</option></select></div>
-      <ImportReviewTable lines={displayed.slice(page * 50, page * 50 + 50)} money={money}
+
+      {/* Filter and Auto-suggestions bar */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="grid max-w-xs gap-1 text-sm">
+          <label htmlFor="import-filter" className="field-label">Mostrar linhas</label>
+          <select id="import-filter" value={filter} onChange={event => { setFilter(event.target.value); setPage(0); setExpandedLine(null); setSelectedIds(new Set()); }} className={input}>
+            <option value="review">Aguardando revisão ({review.candidates.filter(awaiting).length})</option>
+            <option value="applied">Aplicadas e ignoradas</option>
+            <option value="duplicate">Já importadas</option>
+            <option value="pending">Em processamento</option>
+            <option value="error">Informativas e com erro</option>
+            <option value="all">Todas ({review.candidates.length})</option>
+          </select>
+        </div>
+        {Object.keys(predictions).length > 0 && filter === 'review' && canWrite && review.batch.status !== 'undone' && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={applyAllPredictions}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-900 dark:bg-brand-950/60 dark:text-brand-300"
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            Aplicar todas as {Object.keys(predictions).length} sugestões automáticas
+          </button>
+        )}
+      </div>
+
+      {/* Bulk actions toolbar */}
+      {selectedIds.size > 0 && canWrite && review.batch.status !== 'undone' && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50/70 p-3.5 text-sm dark:border-brand-900/60 dark:bg-brand-950/40">
+          <span className="font-semibold text-brand-900 dark:text-brand-200">
+            {selectedIds.size} {selectedIds.size === 1 ? 'linha selecionada' : 'linhas selecionadas'}:
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Atribuir categoria em lote"
+              defaultValue=""
+              disabled={busy}
+              onChange={event => {
+                if (!event.target.value) return;
+                applyBulkCategory(event.target.value);
+                event.target.value = '';
+              }}
+              className={`${input} max-w-xs h-9 py-1 text-xs`}
+            >
+              <option value="">Atribuir categoria em lote…</option>
+              {overview?.counterparts
+                .filter(c => c.id !== review.batch.ledger_account_id && (
+                  review.batch.credit_card_id
+                    ? c.ownerType === 'category' && c.accountClass === 'expense'
+                    : c.ownerType === 'category'
+                ))
+                .map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.accountClass === 'expense' ? 'Despesa' : 'Receita'} · {c.name}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => applyBulkAction('ignore')}
+              className={`${secondary} py-1.5 text-xs`}
+            >
+              Ignorar selecionadas
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => applyBulkAction('skip')}
+              className={`${secondary} py-1.5 text-xs`}
+            >
+              Decidir depois
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 ml-auto"
+            >
+              Desmarcar todas
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ImportReviewTable
+        lines={displayed.slice(page * 50, page * 50 + 50)}
+        money={money}
+        selectedIds={selectedIds}
+        onToggleSelect={canWrite && review.batch.status !== 'undone' ? toggleSelect : undefined}
+        onToggleSelectAll={canWrite && review.batch.status !== 'undone' ? toggleSelectAll : undefined}
+        allSelected={allSelected}
         renderSituation={row=><p>{statusLabels[row.status] ?? row.status}</p>}
         renderContext={row=><>
           {row.error&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{row.error}</p>}
           {row.status==='blocked_closed_period'&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Reabra o mês antes de criar ou alterar um lançamento desta linha.</p>}
           {awaiting(row)&&choices[row.id]?.action&&choices[row.id].action!=='skip'&&<p className="mt-1 text-xs text-brand-700 dark:text-brand-300">{row.autoSelected&&choices[row.id].action===`${row.suggestions[0]?.kind}:${row.suggestions[0]?.entryId}`?'Correspondência preselecionada':'Decisão'}: {decisionLabels[choices[row.id].action.split(':')[0]] ?? choices[row.id].action}</p>}
+
+          {/* Quick inline category/destination selector for awaiting lines */}
+          {canWrite && awaiting(row) && review.batch.status !== 'undone' && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select
+                aria-label={`Destino da linha ${row.line_number}`}
+                value={
+                  choices[row.id]?.action === 'create'
+                    ? `create:${choices[row.id]?.counterpart || ''}`
+                    : choices[row.id]?.action ?? 'skip'
+                }
+                disabled={busy}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val.startsWith('create:')) {
+                    changeChoice(row, 'create', val.replace('create:', ''));
+                  } else {
+                    changeChoice(row, val, '');
+                  }
+                }}
+                className="field-input h-8 py-0 px-2 text-xs font-medium rounded-lg max-w-xs"
+              >
+                <option value="skip">Decidir depois</option>
+                <option value="ignore">Ignorar linha</option>
+                {row.suggestions.map(s => (
+                  <option key={s.entryId ?? s.commitmentId ?? s.kind} value={s.kind === 'opening_coverage' ? 'opening_coverage' : `${s.kind}:${s.entryId ?? s.commitmentId}`}>
+                    Conciliar: {s.description} ({money(s.amountCents)})
+                  </option>
+                ))}
+                <optgroup label="Categorias">
+                  {overview?.counterparts
+                    .filter(c => c.id !== review.batch.ledger_account_id && (
+                      review.batch.credit_card_id
+                        ? c.ownerType === 'category' && c.accountClass === 'expense'
+                        : c.ownerType === 'category' && c.accountClass === (row.amount_cents! < 0 ? 'expense' : 'income')
+                    ))
+                    .map(c => (
+                      <option key={c.id} value={`create:${c.id}`}>
+                        Lançar em: {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+              {predictions[row.id] && choices[row.id]?.action === 'create' && choices[row.id]?.counterpart === predictions[row.id]?.counterpartId && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                  <Sparkles size={11} aria-hidden="true" />
+                  {predictions[row.id].reason}
+                </span>
+              )}
+            </div>
+          )}
         </>}
         renderActions={row=><button type="button" disabled={busy} onClick={()=>setExpandedLine(expandedLine===row.id?null:row.id)} aria-label={`Ver detalhes da linha ${row.line_number}`} aria-expanded={expandedLine===row.id} className="text-xs font-semibold text-brand-700 dark:text-brand-400">Detalhes</button>}
         renderEditor={row=>expandedLine===row.id?<section aria-label={`Detalhes da linha ${row.line_number}`} className={`${panel} min-w-0 space-y-3`}>

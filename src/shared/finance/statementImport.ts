@@ -199,3 +199,206 @@ export async function parseStatementFile(bytes: Uint8Array, options: StatementPa
   const fileSha256 = [...new Uint8Array(hashBytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
   return { ...normalized, format, fileName: options.fileName, fileSha256, fileBytesBase64: btoa(binary), profile: format === 'csv' ? { ...options.profile!, encoding: decoded.encoding as StatementCsvProfile['encoding'] } : undefined };
 }
+
+
+export interface CategoryOption {
+  id: string;
+  name: string;
+  accountClass?: string;
+  ownerType?: string;
+}
+
+export interface HistoricalPattern {
+  description: string;
+  categoryName: string;
+  counterpartId?: string;
+}
+
+export interface CategoryPrediction {
+  counterpartId: string;
+  categoryName: string;
+  confidence: 'high' | 'medium';
+  reason: string;
+}
+
+export const ESTABLISHMENT_RULES: { keywords: string[]; targetCategories: string[] }[] = [
+  {
+    keywords: [
+      'IFOOD', 'RAPPI', 'UBER EATS', 'ZE DELIVERY', 'MCDONALD', 'BURGER KING', 'BK ',
+      'SUBWAY', 'HABIB', 'OUTBACK', 'RESTAURANTE', 'PADARIA', 'LANCHONETE', 'PIZZARIA',
+      'CHOPP', 'BAR ', 'CAFE', 'DOCERIA', 'SORVETE', 'GELATO', 'CHURRASCARIA',
+      'ROTISSERIE', 'BOM PRATO', 'SPOLETO', 'MADERO', 'JERONIMO', 'DOMINOS', 'CACAU SHOW',
+      'KOPENHAGEN', 'STARBUCKS', 'BOBS'
+    ],
+    targetCategories: ['ALIMENTACAO', 'RESTAURANTE', 'REFEICAO', 'LANCHE', 'COMIDA', 'DELIVERY', 'BAR']
+  },
+  {
+    keywords: [
+      'CARREFOUR', 'PAO DE ACUCAR', 'ASSAI', 'ATACADAO', 'EXTRA', 'BIG', 'SUPERMERCADO',
+      'MERCADO', 'HIPERMERCADO', 'HORTIFRUTI', 'SACOLAO', 'DIA %', 'SUPERMERC', 'SONDA',
+      'ZAFFARI', 'MAMBO', 'HIROTA', 'NATURAL DA TERRA', 'OBRIGADO', 'COOP', 'TENDA ATACADO',
+      'SPANI', 'ROLDÃO', 'MAKRO'
+    ],
+    targetCategories: ['MERCADO', 'SUPERMERCADO', 'ALIMENTACAO', 'COMPRAS', 'FEIRA']
+  },
+  {
+    keywords: [
+      'UBER', '99APP', '99 TEC', '99 POP', '99 TAXI', 'CABIFY', 'POSTO', 'SHELL', 'IPIRANGA',
+      'PETROBRAS', 'BR DISTRIBUIDORA', 'ALE COMB', 'COMBUSTIVEL', 'ESTACIONAMENTO',
+      'ESTAPAR', 'PEDAGIO', 'SEM PARAR', 'VELOE', 'CONECTCAR', 'METRO', 'CPTM', 'BILHETE UNICO',
+      'AUTO POSTO', 'GASOLINA', 'ETANOL', 'AUTO ELETRICA', 'MECANICA', 'OFICINA', 'PNEUS',
+      'BORRACHARIA', 'LAVAGEM', 'LAVA JATO', 'AUTOPASS', 'TOP SP'
+    ],
+    targetCategories: ['COMBUSTIVEL', 'TRANSPORTE', 'VEICULO', 'CARRO', 'MOBILIDADE', 'AUTO']
+  },
+  {
+    keywords: [
+      'DROGASIL', 'DROGA RAIA', 'DROGARIA', 'FARMACIA', 'PACHECO', 'PAGUE MENOS', 'DPSP',
+      'ULTRAFARMA', 'PANVEL', 'LABORATORIO', 'FLEURY', 'LAVOISIER', 'DELBONI', 'HERMES PARDINI',
+      'HOSPITAL', 'CLINICA', 'CONSULTA', 'MEDIC', 'DENTISTA', 'ODONTO', 'FISIOTERAPIA',
+      'PSICOLOG', 'TERAPIA', 'OTICA', 'EXAME'
+    ],
+    targetCategories: ['FARMACIA', 'SAUDE', 'MEDICAMENTOS', 'MEDICO', 'CUIDADOS']
+  },
+  {
+    keywords: [
+      'NETFLIX', 'SPOTIFY', 'AMAZON PRIME', 'PRIME VIDEO', 'DISNEY', 'HBO', 'MAX ', 'APPLE.COM',
+      'GOOGLE STORAGE', 'YOUTUBE', 'DEEZER', 'CLARO', 'VIVO', 'TIM', 'OI FIBRA', 'NET CLARO',
+      'INTERNET', 'HOSTGATOR', 'CHATGPT', 'OPENAI', 'PLAYSTATION', 'XBOX', 'STEAM', 'NINTENDO',
+      'GLOBOPLAY', 'PARAMOUNT', 'CRUNCHYROLL', 'CANVA', 'GITHUB', 'MICROSOFT'
+    ],
+    targetCategories: ['ASSINATURA', 'STREAMING', 'SERVICOS', 'INTERNET', 'TELEFONE', 'LAZER', 'DIGITAL']
+  },
+  {
+    keywords: [
+      'UDEMY', 'HOTMART', 'ALURA', 'CURSO', 'ESCOLA', 'FACULDADE', 'UNIVERSIDADE', 'LIVRARIA',
+      'SARAIVA', 'KINDLE', 'CULTURA', 'EDUCACAO', 'COLÉGIO', 'IDIOMAS', 'DUOLINGO'
+    ],
+    targetCategories: ['EDUCACAO', 'CURSOS', 'LIVROS', 'ESTUDOS']
+  },
+  {
+    keywords: [
+      'MERCADO LIVRE', 'MERCADOLIVRE', 'AMAZON', 'SHOPEE', 'ALIEXPRESS', 'MAGAZINE LUIZA',
+      'MAGALU', 'CASAS BAHIA', 'AMERICANAS', 'ZARA', 'RENNER', 'RIACHUELO', 'C&A', 'CENTAURO',
+      'DECATHLON', 'SHEIN', 'FAST SHOP', 'KABUM', 'PICHAU', 'TERABYTE', 'LEROY MERLIN', 'TELHANORTE',
+      'C&C', 'KALUNGA'
+    ],
+    targetCategories: ['COMPRAS', 'VESTUARIO', 'ROUPAS', 'SHOPPING', 'ELETRONICOS', 'CASA']
+  },
+  {
+    keywords: [
+      'ENEL', 'CPFL', 'LIGHT', 'CEMIG', 'ENERGIA', 'SABESP', 'COPASA', 'SANEPAR', 'AGUA',
+      'CONDOMINIO', 'GAS', 'COMGAS', 'ALUGUEL', 'IPTU', 'IPVA', 'TAXA', 'CARTORIO'
+    ],
+    targetCategories: ['MORADIA', 'CASA', 'CONTAS', 'LUZ', 'AGUA', 'HABITACAO', 'ENERGIA', 'IMPOSTOS']
+  },
+  {
+    keywords: [
+      'SALARIO', 'FOLHA PAGTO', 'TED SALARIO', 'REMUNERACAO', 'VENCIMENTO', 'HONORARIOS',
+      'PRO-LABORE', 'PROLABORE', 'DIVIDENDOS', 'RENDIMENTO', 'RESTITUICAO'
+    ],
+    targetCategories: ['SALARIO', 'REMUNERACAO', 'RENDIMENTO', 'RECEITA', 'PRO-LABORE']
+  }
+];
+
+const STOP_WORDS = new Set([
+  'COMPRA', 'PAGTO', 'PAGAMENTO', 'DEBITO', 'CREDITO', 'TRANSF', 'TRANSFERENCIA',
+  'PAG', 'PIX', 'CARTAO', 'LOJA', 'ESTAB', 'DO', 'DA', 'DE', 'COM', 'PARA', 'EM', 'LTDA', 'SA', 'ME'
+]);
+
+function extractSignificantTokens(text: string): string[] {
+  return text.split(/\s+/).filter(word => word.length >= 3 && !STOP_WORDS.has(word));
+}
+
+export function predictCategoryForDescription(
+  rawDescription: string,
+  categories: CategoryOption[],
+  history: HistoricalPattern[] = [],
+  isExpense = true
+): CategoryPrediction | null {
+  const normalized = normalizeStatementDescription(rawDescription);
+  if (!normalized) return null;
+
+  const targetClass = isExpense ? 'expense' : 'income';
+  const eligibleCategories = categories.filter(c => !c.accountClass || c.accountClass === targetClass);
+
+  if (history.length > 0) {
+    const inputTokens = extractSignificantTokens(normalized);
+    const counts = new Map<string, { count: number; categoryName: string; counterpartId?: string }>();
+
+    for (const h of history) {
+      const hNorm = normalizeStatementDescription(h.description);
+      if (!hNorm) continue;
+
+      let isMatch = false;
+      if (hNorm === normalized) {
+        isMatch = true;
+      } else if (hNorm.length >= 4 && normalized.length >= 4 && (normalized.includes(hNorm) || hNorm.includes(normalized))) {
+        isMatch = true;
+      } else if (inputTokens.length > 0) {
+        const histTokens = extractSignificantTokens(hNorm);
+        const common = inputTokens.filter(token => histTokens.includes(token));
+        if (common.length >= 2 || (common.length === 1 && inputTokens.length === 1 && histTokens.length === 1)) {
+          isMatch = true;
+        }
+      }
+
+      if (isMatch) {
+        const key = h.counterpartId || h.categoryName;
+        const existing = counts.get(key) || { count: 0, categoryName: h.categoryName, counterpartId: h.counterpartId };
+        existing.count++;
+        counts.set(key, existing);
+      }
+    }
+
+    if (counts.size > 0) {
+      const sorted = [...counts.values()].sort((a, b) => b.count - a.count);
+      for (const item of sorted) {
+        const found = eligibleCategories.find(c =>
+          (item.counterpartId && c.id === item.counterpartId) ||
+          normalizeStatementDescription(c.name) === normalizeStatementDescription(item.categoryName)
+        );
+        if (found) {
+          return {
+            counterpartId: found.id,
+            categoryName: found.name,
+            confidence: 'high',
+            reason: `Histórico anterior (${found.name})`
+          };
+        }
+      }
+    }
+  }
+
+  for (const rule of ESTABLISHMENT_RULES) {
+    const matchedKeyword = rule.keywords.find(keyword => {
+      if (keyword.endsWith(' ')) {
+        return normalized.includes(keyword) || normalized.endsWith(keyword.trim());
+      }
+      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+      return regex.test(normalized) || normalized.includes(keyword);
+    });
+
+    if (matchedKeyword) {
+      let matchedCat: CategoryOption | undefined;
+      for (const target of rule.targetCategories) {
+        matchedCat = eligibleCategories.find(cat => {
+          const catNorm = normalizeStatementDescription(cat.name);
+          return catNorm.includes(target) || target.includes(catNorm);
+        });
+        if (matchedCat) break;
+      }
+
+      if (matchedCat) {
+        return {
+          counterpartId: matchedCat.id,
+          categoryName: matchedCat.name,
+          confidence: 'medium',
+          reason: `Sugestão automática (${matchedCat.name})`
+        };
+      }
+    }
+  }
+
+  return null;
+}

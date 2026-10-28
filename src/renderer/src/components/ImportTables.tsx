@@ -27,23 +27,41 @@ function dateText(value: string | null) {
   return parts ? `${parts[3]}/${parts[2]}/${parts[1]}` : new Date(value).toLocaleDateString('pt-BR')
 }
 
-export function ImportReviewTable<T extends ImportLineItem>({ lines, money, renderSituation, renderContext, renderActions, renderEditor }: {
+export function ImportReviewTable<T extends ImportLineItem>({
+  lines,
+  money,
+  renderSituation,
+  renderContext,
+  renderActions,
+  renderEditor,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  allSelected
+}: {
   lines: T[]
   money: (cents: number) => string
   renderSituation: (line: T) => ReactNode
   renderContext?: (line: T) => ReactNode
   renderActions: (line: T) => ReactNode
   renderEditor: (line: T) => ReactNode
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
+  onToggleSelectAll?: () => void
+  allSelected?: boolean
 }) {
+  const hasSelect = Boolean(onToggleSelect)
+  const colSpan = hasSelect ? 6 : 5
   return <div className="table-shell">
     <table aria-label="Linhas do extrato" className={table}>
       <thead className="table-head uppercase tracking-wide dark:bg-slate-800/50">
         <tr>
+          {hasSelect && <th scope="col" className="w-10 px-2 py-2.5 text-center"><input type="checkbox" aria-label="Selecionar todas as linhas visíveis" checked={allSelected ?? false} onChange={onToggleSelectAll} className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700" /></th>}
           <th scope="col" className="hidden w-[14%] px-4 py-2.5 sm:table-cell">Data</th>
-          <th scope="col" className="w-[46%] px-3 py-2.5 sm:w-[36%] sm:px-4">Descrição</th>
-          <th scope="col" className="w-[30%] px-3 py-2.5 text-right sm:w-[18%] sm:px-4">Valor</th>
+          <th scope="col" className={`${hasSelect ? 'w-[42%]' : 'w-[46%]'} px-3 py-2.5 sm:w-[36%] sm:px-4`}>Descrição</th>
+          <th scope="col" className="w-[28%] px-3 py-2.5 text-right sm:w-[18%] sm:px-4">Valor</th>
           <th scope="col" className="hidden px-4 py-2.5 sm:table-cell">Situação</th>
-          <th scope="col" className="w-[24%] px-3 sm:w-24 sm:px-4"><span className="sr-only">Ações</span></th>
+          <th scope="col" className="w-[24%] px-3 sm:w-28 sm:px-4"><span className="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -51,6 +69,7 @@ export function ImportReviewTable<T extends ImportLineItem>({ lines, money, rend
           const editor = renderEditor(line)
           return <Fragment key={line.id}>
             <tr className="table-row-hover">
+              {hasSelect && <td className="px-2 py-2.5 text-center"><input type="checkbox" aria-label={`Selecionar linha ${line.line_number}`} checked={selectedIds?.has(line.id) ?? false} onChange={() => onToggleSelect?.(line.id)} className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700" /></td>}
               <td className={`hidden sm:table-cell ${cell} ${muted}`}>{dateText(line.posted_on)}</td>
               <td className={cell}>
                 <p className="font-medium">{line.line_number}. {line.description}</p>
@@ -61,10 +80,10 @@ export function ImportReviewTable<T extends ImportLineItem>({ lines, money, rend
               <td className={`hidden sm:table-cell ${cell} ${muted}`}>{renderSituation(line)}</td>
               <td className={`${cell} text-right`}>{renderActions(line)}</td>
             </tr>
-            {editor && <tr><td colSpan={5} className="p-3 sm:p-4">{editor}</td></tr>}
+            {editor && <tr><td colSpan={colSpan} className="p-3 sm:p-4">{editor}</td></tr>}
           </Fragment>
         })}
-        {!lines.length && <tr><td colSpan={5} className={`px-4 py-6 text-center ${muted}`}>Nenhuma linha neste grupo.</td></tr>}
+        {!lines.length && <tr><td colSpan={colSpan} className={`px-4 py-6 text-center ${muted}`}>Nenhuma linha neste grupo.</td></tr>}
       </tbody>
     </table>
   </div>
