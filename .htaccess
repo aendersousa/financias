@@ -1,0 +1,13 @@
+Options -Indexes
+RewriteEngine On
+RewriteBase /financias/
+
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|sw\.js|app-update\.js|registerSW\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+RewriteRule ^$ out/pwa/index.html [L]
+RewriteCond %{DOCUMENT_ROOT}/financias/out/pwa/$1 -f
+RewriteRule ^(.+)$ out/pwa/$1 [L]

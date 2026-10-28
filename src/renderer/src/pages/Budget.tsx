@@ -1,10 +1,12 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useEffect, useState } from 'react'
 import { PiggyBank } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency } from '../lib/format'
 import PageHeader from '../components/PageHeader'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 
 export default function Budget() {
+  const formatCurrency = useCurrencyFormatter()
   const budgets = useAppStore((s) => s.budgets)
   const budgetMonth = useAppStore((s) => s.budgetMonth)
   const loadBudgets = useAppStore((s) => s.loadBudgets)
@@ -43,13 +45,10 @@ export default function Budget() {
                 <tr key={b.categoria_id} className="table-row-hover">
                   <td className="px-4 py-2.5">{b.categoria_nome}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      defaultValue={b.valor_planejado || ''}
-                      onBlur={(e) => setBudget(b.categoria_id, month, Number(e.target.value) || 0)}
-                      className="field-input w-24 py-1 text-right sm:w-28"
+                    <CurrencyInput
+                      defaultValue={b.valor_planejado ? b.valor_planejado : ''}
+                      onBlur={(e) => setBudget(b.categoria_id, month, parseCurrencyToNumber(e.target.value))}
+                      className="w-28 py-1 text-right sm:w-32"
                     />
                   </td>
                   <td className={`px-4 py-2.5 text-right font-medium ${over ? 'text-red-500' : ''}`}>
@@ -58,7 +57,7 @@ export default function Budget() {
                   <td className="hidden px-4 py-2.5 sm:table-cell">
                     <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800">
                       <div
-                        className={`h-2 rounded-full ${over ? 'bg-red-500' : 'bg-gradient-to-r from-sky-500 to-emerald-500'}`}
+                        className={`h-2 rounded-full ${over ? 'bg-red-500' : 'bg-gradient-to-r from-brand-500 to-emerald-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>

@@ -7,6 +7,19 @@ import {
   computeTransactionsView
 } from '../lib/computations'
 import { applyTheme, getInitialTheme, type Theme } from '../lib/theme'
+import { persistPrivacyMode, readPrivacyMode } from '../lib/privacy'
+import {
+  canToggleModule,
+  DEFAULT_ENABLED_MODULES,
+  isPageDisabled,
+  isPageEnabled,
+  persistDisabledPages,
+  readDisabledPages,
+  readEnabledModules,
+  togglePageStatus,
+  type EnabledModules,
+  type ModuleKey
+} from '../lib/modules'
 import type {
   Account,
   AccountWithBalance,
@@ -39,10 +52,24 @@ interface AppState {
   budgetMonth: string
   loading: boolean
   theme: Theme
+  privacyMode: boolean
+  modules: EnabledModules
+  disabledPages: string[]
 
   loadAll: () => Promise<void>
   reset: () => void
   toggleTheme: () => void
+  togglePrivacyMode: () => void
+  setPrivacyMode: (hidden: boolean) => void
+  setTheme: (theme: Theme) => void
+  isPageEnabled: (id: string) => boolean
+  togglePage: (id: string) => boolean
+  enableAllPages: () => void
+  resetPages: () => void
+  setModuleEnabled: (key: ModuleKey, enabled: boolean) => boolean
+  toggleModule: (key: ModuleKey) => boolean
+  enableAllModules: () => void
+  resetModules: () => void
 
   addAccount: (data: NewAccount) => Promise<void>
   removeAccount: (id: number) => Promise<void>
@@ -103,11 +130,70 @@ export const useAppStore = create<AppState>((set, get) => ({
   budgetMonth: new Date().toISOString().slice(0, 7),
   loading: false,
   theme: getInitialTheme(),
+  privacyMode: readPrivacyMode(),
+  modules: readEnabledModules(),
+  disabledPages: readDisabledPages(),
+  setPrivacyMode: (hidden) => {
+    persistPrivacyMode(hidden)
+    set({ privacyMode: hidden })
+  },
+  setTheme: (next) => {
+    applyTheme(next)
+    set({ theme: next })
+  },
+  togglePrivacyMode: () => {
+    const hidden = !get().privacyMode
+    persistPrivacyMode(hidden)
+    set({ privacyMode: hidden })
+  },
 
   toggleTheme: () => {
     const next: Theme = get().theme === 'dark' ? 'light' : 'dark'
     applyTheme(next)
     set({ theme: next })
+  },
+
+  isPageEnabled: (id) => isPageEnabled(id, get().disabledPages),
+
+  togglePage: (id) => {
+    const current = get().disabledPages
+    const next = togglePageStatus(id, current)
+    persistDisabledPages(next)
+    set({ disabledPages: next, modules: readEnabledModules() })
+    return true
+  },
+
+  enableAllPages: () => {
+    persistDisabledPages([])
+    set({ disabledPages: [], modules: readEnabledModules() })
+  },
+
+  resetPages: () => {
+    persistDisabledPages([])
+    set({ disabledPages: [], modules: readEnabledModules() })
+  },
+
+  setModuleEnabled: (key, enabled) => {
+    const current = get().disabledPages
+    const isCurrentlyDisabled = isPageDisabled(key, current)
+    if (enabled && isCurrentlyDisabled) {
+      get().togglePage(key)
+    } else if (!enabled && !isCurrentlyDisabled) {
+      get().togglePage(key)
+    }
+    return true
+  },
+
+  toggleModule: (key) => {
+    return get().togglePage(key)
+  },
+
+  enableAllModules: () => {
+    get().enableAllPages()
+  },
+
+  resetModules: () => {
+    get().resetPages()
   },
 
   reset: () => {

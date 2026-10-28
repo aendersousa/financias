@@ -1,0 +1,50 @@
+import { execFileSync } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
+
+// Local-only integration test. Credentials remain in memory and are never logged.
+const output = execFileSync('powershell.exe', ['-NoProfile','-Command','npx supabase status -o json 2>$null'], { encoding:'utf8', windowsHide:true });
+const status = JSON.parse(output);
+assert.equal(new URL(status.API_URL).hostname, '127.0.0.1', 'Only the local Supabase instance may be tested');
+const options = { auth:{ persistSession:false,autoRefreshToken:false } };
+const admin = createClient(status.API_URL,status.SERVICE_ROLE_KEY,options);
+const client = createClient(status.API_URL,status.ANON_KEY,options);
+const email = `ledger-api-${randomUUID()}@test.local`, password = randomUUID();
+const { error: createError } = await admin.auth.admin.createUser({ email,password,email_confirm:true });
+if (createError) throw new Error(createError.message);
+const { error: loginError } = await client.auth.signInWithPassword({ email,password });
+if (loginError) throw new Error(loginError.message);
+async function rpc(name,args = {}) {
+  const { data,error } = await client.schema('api').rpc(name,args);
+  if (error) throw new Error(`${name}: ${error.message}`);
+  return data;
+}
+const space = await rpc('create_personal_space',{ p_name:'Teste API local' });
+const today = (await rpc('workspace_snapshot',{ p_space:space })).space.today;
+const bank = await rpc('create_financial_account',{ p_space:space,p_name:'Banco API',p_kind:'checking',p_opening_cents:100000,p_opening_on:today });
+const wallet = await rpc('create_financial_account',{ p_space:space,p_name:'Carteira API',p_kind:'wallet',p_opening_cents:0,p_opening_on:today });
+const category = await rpc('create_category',{ p_space:space,p_name:'Mercado API',p_kind:'expense',p_parent:null,p_income_class:null });
+await rpc('create_person',{ p_space:space,p_nickname:'Pessoa API' });
+const card = await rpc('create_credit_card',{ p_space:space,p_name:'Cartão API',p_limit_cents:200000,p_closing_day:1,p_due_day:10,p_payment_account:bank });
+const purchaseId = randomUUID();
+const purchaseArgs = { p_space:space,p_card:card,p_category:category,p_total_cents:20000,p_installments:2,p_on:today,p_description:'Compra API',p_client_uuid:purchaseId };
+const purchase = await rpc('record_card_purchase',purchaseArgs);
+assert.equal(await rpc('record_card_purchase',purchaseArgs),purchase,'Purchase retry must be idempotent');
+let snapshot = await rpc('workspace_snapshot',{ p_space:space });
+const bankLedger = snapshot.accounts.find(a => a.id === bank).ledger_account_id;
+await rpc('pay_card',{ p_space:space,p_card:card,p_origin_ledger:bankLedger,p_amount_cents:5000,p_on:today,p_channel:'pix',p_client_uuid:randomUUID() });
+await rpc('transfer_between_accounts',{ p_space:space,p_from:bank,p_to:wallet,p_amount_cents:10000,p_occurred_on:today,p_client_uuid:randomUUID() });
+const commitment = await rpc('create_commitment',{ p_space:space,p_payload:{ title:'Conta API',direction:'outflow',certainty:'confirmed',amount_cents:15000,due_on:today,category_id:category,payment_method:'account',payment_financial_account_id:bank } });
+await rpc('settle_commitment',{ p_space:space,p_commitment:commitment,p_amount_cents:15000,p_on:today,p_client_uuid:randomUUID() });
+await rpc('create_budget',{ p_space:space,p_payload:{ category_id:category,amount_cents:50000,effective_from_month:`${today.slice(0,7)}-01` } });
+snapshot = await rpc('workspace_snapshot',{ p_space:space });
+assert.equal(snapshot.accounts.find(a => a.id === bank).balance_cents,70000);
+assert.equal(snapshot.accounts.find(a => a.id === wallet).balance_cents,10000);
+assert.equal(snapshot.cards.find(c => c.id === card).used_cents,15000);
+assert.equal(snapshot.commitments.find(c => c.id === commitment).settlement_status,'settled');
+assert.equal(snapshot.budgets[0].consumed_cents,35000);
+assert.equal(snapshot.people.length,1);
+console.log('Local API passed: authentication, workspace, accounts, categories, people, cards, idempotency, payment, transfer, Agenda and budgets.');
+console.log(`Retained local test space: ${space}`);
+await client.auth.signOut();

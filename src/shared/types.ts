@@ -55,6 +55,7 @@ export interface CreditCard {
   dia_fechamento: number
   dia_vencimento: number
   conta_pagamento_id: number | null
+  tipo_cartao?: 'both' | 'credit' | 'debit'
 }
 
 export type NewCreditCard = Omit<CreditCard, 'id'>

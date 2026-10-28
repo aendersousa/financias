@@ -1,8 +1,10 @@
+import { useCurrencyFormatter } from '../lib/useCurrencyFormatter'
 import { useState } from 'react'
 import { Receipt } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { formatCurrency, formatDate, todayIso } from '../lib/format'
+import { formatDate, todayIso } from '../lib/format'
 import PageHeader from '../components/PageHeader'
+import CurrencyInput, { parseCurrencyToNumber } from '../components/CurrencyInput'
 import type { BillType } from '../../../shared/types'
 
 export default function Bills() {
@@ -27,7 +29,7 @@ export default function Bills() {
     try {
       await addBill({
         descricao: descricao.trim(),
-        valor: Number(valor),
+        valor: parseCurrencyToNumber(valor),
         vencimento,
         tipo,
         status: 'pendente',
@@ -68,13 +70,10 @@ export default function Bills() {
         </div>
         <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="field-label">Valor</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CurrencyInput
             value={valor}
             onChange={(e) => setValor(e.target.value)}
-            className="field-input w-full sm:w-28"
+            className="w-full sm:w-32"
             required
           />
         </div>
@@ -143,6 +142,7 @@ function BillList({
   onToggle: (id: number, data: { status: 'pendente' | 'pago' }) => Promise<void>
   onRemove: (id: number) => Promise<void>
 }) {
+  const formatCurrency = useCurrencyFormatter()
   return (
     <div className="card p-4">
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
