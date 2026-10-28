@@ -37,7 +37,8 @@ export function ImportReviewTable<T extends ImportLineItem>({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
-  allSelected
+  allSelected,
+  isSelectable
 }: {
   lines: T[]
   money: (cents: number) => string
@@ -49,6 +50,7 @@ export function ImportReviewTable<T extends ImportLineItem>({
   onToggleSelect?: (id: string) => void
   onToggleSelectAll?: () => void
   allSelected?: boolean
+  isSelectable?: (line: T) => boolean
 }) {
   const hasSelect = Boolean(onToggleSelect)
   const colSpan = hasSelect ? 6 : 5
@@ -67,9 +69,22 @@ export function ImportReviewTable<T extends ImportLineItem>({
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
         {lines.map(line => {
           const editor = renderEditor(line)
+          const selectable = !isSelectable || isSelectable(line)
           return <Fragment key={line.id}>
             <tr className="table-row-hover">
-              {hasSelect && <td className="px-2 py-2.5 text-center"><input type="checkbox" aria-label={`Selecionar linha ${line.line_number}`} checked={selectedIds?.has(line.id) ?? false} onChange={() => onToggleSelect?.(line.id)} className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700" /></td>}
+              {hasSelect && (
+                <td className="px-2 py-2.5 text-center">
+                  {selectable ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`Selecionar linha ${line.line_number}`}
+                      checked={selectedIds?.has(line.id) ?? false}
+                      onChange={() => onToggleSelect?.(line.id)}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700"
+                    />
+                  ) : null}
+                </td>
+              )}
               <td className={`hidden sm:table-cell ${cell} ${muted}`}>{dateText(line.posted_on)}</td>
               <td className={cell}>
                 <p className="font-medium">{line.line_number}. {line.description}</p>

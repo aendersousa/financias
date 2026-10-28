@@ -75,16 +75,18 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
   const predictions = useMemo<Record<string, CategoryPrediction>>(() => {
     if (!review?.candidates || !overview?.counterparts) return {};
     const map: Record<string, CategoryPrediction> = {};
+    const isCard = Boolean(review.batch.credit_card_id);
     const availableCategories = overview.counterparts.filter(c => c.ownerType === 'category');
     for (const row of review.candidates) {
       if (awaiting(row) && row.amount_cents !== null && !row.autoSelected) {
+        if (isCard && row.amount_cents > 0) continue;
         const isExpense = row.amount_cents < 0;
         const pred = predictCategoryForDescription(row.description, availableCategories, historyPatterns, isExpense);
         if (pred) map[row.id] = pred;
       }
     }
     return map;
-  }, [review?.candidates, overview?.counterparts, historyPatterns]);
+  }, [review?.candidates, review?.batch.credit_card_id, overview?.counterparts, historyPatterns]);
 
   async function loadOverview() { const space = workspace.space.id, data = await ledgerRpc<Overview>('import_overview', { p_space: space }); if (currentSpace.current === space) setOverview(data); }
   useEffect(() => {
@@ -97,18 +99,23 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
     setExpandedLine(null); setSelectedIds(new Set());
 
     const availableCategories = currentOverview?.counterparts.filter(c => c.ownerType === 'category') ?? [];
+    const isCard = Boolean(next.batch.credit_card_id);
     const initialChoices: Record<string, Choice> = {};
 
     for (const row of next.candidates) {
       if (row.autoSelected && row.suggestions[0]?.entryId) {
         initialChoices[row.id] = { action: `${row.suggestions[0].kind}:${row.suggestions[0].entryId}`, counterpart: '' };
       } else if (awaiting(row) && row.amount_cents !== null) {
-        const isExpense = row.amount_cents < 0;
-        const pred = predictCategoryForDescription(row.description, availableCategories, historyPatterns, isExpense);
-        if (pred) {
-          initialChoices[row.id] = { action: 'create', counterpart: pred.counterpartId };
-        } else {
+        if (isCard && row.amount_cents > 0) {
           initialChoices[row.id] = { action: 'skip', counterpart: '' };
+        } else {
+          const isExpense = row.amount_cents < 0;
+          const pred = predictCategoryForDescription(row.description, availableCategories, historyPatterns, isExpense);
+          if (pred) {
+            initialChoices[row.id] = { action: 'create', counterpart: pred.counterpartId };
+          } else {
+            initialChoices[row.id] = { action: 'skip', counterpart: '' };
+          }
         }
       } else {
         initialChoices[row.id] = { action: 'skip', counterpart: '' };
@@ -180,7 +187,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
       const id = await ledgerRpc<string>('import_statement_read', { p_space: workspace.space.id, p_account: accountId, p_client_uuid: clientId, p_payload: { ...prepared, accountType: account?.accountType === 'card' ? 'card' : 'bank', referenceMonth: account?.accountType === 'card' && referenceMonth ? `${referenceMonth}-01` : undefined, periodStart: String(form.get('periodStart')) || null, periodEnd: String(form.get('periodEnd')) || null, profile: prepared.profile ?? { columns: {}, inverseSigns: profile.inverseSigns ?? false }, otherAccountReason: otherReason || undefined } });
       const next = await ledgerRpc<ImportReview>('import_review', { p_space: workspace.space.id, p_batch: id });
       setLoadedReview(next); setPrepared(null); setBytes(null); setFileName(''); setCsvPreview(null); await loadOverview();
-      const predictedCount = next.candidates.filter(r => awaiting(r) && r.amount_cents !== null && predictCategoryForDescription(r.description, overview?.counterparts.filter(c => c.ownerType === 'category') ?? [], historyPatterns, r.amount_cents < 0)).length;
+      const predictedCount = next.candidates.filter(r => awaiting(r) && r.amount_cents !== null && (!next.batch.credit_card_id || r.amount_cents < 0) && predictCategoryForDescription(r.description, overview?.counterparts.filter(c => c.ownerType === 'category') ?? [], historyPatterns, r.amount_cents < 0)).length;
       setNotice(`Arquivo lido com sucesso. ${predictedCount > 0 ? `${predictedCount} linhas foram pré-categorizadas automaticamente! ` : ''}Revise as decisões antes de confirmar.`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível gravar a leitura.'); await loadOverview().catch(() => undefined); }
     finally { setBusy(false); }
@@ -493,6 +500,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
         onToggleSelect={canWrite && review.batch.status !== 'undone' ? toggleSelect : undefined}
         onToggleSelectAll={canWrite && review.batch.status !== 'undone' ? toggleSelectAll : undefined}
         allSelected={allSelected}
+        isSelectable={awaiting}
         renderSituation={row=><p>{statusLabels[row.status] ?? row.status}</p>}
         renderContext={row=><>
           {row.error&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{row.error}</p>}
@@ -522,24 +530,33 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
               >
                 <option value="skip">Decidir depois</option>
                 <option value="ignore">Ignorar linha</option>
-                {row.suggestions.map(s => (
-                  <option key={s.entryId ?? s.commitmentId ?? s.kind} value={s.kind === 'opening_coverage' ? 'opening_coverage' : `${s.kind}:${s.entryId ?? s.commitmentId}`}>
-                    Conciliar: {s.description} ({money(s.amountCents)})
-                  </option>
-                ))}
-                <optgroup label="Categorias">
-                  {overview?.counterparts
-                    .filter(c => c.id !== review.batch.ledger_account_id && (
-                      review.batch.credit_card_id
-                        ? c.ownerType === 'category' && c.accountClass === 'expense'
-                        : c.ownerType === 'category' && c.accountClass === (row.amount_cents! < 0 ? 'expense' : 'income')
-                    ))
-                    .map(c => (
-                      <option key={c.id} value={`create:${c.id}`}>
-                        Lançar em: {c.name}
+                {review.batch.credit_card_id && row.amount_cents! > 0 ? (
+                  <>
+                    <option value="card_payment">Pagamento da fatura</option>
+                    <option value="card_refund">Estorno de uma compra</option>
+                  </>
+                ) : (
+                  <>
+                    {row.suggestions.map(s => (
+                      <option key={s.entryId ?? s.commitmentId ?? s.kind} value={s.kind === 'opening_coverage' ? 'opening_coverage' : `${s.kind}:${s.entryId ?? s.commitmentId}`}>
+                        Conciliar: {s.description} ({money(s.amountCents)})
                       </option>
                     ))}
-                </optgroup>
+                    <optgroup label="Categorias">
+                      {overview?.counterparts
+                        .filter(c => c.id !== review.batch.ledger_account_id && (
+                          review.batch.credit_card_id
+                            ? c.ownerType === 'category' && c.accountClass === 'expense'
+                            : c.ownerType === 'category' && c.accountClass === (row.amount_cents! < 0 ? 'expense' : 'income')
+                        ))
+                        .map(c => (
+                          <option key={c.id} value={`create:${c.id}`}>
+                            Lançar em: {c.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </>
+                )}
               </select>
               {predictions[row.id] && choices[row.id]?.action === 'create' && choices[row.id]?.counterpart === predictions[row.id]?.counterpartId && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
