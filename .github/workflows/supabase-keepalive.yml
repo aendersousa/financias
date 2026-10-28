@@ -1,0 +1,42 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Executa duas vezes por semana (segundas e quintas às 10:00 UTC / 07:00 BRT)
+    # Mantém o banco sempre ativo, evitando a pausa por 7 dias de inatividade
+    - cron: '0 10 * * 1,4'
+  workflow_dispatch: # Permite disparar manualmente pela aba Actions do GitHub
+
+jobs:
+  keepalive:
+    name: Ping Supabase to Prevent Inactivity Pause
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://lsqtxinxopdhdkigyskv.supabase.co' }}
+      SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_3DYNkfufN7JJ5I4-qr9SWw_UQ41Psxb' }}
+
+    steps:
+      - name: Ping Supabase Auth API
+        run: |
+          echo "Pinging Supabase Auth endpoint at $SUPABASE_URL/auth/v1/health..."
+          AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/auth/v1/health")
+          echo "Auth response status: $AUTH_STATUS"
+
+      - name: Ping Supabase REST API
+        run: |
+          echo "Pinging Supabase REST endpoint at $SUPABASE_URL/rest/v1/..."
+          REST_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/")
+          echo "REST response status: $REST_STATUS"
+          if [ "$REST_STATUS" -ge 200 ] && [ "$REST_STATUS" -lt 500 ]; then
+            echo "Sucesso: Supabase respondeu normalmente ($REST_STATUS). Timer de inatividade zerado!"
+          else
+            echo "Aviso: Resposta inesperada do servidor ($REST_STATUS)."
+          fi
