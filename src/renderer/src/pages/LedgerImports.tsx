@@ -37,7 +37,7 @@ const decisionLabels: Record<string, string> = { create: 'Criar lançamento', op
 export default function LedgerImports({ workspace, money, onChanged }: { workspace: LedgerWorkspace; money: (value: number) => string; onChanged: () => Promise<void> }) {
   const [overview, setOverview] = useState<Overview | null>(null), [review, setReview] = useState<ImportReview | null>(null);
   const [accountId, setAccountId] = useState(''), [bytes, setBytes] = useState<Uint8Array | null>(null), [fileName, setFileName] = useState('');
-  const [profile, setProfile] = useState<StatementCsvProfile>(defaultProfile), [csvPreview, setCsvPreview] = useState<CsvStatementPreview | null>(null), [isOfx, setIsOfx] = useState(false);
+  const [profile, setProfile] = useState<StatementCsvProfile>(defaultProfile), [csvPreview, setCsvPreview] = useState<CsvStatementPreview | null>(null), [isOfx, setIsOfx] = useState(false), [isPdf, setIsPdf] = useState(false);
   const [prepared, setPrepared] = useState<StatementImportPayload | null>(null), [signConfirmed, setSignConfirmed] = useState(false), [otherReason, setOtherReason] = useState('');
   const [choices, setChoices] = useState<Record<string, Choice>>({}), [undoOpen, setUndoOpen] = useState(false), [restoreChoices, setRestoreChoices] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [filter, setFilter] = useState('review'), [page, setPage] = useState(0);
@@ -90,7 +90,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
 
   async function loadOverview() { const space = workspace.space.id, data = await ledgerRpc<Overview>('import_overview', { p_space: space }); if (currentSpace.current === space) setOverview(data); }
   useEffect(() => {
-    setOverview(null); setReview(null); setAccountId(''); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setUndoOpen(false); setError(''); setNotice(''); setSelectedIds(new Set());
+    setOverview(null); setReview(null); setAccountId(''); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setUndoOpen(false); setError(''); setNotice(''); setSelectedIds(new Set()); setIsPdf(false);
     void loadOverview().catch(failure => setError(failure instanceof Error ? failure.message : 'Não foi possível carregar as importações.'));
   }, [workspace.space.id]);
 
@@ -132,7 +132,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
   }
 
   function chooseAccount(id: string) {
-    setAccountId(id); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setSignConfirmed(false); setOtherReason(''); setReferenceMonth('');
+    setAccountId(id); setBytes(null); setFileName(''); setPrepared(null); setCsvPreview(null); setSignConfirmed(false); setOtherReason(''); setReferenceMonth(''); setIsPdf(false);
     setProfile(overview?.accounts.find(item => item.id === id)?.importProfile ?? defaultProfile());
   }
 
@@ -144,10 +144,12 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
   async function selectFile(file: File | undefined) {
     setError(''); setPrepared(null); setSignConfirmed(false); setOtherReason(''); if (!file) return;
     try {
-      if (file.size === 0 || file.size > 10 * 1024 * 1024) throw new Error('Selecione um arquivo OFX ou CSV de até 10 MB.');
-      const data = new Uint8Array(await file.arrayBuffer()), ofx = /<OFX(?:\s[^>]*)?>/i.test(new TextDecoder().decode(data));
-      setBytes(data); setFileName(file.name); setIsOfx(ofx);
-      if (!ofx) { const preview = inspectCsvStatement(data, profile); setCsvPreview(preview); setProfile({ ...profile, columns: Object.keys(profile.columns).length ? profile.columns : preview.suggestedColumns }); }
+      if (file.size === 0 || file.size > 10 * 1024 * 1024) throw new Error('Selecione um arquivo OFX, CSV ou PDF de até 10 MB.');
+      const data = new Uint8Array(await file.arrayBuffer());
+      const ofx = /<OFX(?:\s[^>]*)?>/i.test(new TextDecoder().decode(data));
+      const pdf = file.name.toLowerCase().endsWith('.pdf') || (data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46);
+      setBytes(data); setFileName(file.name); setIsOfx(ofx); setIsPdf(pdf);
+      if (!ofx && !pdf) { const preview = inspectCsvStatement(data, profile); setCsvPreview(preview); setProfile({ ...profile, columns: Object.keys(profile.columns).length ? profile.columns : preview.suggestedColumns }); }
       else setCsvPreview(null);
     } catch (failure) { setBytes(null); setCsvPreview(null); setError(failure instanceof Error ? failure.message : 'Não foi possível ler o arquivo.'); }
   }
@@ -172,7 +174,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
   async function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy || !bytes) return; setBusy(true); setError(''); setNotice('');
     try {
-      const next = await parseStatementFile(bytes, { fileName, timeZone: workspace.space.timezone, generatedOn: isOfx ? undefined : workspace.space.today, profile: isOfx ? undefined : profile, inverseSigns: profile.inverseSigns });
+      const next = await parseStatementFile(bytes, { fileName, timeZone: workspace.space.timezone, generatedOn: (isOfx || isPdf) ? undefined : workspace.space.today, profile: (isOfx || isPdf) ? undefined : profile, inverseSigns: profile.inverseSigns });
       if (next.accountType === 'card' && account?.accountType !== 'card') throw new Error('Este arquivo é de cartão. Selecione o cartão correspondente.');
       if (next.format === 'ofx' && next.accountType === 'bank' && account?.accountType === 'card') throw new Error('Este arquivo é de conta bancária. Selecione a conta correspondente.');
       setPrepared(next); setClientId(crypto.randomUUID()); setSignConfirmed(Boolean(account?.importProfile));
@@ -343,7 +345,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
             id="import-file"
             key={accountId}
             type="file"
-            accept=".ofx,.csv,text/csv,application/x-ofx"
+            accept=".ofx,.csv,.pdf,text/csv,application/x-ofx,application/pdf"
             hidden
             disabled={busy || !accountId}
             onChange={event => {
@@ -364,7 +366,7 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
           ) : (
             <div className="space-y-1">
               <p className="font-medium text-slate-800 dark:text-slate-200">
-                {accountId ? 'Arraste e solte o arquivo OFX ou CSV aqui' : 'Selecione primeiro a conta ou cartão acima'}
+                {accountId ? 'Arraste e solte o arquivo OFX, CSV ou PDF aqui' : 'Selecione primeiro a conta ou cartão acima'}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {accountId ? 'ou clique em qualquer parte deste quadro para buscar no computador' : 'O envio do arquivo é habilitado após selecionar a conta'}
@@ -381,7 +383,8 @@ export default function LedgerImports({ workspace, money, onChanged }: { workspa
         {account?.lastDigits && <p className="text-xs text-slate-500 dark:text-slate-400">Identificação da conta no banco: {account.institution} · final {account.lastDigits}</p>}
         {account?.fitidsUnreliable && <p className="text-sm text-amber-700 dark:text-amber-300">Este banco gerou identificadores novos para linhas antigas. A comparação usa data, valor e quantidade de linhas iguais.</p>}
         {bytes && <div className="grid min-w-0 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-800">
-          {!isOfx && <>
+          {isPdf && <p className="text-sm text-brand-700 dark:text-brand-300 sm:col-span-2">📄 PDF detectado. As movimentações serão extraídas automaticamente do texto. Funciona melhor com PDFs gerados digitalmente (não fotografados).</p>}
+          {!isOfx && !isPdf && <>
             <div className="grid gap-2 text-sm"><label htmlFor="import-encoding">Codificação</label><select id="import-encoding" value={profile.encoding ?? 'auto'} disabled={busy} onChange={event => updateProfile({ ...profile, encoding: event.target.value as StatementCsvProfile['encoding'] })} className={input}><option value="auto">Detectar automaticamente</option><option value="utf-8">UTF-8</option><option value="windows-1252">Windows-1252</option><option value="iso-8859-1">ISO-8859-1</option></select></div>
             <div className="grid gap-2 text-sm"><label htmlFor="import-delimiter">Separador das colunas</label><select id="import-delimiter" value={profile.delimiter ?? 'auto'} disabled={busy} onChange={event => updateProfile({ ...profile, delimiter: event.target.value as StatementCsvProfile['delimiter'] })} className={input}><option value="auto">Detectar automaticamente</option><option value=";">Ponto e vírgula</option><option value=",">Vírgula</option><option value={'\t'}>Tabulação</option></select></div>
             <div className="grid gap-2 text-sm"><label htmlFor="import-decimal">Separador decimal</label><select id="import-decimal" value={profile.decimalSeparator ?? 'auto'} disabled={busy} onChange={event => updateProfile({ ...profile, decimalSeparator: event.target.value as StatementCsvProfile['decimalSeparator'] })} className={input}><option value="auto">Detectar pelo valor</option><option value=",">Vírgula: 1.234,56</option><option value=".">Ponto: 1,234.56</option></select></div>

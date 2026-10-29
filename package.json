@@ -1,6 +1,6 @@
 {
   "name": "financias",
-  "version": "2.1.76",
+  "version": "2.1.77",
   "description": "App desktop de gestao financeira pessoal",
   "main": "out/main/index.js",
   "scripts": {
@@ -67,6 +67,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.9.2",
+    "unpdf": "^2.0.0",
     "zustand": "^5.0.14"
   }
 }

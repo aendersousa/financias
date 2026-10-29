@@ -187,17 +187,117 @@ export function parseCsvStatement(text: string, profile: StatementCsvProfile, ge
   const dates = rows.flatMap(row => row.postedOn ? [row.postedOn] : []).sort();
   return { accountType: 'bank', periodStart: dates[0] ?? null, periodEnd: dates.at(-1) ?? null, generatedOn, rows, balanceOn, statementBalanceCents };
 }
-export async function parseStatementFile(bytes: Uint8Array, options: StatementParseOptions): Promise<StatementImportPayload> {
-  const decoded = decodeStatement(bytes, options.profile?.encoding ?? 'auto');
-  const format = /<OFX(?:\s[^>]*)?>/i.test(decoded.text) ? 'ofx' : 'csv';
+const PDF_MONTH_MAP: Record<string, string> = {
+  jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+  jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12',
+};
+const PDF_SKIP_PREFIXES = /^(?:SALDO|TOTAL|PAGAMENTO MINIMO|ENCARGOS|CREDITO ROTATIVO|FATURA ANTERIOR|RESUMO|LIMITE|PAGINA|EXTRATO DE|DATA HISTORICO|LANCAMENTOS|TRANSACOES)(?:\s|$)/i;
+
+export function parsePdfStatementLine(line: string, defaultYear: number, inverseSigns = false): StatementImportRow | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const normalizedLine = trimmed.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  if (PDF_SKIP_PREFIXES.test(normalizedLine)) return null;
+
+  // Extract amount from end of line
+  const amountMatch = /(?:(?:R\$|\$)\s*)?\(?([+-]?\s*[\d.]+(?:,\d{2}))\)?\s*([DdCc-]?)\s*$/.exec(trimmed);
+  if (!amountMatch) return null;
+
+  const amountStr = amountMatch[1].replace(/\s/g, '');
+  const indicator = amountMatch[2].toUpperCase();
+  const rest = trimmed.slice(0, trimmed.length - amountMatch[0].length).trim();
+
+  // Extract date from start of rest
+  let dateStr: string | null = null;
+  let description = rest;
+
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})\s*/.exec(rest);
+  const brMatch = /^(\d{2})[/.-](\d{2})(?:[/.-](\d{2,4}))?\s*/.exec(rest);
+  const ptMatch = /^(\d{2})\s+([A-Za-z]{3})\s*/.exec(rest);
+
+  if (isoMatch) {
+    dateStr = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    description = rest.slice(isoMatch[0].length).trim();
+  } else if (brMatch) {
+    const day = brMatch[1], month = brMatch[2];
+    const rawYear = brMatch[3];
+    let year = defaultYear;
+    if (rawYear) { const y = Number(rawYear); year = rawYear.length === 2 ? y + (y < 70 ? 2000 : 1900) : y; }
+    dateStr = `${year}-${month}-${day}`;
+    description = rest.slice(brMatch[0].length).trim();
+  } else if (ptMatch) {
+    const day = ptMatch[1], monthAbbr = ptMatch[2].toLowerCase();
+    const month = PDF_MONTH_MAP[monthAbbr];
+    if (!month) return null;
+    dateStr = `${defaultYear}-${month}-${day}`;
+    description = rest.slice(ptMatch[0].length).trim();
+  } else {
+    return null;
+  }
+
+  if (!description) description = 'Sem descri\u00e7\u00e3o';
+
+  let cents: number;
+  try {
+    cents = parseStatementCents(amountStr, ',');
+  } catch {
+    return null;
+  }
+  if (!cents) return null;
+
+  // Determine sign
+  const isNegative = amountStr.startsWith('-') || indicator === 'D' || indicator === '-';
+  const isPositive = indicator === 'C';
+  if (isNegative && cents > 0) cents = -cents;
+  else if (isPositive && cents < 0) cents = -cents;
+
+  if (inverseSigns) cents = -cents;
+
+  return { lineNumber: 0, postedOn: dateStr, amountCents: cents, description, status: 'posted' };
+}
+
+export async function parsePdfStatement(bytes: Uint8Array, options: StatementParseOptions): Promise<NormalizedStatement> {
+  const { extractText } = await import('unpdf');
+  const result = await extractText(bytes, { mergePages: false } as never);
+  const pages: string[] = Array.isArray((result as { text: unknown }).text) ? (result as { text: string[] }).text : [String((result as { text: unknown }).text)];
+  const fullText = pages.join('\n');
+  const lines = fullText.split('\n');
   const generatedOn = options.generatedOn ?? todayInSpace(options.timeZone);
-  let normalized: NormalizedStatement;
-  if (format === 'ofx') normalized = parseOfxStatement(decoded.text, { timeZone: options.timeZone, generatedOn: options.generatedOn, inverseSigns: options.inverseSigns ?? options.profile?.inverseSigns });
-  else { if (!options.profile) throw new Error('Confirme o mapeamento das colunas do CSV antes de importar.'); normalized = parseCsvStatement(decoded.text, options.profile, generatedOn); }
+  const defaultYear = new Date(generatedOn).getFullYear();
+  const inverseSigns = options.inverseSigns ?? options.profile?.inverseSigns ?? false;
+
+  const rows: StatementImportRow[] = [];
+  let lineNumber = 0;
+  for (const line of lines) {
+    lineNumber++;
+    const row = parsePdfStatementLine(line, defaultYear, inverseSigns);
+    if (row) rows.push({ ...row, lineNumber });
+  }
+
+  if (rows.length === 0) throw new Error('N\u00e3o foram encontradas movimenta\u00e7\u00f5es com data e valor leg\u00edveis no PDF. Verifique se o PDF foi gerado digitalmente (n\u00e3o \u00e9 uma foto ou scan).');
+
+  const dates = rows.flatMap(row => row.postedOn ? [row.postedOn] : []).sort();
+  return { accountType: 'bank', periodStart: dates[0] ?? null, periodEnd: dates.at(-1) ?? null, generatedOn, rows };
+}
+
+export async function parseStatementFile(bytes: Uint8Array, options: StatementParseOptions): Promise<StatementImportPayload> {
+  const isPdf = options.fileName.toLowerCase().endsWith('.pdf') || (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46);
   let binary = ''; for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
   const hashBytes = await crypto.subtle.digest('SHA-256', Uint8Array.from(bytes).buffer);
   const fileSha256 = [...new Uint8Array(hashBytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-  return { ...normalized, format, fileName: options.fileName, fileSha256, fileBytesBase64: btoa(binary), profile: format === 'csv' ? { ...options.profile!, encoding: decoded.encoding as StatementCsvProfile['encoding'] } : undefined };
+
+  if (isPdf) {
+    const norm = await parsePdfStatement(bytes, options);
+    return { ...norm, format: 'csv', fileName: options.fileName, fileSha256, fileBytesBase64: btoa(binary), profile: { columns: {}, inverseSigns: options.inverseSigns ?? false } };
+  }
+
+  const decoded = decodeStatement(bytes, options.profile?.encoding ?? 'auto');
+  const format = /<OFX(?:\s[^>]*)?>/i.test(decoded.text) ? 'ofx' : 'csv';
+  const generatedOn = options.generatedOn ?? todayInSpace(options.timeZone);
+  let normalizedResult: NormalizedStatement;
+  if (format === 'ofx') normalizedResult = parseOfxStatement(decoded.text, { timeZone: options.timeZone, generatedOn: options.generatedOn, inverseSigns: options.inverseSigns ?? options.profile?.inverseSigns });
+  else { if (!options.profile) throw new Error('Confirme o mapeamento das colunas do CSV antes de importar.'); normalizedResult = parseCsvStatement(decoded.text, options.profile, generatedOn); }
+  return { ...normalizedResult, format, fileName: options.fileName, fileSha256, fileBytesBase64: btoa(binary), profile: format === 'csv' ? { ...options.profile!, encoding: decoded.encoding as StatementCsvProfile['encoding'] } : undefined };
 }
 
 
